@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, query, orderBy, limit,
@@ -8,7 +8,7 @@ import { db } from '../firebase';
 import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
-  X, Save, ChevronDown, ChevronUp
+  X, Save
 } from 'lucide-react';
 
 const EDITABLE_FIELDS = [
@@ -40,9 +40,7 @@ export default function AdminPage() {
   const [confirmDelete,   setConfirmDelete]   = useState(null);   // 'single' | 'bulk'
   const [deleteTarget,    setDeleteTarget]    = useState(null);   // single drug id
 
-  useEffect(() => { loadDrugs(); }, []);
-
-  async function loadDrugs() {
+  const loadDrugs = useCallback(async () => {
     try {
       const q = query(collection(db, 'drugs'), orderBy('last_updated', 'desc'), limit(500));
       const snap = await getDocs(q);
@@ -57,7 +55,9 @@ export default function AdminPage() {
       showToast('Failed to load drugs: ' + err.message, 'error');
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => { loadDrugs(); }, [loadDrugs]);
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
