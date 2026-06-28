@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Search, Pill, Heart, Activity, Brain, Bone,
-  Stethoscope, ChevronRight, TrendingUp, Shield, Grid3X3
+  Stethoscope, ChevronRight, Grid3X3
 } from 'lucide-react';
 import drugsData from '../data/seedDrugs.json';
 
@@ -194,33 +194,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Quick Actions */}
-      <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Link to="/admin/upload"
-                className="flex items-center gap-4 p-6 bg-gradient-to-r from-primary-50 to-primary-100
-                           rounded-xl border border-primary-200 hover:shadow-md transition-all">
-            <div className="p-3 bg-primary-600 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-primary-900">Bulk Upload</h3>
-              <p className="text-sm text-primary-700">Import medications via CSV</p>
-            </div>
-          </Link>
-          <Link to="/admin"
-                className="flex items-center gap-4 p-6 bg-gradient-to-r from-amber-50 to-amber-100
-                           rounded-xl border border-amber-200 hover:shadow-md transition-all">
-            <div className="p-3 bg-amber-600 rounded-lg">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-amber-900">Admin Portal</h3>
-              <p className="text-sm text-amber-700">Manage drug database</p>
-            </div>
-          </Link>
-        </div>
-      </section>
+
     </div>
   );
 }
