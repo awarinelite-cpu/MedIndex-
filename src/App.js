@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import AdminLayout from './components/AdminLayout';
 import HomePage from './pages/HomePage';
 import DrugDetailPage from './pages/DrugDetailPage';
 import BrowsePage from './pages/BrowsePage';
@@ -9,16 +10,17 @@ import UploadPage from './pages/UploadPage';
 
 function App() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/drug/:id" element={<DrugDetailPage />} />
-        <Route path="/browse" element={<BrowsePage />} />
-        <Route path="/browse/:condition" element={<BrowsePage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/admin/upload" element={<UploadPage />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      {/* ── Public routes — use public Layout ───────────────────────── */}
+      <Route path="/" element={<Layout><HomePage /></Layout>} />
+      <Route path="/drug/:id" element={<Layout><DrugDetailPage /></Layout>} />
+      <Route path="/browse" element={<Layout><BrowsePage /></Layout>} />
+      <Route path="/browse/:condition" element={<Layout><BrowsePage /></Layout>} />
+
+      {/* ── Admin routes — completely separate AdminLayout ───────────── */}
+      <Route path="/admin" element={<AdminLayout><AdminPage /></AdminLayout>} />
+      <Route path="/admin/upload" element={<AdminLayout><UploadPage /></AdminLayout>} />
+    </Routes>
   );
 }
 
