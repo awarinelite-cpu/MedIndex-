@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import Papa from 'papaparse';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Upload, FileText, CheckCircle, XCircle, Download } from 'lucide-react';
 
@@ -90,32 +90,41 @@ export default function UploadPage() {
     setUploadStatus('uploading');
     setUploadProgress({ current: 0, total: parsedData.length });
 
+    const BATCH_SIZE = 500;
+    let uploaded = 0;
     let errorCount = 0;
 
-    for (let i = 0; i < parsedData.length; i++) {
-      const row = parsedData[i];
-      try {
-        // Clean up empty strings to null/undefined
+    // Split into chunks of 500 (Firestore batch limit)
+    const chunks = [];
+    for (let i = 0; i < parsedData.length; i += BATCH_SIZE) {
+      chunks.push(parsedData.slice(i, i + BATCH_SIZE));
+    }
+
+    // Fire all batches in parallel
+    await Promise.all(chunks.map(async (chunk) => {
+      const batch = writeBatch(db);
+      chunk.forEach(row => {
         const cleanRow = {};
         Object.keys(row).forEach(key => {
           const val = row[key];
           cleanRow[key] = val && val.trim() !== '' ? val.trim() : null;
         });
-
-        // Add metadata
-        cleanRow.created_at = serverTimestamp();
+        cleanRow.created_at   = serverTimestamp();
         cleanRow.last_updated = serverTimestamp();
-        cleanRow.status = 'Active';
-        cleanRow.source = 'CSV Upload';
-
-        await addDoc(collection(db, 'drugs'), cleanRow);
+        cleanRow.status       = 'Active';
+        cleanRow.source       = cleanRow.source || 'CSV Upload';
+        const ref = doc(collection(db, 'drugs'));
+        batch.set(ref, cleanRow);
+      });
+      try {
+        await batch.commit();
+        uploaded += chunk.length;
+        setUploadProgress({ current: uploaded, total: parsedData.length });
       } catch (err) {
-        console.error(`Error uploading row ${i + 2}:`, err);
-        errorCount++;
+        console.error('Batch error:', err);
+        errorCount += chunk.length;
       }
-
-      setUploadProgress({ current: i + 1, total: parsedData.length });
-    }
+    }));
 
     setUploadStatus(errorCount === 0 ? 'success' : 'partial');
   }
