@@ -113,7 +113,10 @@ export default function UploadPage() {
         cleanRow.last_updated = serverTimestamp();
         cleanRow.status       = 'Active';
         cleanRow.source       = cleanRow.source || 'CSV Upload';
-        const ref = doc(collection(db, 'drugs'));
+        const docId = cleanRow.generic_name
+          ? cleanRow.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_')
+          : doc(collection(db, 'drugs')).id;
+        const ref = doc(db, 'drugs', docId);
         batch.set(ref, cleanRow);
       });
       try {
