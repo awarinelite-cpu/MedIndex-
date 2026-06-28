@@ -31,7 +31,7 @@ export default function HomePage() {
     return ALL_DRUGS.filter(d =>
       d.generic_name?.toLowerCase().includes(q) ||
       d.drug_class?.toLowerCase().includes(q) ||
-      d.primary_indications?.toLowerCase().includes(q)
+      d.indications?.toLowerCase().includes(q)
     ).slice(0, 8);
   }, [ALL_DRUGS, searchQuery]);
 
@@ -186,7 +186,7 @@ export default function HomePage() {
                   {drug.generic_name}
                 </h3>
                 <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
-                <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.primary_indications}</p>
+                <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
               </Link>
             ))}
           </div>

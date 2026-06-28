@@ -5,7 +5,7 @@ import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore
 import { db } from '../firebase';
 import { Upload, FileText, CheckCircle, XCircle, Download } from 'lucide-react';
 
-const REQUIRED_FIELDS = ['generic_name', 'drug_class', 'prescription_status', 'primary_indications'];
+const REQUIRED_FIELDS = ['generic_name', 'drug_class', 'prescription_status', 'indications'];
 const VALID_STATUSES = ['OTC', 'Prescription', 'Controlled'];
 
 export default function UploadPage() {
@@ -136,7 +136,15 @@ export default function UploadPage() {
     const templateHeaders = Object.keys(parsedData[0] || {});
     if (templateHeaders.length === 0) {
       // Default template if no file uploaded yet
-      const defaultHeaders = ['generic_name','drug_class','drug_subclass','prescription_status','primary_indications','overview','dosage','mechanism','side_effects','contraindications','nursing_considerations','source','status'];
+      const defaultHeaders = [
+        'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
+        'overview','indications','therapeutic_note',
+        'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
+        'pharmacology','advice_to_patients','contraindications','precautions',
+        'pregnancy_lactation','interaction','adverse_effect','nursing_action',
+        'pharmacovigilance','product_description','storage_recommendations','pack_size_price',
+        'source','status'
+      ];
       const csv = Papa.unparse([defaultHeaders.reduce((acc, h) => ({...acc, [h]: ''}), {})]);
       downloadCSV(csv, 'drug_bank_template.csv');
       return;
@@ -305,7 +313,7 @@ export default function UploadPage() {
                       <th className="text-left px-4 py-2 font-semibold text-drug-muted">Class</th>
                       <th className="text-left px-4 py-2 font-semibold text-drug-muted">Status</th>
                       <th className="text-left px-4 py-2 font-semibold text-drug-muted">Indications</th>
-                      {!previewMode && Object.keys(parsedData[0] || {}).filter(k => !['generic_name','drug_class','prescription_status','primary_indications'].includes(k)).map(key => (
+                      {!previewMode && Object.keys(parsedData[0] || {}).filter(k => !['generic_name','drug_class','prescription_status','indications'].includes(k)).map(key => (
                         <th key={key} className="text-left px-4 py-2 font-semibold text-drug-muted text-xs">{key}</th>
                       ))}
                     </tr>
@@ -325,8 +333,8 @@ export default function UploadPage() {
                             {row.prescription_status}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-drug-muted max-w-xs truncate">{row.primary_indications}</td>
-                        {!previewMode && Object.keys(row).filter(k => !['generic_name','drug_class','prescription_status','primary_indications'].includes(k)).map(key => (
+                        <td className="px-4 py-2 text-drug-muted max-w-xs truncate">{row.indications}</td>
+                        {!previewMode && Object.keys(row).filter(k => !['generic_name','drug_class','prescription_status','indications'].includes(k)).map(key => (
                           <td key={key} className="px-4 py-2 text-drug-muted text-xs max-w-xs truncate">{row[key]}</td>
                         ))}
                       </tr>

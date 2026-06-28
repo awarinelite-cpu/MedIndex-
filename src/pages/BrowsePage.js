@@ -22,7 +22,7 @@ export default function BrowsePage() {
       const matchesSearch = !q ||
         drug.generic_name?.toLowerCase().includes(q) ||
         drug.drug_class?.toLowerCase().includes(q) ||
-        drug.primary_indications?.toLowerCase().includes(q) ||
+        drug.indications?.toLowerCase().includes(q) ||
         drug.overview?.toLowerCase().includes(q);
       const matchesClass  = !filterClass  || drug.drug_class === filterClass;
       const matchesStatus = !filterStatus || drug.prescription_status === filterStatus;
@@ -111,7 +111,7 @@ export default function BrowsePage() {
               </div>
               <h3 className="text-lg font-bold group-hover:text-primary-700 transition-colors">{drug.generic_name}</h3>
               <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
-              <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.primary_indications}</p>
+              <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
             </Link>
           ))}
         </div>
