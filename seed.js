@@ -1,68 +1,56 @@
-/**
- * seed.js — Upload all Nurses Companion drug data to MedIndex Firestore
- *
- * Usage:
- *   1. Create a .env file in project root with your Firebase credentials:
- *        REACT_APP_FIREBASE_API_KEY=...
- *        REACT_APP_FIREBASE_AUTH_DOMAIN=...
- *        REACT_APP_FIREBASE_PROJECT_ID=...
- *        REACT_APP_FIREBASE_APP_ID=...
- *
- *   2. Run:  node seed.js
- *
- *   This is a one-time operation. Safe to re-run — uses drug name as
- *   document ID so duplicates just overwrite, not duplicate.
- *
- * Source: 280 drugs from Nurses Companion (CNS + CVS + General)
- */
+// seed.js — Seeds 280 drugs from seedDrugs.json into Firestore
+// Run from the project root:  node seed.js
 
-const { initializeApp } = require('firebase/app');
-const { getFirestore, collection, doc, setDoc, serverTimestamp } = require('firebase/firestore');
-const drugs = require('./src/data/seedDrugs.json');
-require('dotenv').config();
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { readFileSync } from 'fs';
 
 const firebaseConfig = {
-  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             process.env.REACT_APP_FIREBASE_APP_ID,
+  apiKey:            "AIzaSyAB8yCfmdvOTWRpj50Hhc7AWuabWLDvy6k",
+  authDomain:        "nacon-post-utme-past-question.firebaseapp.com",
+  projectId:         "nacon-post-utme-past-question",
+  storageBucket:     "nacon-post-utme-past-question.firebasestorage.app",
+  messagingSenderId: "1090299637128",
+  appId:             "1:1090299637128:web:a055d0cc654fdf569fde3d",
 };
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
+const drugs = JSON.parse(readFileSync('./src/data/seedDrugs.json', 'utf8'));
+
 async function seed() {
-  console.log(`\n🔬 MedIndex Seed — uploading ${drugs.length} drugs...\n`);
+  console.log(`\n🌱 Seeding ${drugs.length} drugs into Firestore...\n`);
 
-  let uploaded = 0;
-  let failed   = 0;
+  const BATCH_SIZE = 499;
+  let total = 0;
 
-  for (const drug of drugs) {
-    try {
-      // Use sanitised drug name as document ID (avoids duplicates on re-run)
-      const docId = drug.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      await setDoc(doc(db, 'drugs', docId), {
+  for (let i = 0; i < drugs.length; i += BATCH_SIZE) {
+    const chunk = drugs.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+
+    chunk.forEach(drug => {
+      const id  = drug.id || drug.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+      const ref = doc(db, 'drugs', id);
+      batch.set(ref, {
         ...drug,
-        created_at:   serverTimestamp(),
+        status:       drug.status || 'Active',
+        source:       drug.source || 'Seed Data',
         last_updated: serverTimestamp(),
+        created_at:   serverTimestamp(),
       });
-      uploaded++;
-      if (uploaded % 20 === 0) {
-        process.stdout.write(`  ✓ ${uploaded}/${drugs.length}\r`);
-      }
-    } catch (err) {
-      console.error(`  ✗ Failed: ${drug.generic_name} — ${err.message}`);
-      failed++;
-    }
+    });
+
+    await batch.commit();
+    total += chunk.length;
+    console.log(`  ✓ ${total} / ${drugs.length} written`);
   }
 
-  console.log(`\n✅ Done! ${uploaded} uploaded, ${failed} failed.\n`);
+  console.log(`\n✅ Done! ${total} drugs seeded successfully.\n`);
   process.exit(0);
 }
 
 seed().catch(err => {
-  console.error('Seed error:', err);
+  console.error('\n❌ Seed failed:', err.message, '\n');
   process.exit(1);
 });
