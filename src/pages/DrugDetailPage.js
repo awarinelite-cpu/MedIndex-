@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
-  FlaskConical, ChevronLeft, User, Stethoscope
+  FlaskConical, ChevronLeft, Stethoscope
 } from 'lucide-react';
 import drugsData from '../data/seedDrugs.json';
 

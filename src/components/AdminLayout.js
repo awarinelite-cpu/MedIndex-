@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Shield, Upload, Database, LayoutDashboard, Download, X, RefreshCw } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw } from 'lucide-react';
 
 export default function AdminLayout({ children }) {
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -9,7 +9,6 @@ export default function AdminLayout({ children }) {
   const [showUpdate,    setShowUpdate]    = useState(false);
 
   const location = useLocation();
-  const navigate  = useNavigate();
 
   // ── Swap manifest to admin-specific one when on /admin ───────────────────
   useEffect(() => {
