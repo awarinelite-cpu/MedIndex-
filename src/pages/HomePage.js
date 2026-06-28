@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Pill, Heart, Activity, Brain, Bone, Stethoscope, ChevronRight, TrendingUp, Shield } from 'lucide-react';
+import { Search, Pill, Heart, Activity, Brain, Bone, Stethoscope, ChevronRight, TrendingUp, Shield, Grid3X3 } from 'lucide-react';
 import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 
