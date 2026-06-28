@@ -12,3 +12,30 @@ root.render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// ── PWA Service Worker Registration ─────────────────────────────────────────
+// Only registers in production (localhost is excluded automatically).
+// CRA serves the SW from /service-worker.js via the public/ folder.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then(reg => {
+        console.log('[MedLookup SW] Registered, scope:', reg.scope);
+
+        // Check for updates every time the app loads
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content available — show a toast or just auto-reload
+              console.log('[MedLookup SW] Update available — reloading.');
+              // Optional: dispatch a custom event for an "Update available" banner
+              window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[MedLookup SW] Registration failed:', err));
+  });
+}

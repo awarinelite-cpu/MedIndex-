@@ -2,13 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Web site created using create-react-app" />
-    <title>Drug Bank</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- ── PWA / Theme ──────────────────────────────────────────── -->
+    <meta name="theme-color" content="#1e3a8a" />
+    <meta name="background-color" content="#1e3a8a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MedLookup" />
+    <meta name="application-name" content="MedLookup" />
+    <meta name="msapplication-TileColor" content="#1e3a8a" />
+
+    <!-- ── SEO / Description ────────────────────────────────────── -->
+    <meta name="description" content="MedLookup — Nigerian clinical drug reference. 280 medications with dosages, interactions, nursing considerations. Works offline." />
+    <meta name="keywords" content="drug reference, Nigerian medications, clinical pharmacology, nursing, dosage, interactions" />
+    <meta name="author" content="MedLookup" />
+
+    <!-- ── Open Graph ───────────────────────────────────────────── -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MedLookup — Drug Reference" />
+    <meta property="og:description" content="280 Nigerian clinical medications — dosages, interactions, nursing considerations. Works offline." />
+    <meta property="og:image" content="/icon-512x512.svg" />
+
+    <!-- ── Apple touch icons ────────────────────────────────────── -->
+    <link rel="apple-touch-icon" href="/icon-192x192.svg" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-152x152.svg" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icon-144x144.svg" />
+
+    <!-- ── Manifest ──────────────────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ── Favicon ──────────────────────────────────────────────── -->
+    <link rel="icon" type="image/svg+xml" href="/icon-96x96.svg" />
+
+    <!-- ── Safe area for notched phones ────────────────────────── -->
+    <style>
+      body {
+        padding-top: env(safe-area-inset-top);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+    </style>
+
+    <title>MedLookup — Drug Reference</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>MedLookup requires JavaScript. Please enable it in your browser settings.</noscript>
     <div id="root"></div>
   </body>
 </html>

@@ -1,0 +1,21 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'>
+  <defs>
+    <linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0%'  stop-color='#1e40af'/>
+      <stop offset='100%' stop-color='#1e3a8a'/>
+    </linearGradient>
+    <clipPath id='circ'>
+      <circle cx='36' cy='36' r='33.120000000000005'/>
+    </clipPath>
+  </defs>
+  <!-- Background circle -->
+  <circle cx='36' cy='36' r='33.120000000000005' fill='url(#bg)'/>
+  <!-- White pill shape, rotated 45deg -->
+  <g transform='rotate(45 36 36)' clip-path='url(#circ)'>
+    <rect x='17.28' y='28.8' width='37.44' height='14.4' rx='7.2' fill='white'/>
+    <!-- Split line -->
+    <line x1='36' y1='28.8' x2='36' y2='43.2' stroke='#1e3a8a' stroke-width='1.08'/>
+    <!-- Left half tint -->
+    <rect x='17.28' y='28.8' width='18.72' height='14.4' rx='7.2' fill='#93c5fd' opacity='0.5'/>
+  </g>
+</svg>
