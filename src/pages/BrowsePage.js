@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pill, ChevronRight, Grid3X3, List } from 'lucide-react';
-import drugsData from '../data/seedDrugs.json';
-
-const ALL_DRUGS   = drugsData;
-const ALL_CLASSES = [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort();
+import { useDrugs } from '../hooks/useDrugs';
 
 export default function BrowsePage() {
+  const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
+
   const { condition }             = useParams();
   const [searchParams]            = useSearchParams();
   const initialQ                  = searchParams.get('q') || condition || '';
@@ -35,7 +35,7 @@ export default function BrowsePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold">Browse Medications</h1>
-          <p className="text-drug-muted mt-1">{filteredDrugs.length} of {ALL_DRUGS.length} drugs</p>
+          <p className="text-drug-muted mt-1">{loading ? 'Loading…' : `${filteredDrugs.length} of ${ALL_DRUGS.length} drugs`}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex bg-white border border-drug-border rounded-lg p-1">

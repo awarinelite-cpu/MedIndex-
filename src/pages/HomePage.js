@@ -4,13 +4,7 @@ import {
   Search, Pill, Heart, Activity, Brain, Bone,
   Stethoscope, ChevronRight, Grid3X3
 } from 'lucide-react';
-import drugsData from '../data/seedDrugs.json';
-
-// Pre-compute stats once at module level — no loading state needed
-const ALL_DRUGS   = drugsData;
-const TOTAL       = ALL_DRUGS.length;
-const CLASS_COUNT = new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size;
-const FEATURED    = ALL_DRUGS.slice(0, 6);
+import { useDrugs } from '../hooks/useDrugs';
 
 const CATEGORIES = [
   { name: 'Cardiovascular',  icon: Heart,       color: 'text-red-500',     bg: 'bg-red-50'     },
@@ -22,6 +16,11 @@ const CATEGORIES = [
 ];
 
 export default function HomePage() {
+  const { drugs: ALL_DRUGS } = useDrugs();
+  const TOTAL       = ALL_DRUGS.length;
+  const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
+  const FEATURED    = ALL_DRUGS.slice(0, 6);
+
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 

@@ -4,9 +4,7 @@ import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope
 } from 'lucide-react';
-import drugsData from '../data/seedDrugs.json';
-
-const DRUG_MAP = Object.fromEntries(drugsData.map(d => [d.id, d]));
+import { useDrugs } from '../hooks/useDrugs';
 
 // ── Route badges ─────────────────────────────────────────────────────────────
 const ROUTE_META = {
@@ -133,9 +131,10 @@ const TABS = [
 
 export default function DrugDetailPage() {
   const { id } = useParams();
+  const { drugs } = useDrugs();
+  const drug = useMemo(() => drugs.find(d => d.id === id) || null, [drugs, id]);
   const [activeTab, setActiveTab] = useState('overview');
 
-  const drug = useMemo(() => DRUG_MAP[id] || null, [id]);
 
   if (!drug) {
     return (
