@@ -28,7 +28,7 @@ export default function BrowsePage() {
       const matchesStatus = !filterStatus || drug.prescription_status === filterStatus;
       return matchesSearch && matchesClass && matchesStatus;
     });
-  }, [searchQuery, filterClass, filterStatus]);
+  }, [ALL_DRUGS, searchQuery, filterClass, filterStatus]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

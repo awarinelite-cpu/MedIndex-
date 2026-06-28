@@ -33,7 +33,7 @@ export default function HomePage() {
       d.drug_class?.toLowerCase().includes(q) ||
       d.primary_indications?.toLowerCase().includes(q)
     ).slice(0, 8);
-  }, [searchQuery]);
+  }, [ALL_DRUGS, searchQuery]);
 
   const handleSearch = (e) => {
     e.preventDefault();
