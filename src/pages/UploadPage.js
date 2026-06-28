@@ -136,7 +136,7 @@ export default function UploadPage() {
     const templateHeaders = Object.keys(parsedData[0] || {});
     if (templateHeaders.length === 0) {
       // Default template if no file uploaded yet
-      const defaultHeaders = ['generic_name','drug_class','prescription_status','primary_indications','brand_names','dosage_forms','strengths','route_of_administration','mechanism_of_action','description','adult_dosing_initial','side_effects_common','contraindications','pregnancy_category','status'];
+      const defaultHeaders = ['generic_name','drug_class','drug_subclass','prescription_status','primary_indications','overview','dosage','mechanism','side_effects','contraindications','nursing_considerations','source','status'];
       const csv = Papa.unparse([defaultHeaders.reduce((acc, h) => ({...acc, [h]: ''}), {})]);
       downloadCSV(csv, 'drug_bank_template.csv');
       return;
