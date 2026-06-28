@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function AdminLayout({ children }) {
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -8,7 +9,14 @@ export default function AdminLayout({ children }) {
   const [isInstalled,   setIsInstalled]   = useState(false);
   const [showUpdate,    setShowUpdate]    = useState(false);
 
-  const location = useLocation();
+  const { user, logout } = useAuth();
+  const location  = useLocation();
+  const navigate  = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/admin/login', { replace: true });
+  };
 
   // ── Swap manifest to admin-specific one when on /admin ───────────────────
   useEffect(() => {
@@ -137,6 +145,18 @@ export default function AdminLayout({ children }) {
               >
                 ← Public Site
               </Link>
+
+              {/* Logout */}
+              {user && (
+                <button
+                  onClick={handleLogout}
+                  title={`Sign out (${user.email})`}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-red-500/20 transition-colors ml-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Sign Out</span>
+                </button>
+              )}
             </nav>
           </div>
         </div>
