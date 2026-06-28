@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Pill, Filter, ChevronRight, Grid3X3, List } from 'lucide-react';
+import { Pill, ChevronRight, Grid3X3, List } from 'lucide-react';
 
 export default function BrowsePage() {
   const { condition } = useParams();
   const [drugs, setDrugs] = useState([]);
-  const [conditions, setConditions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterClass, setFilterClass] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -26,9 +25,6 @@ export default function BrowsePage() {
         const drugsSnap = await getDocs(drugsQuery);
         const drugsData = drugsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setDrugs(drugsData);
-
-        const condSnap = await getDocs(collection(db, 'conditions'));
-        setConditions(condSnap.docs.map(doc => doc.data()));
       } catch (err) {
         console.error('Error:', err);
         // Fallback

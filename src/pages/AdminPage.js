@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Shield, Upload, Database, Trash2, Edit, Plus, Search, AlertTriangle } from 'lucide-react';
+import { Shield, Upload, Database, Trash2, Edit, Search, AlertTriangle } from 'lucide-react';
 
 export default function AdminPage() {
   const [drugs, setDrugs] = useState([]);
   const [stats, setStats] = useState({ total: 0, pending: 0, active: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDrugs, setSelectedDrugs] = useState(new Set());
 
   useEffect(() => {
     loadDrugs();

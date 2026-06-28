@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Pill, Search, Menu, X, Shield, Database, Home, Grid3X3 } from 'lucide-react';
+import { Pill, Search, Menu, X, Shield, Home, Grid3X3 } from 'lucide-react';
 
 export default function Layout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

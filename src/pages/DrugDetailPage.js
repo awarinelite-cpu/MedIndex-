@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Pill, AlertTriangle, Heart, Baby, Clock, FlaskConical, DollarSign, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
+import { Pill, AlertTriangle, Heart, Baby, Clock, FlaskConical, ExternalLink } from 'lucide-react';
 
 export default function DrugDetailPage() {
   const { id } = useParams();
   const [drug, setDrug] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [expandedSections, setExpandedSections] = useState({});
 
   useEffect(() => {
     async function loadDrug() {
@@ -26,10 +25,6 @@ export default function DrugDetailPage() {
     }
     loadDrug();
   }, [id]);
-
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: Pill },

@@ -3,7 +3,7 @@ import { useDropzone } from 'react-dropzone';
 import Papa from 'papaparse';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Upload, FileText, CheckCircle, AlertCircle, XCircle, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, FileText, CheckCircle, XCircle, Download } from 'lucide-react';
 
 const REQUIRED_FIELDS = ['generic_name', 'drug_class', 'prescription_status', 'primary_indications'];
 const VALID_STATUSES = ['OTC', 'Prescription', 'Controlled'];
@@ -14,7 +14,6 @@ export default function UploadPage() {
   const [validationErrors, setValidationErrors] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [uploadStatus, setUploadStatus] = useState('idle'); // idle, validating, uploading, success, error
-  const [expandedRows, setExpandedRows] = useState(new Set());
   const [previewMode, setPreviewMode] = useState(true);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -91,7 +90,6 @@ export default function UploadPage() {
     setUploadStatus('uploading');
     setUploadProgress({ current: 0, total: parsedData.length });
 
-    let successCount = 0;
     let errorCount = 0;
 
     for (let i = 0; i < parsedData.length; i++) {
@@ -111,7 +109,6 @@ export default function UploadPage() {
         cleanRow.source = 'CSV Upload';
 
         await addDoc(collection(db, 'drugs'), cleanRow);
-        successCount++;
       } catch (err) {
         console.error(`Error uploading row ${i + 2}:`, err);
         errorCount++;
