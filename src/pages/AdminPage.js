@@ -37,8 +37,10 @@ export default function AdminPage() {
   const [editForm,        setEditForm]        = useState({});
   const [saving,          setSaving]          = useState(false);
   const [toast,           setToast]           = useState(null);   // { msg, type }
-  const [confirmDelete,   setConfirmDelete]   = useState(null);   // 'single' | 'bulk'
+  const [confirmDelete,   setConfirmDelete]   = useState(null);   // 'single' | 'bulk' | 'all'
   const [deleteTarget,    setDeleteTarget]    = useState(null);   // single drug id
+  const [deleteAllInput,  setDeleteAllInput]  = useState('');
+  const [deletingAll,     setDeletingAll]     = useState(false);
 
   const loadDrugs = useCallback(async () => {
     try {
@@ -131,6 +133,31 @@ export default function AdminPage() {
     setConfirmDelete(null);
   }
 
+  // ── Delete ALL ───────────────────────────────────────────────────────────
+  async function confirmDeleteAll() {
+    setDeletingAll(true);
+    try {
+      // Fetch all doc IDs (no limit)
+      const snap = await getDocs(collection(db, 'drugs'));
+      const allIds = snap.docs.map(d => d.id);
+      const BATCH = 499;
+      for (let i = 0; i < allIds.length; i += BATCH) {
+        const batch = writeBatch(db);
+        allIds.slice(i, i + BATCH).forEach(id => batch.delete(doc(db, 'drugs', id)));
+        await batch.commit();
+      }
+      setDrugs([]);
+      setSelectedIds(new Set());
+      setStats({ total: 0, pending: 0, active: 0 });
+      showToast(`All ${allIds.length} drugs deleted. Database is now empty.`);
+    } catch (err) {
+      showToast('Delete all failed: ' + err.message, 'error');
+    }
+    setDeletingAll(false);
+    setConfirmDelete(null);
+    setDeleteAllInput('');
+  }
+
   // ── Edit ──────────────────────────────────────────────────────────────────
   function openEdit(drug) {
     setEditingDrug(drug);
@@ -202,6 +229,44 @@ export default function AdminPage() {
               <button
                 onClick={() => { setConfirmDelete(null); setDeleteTarget(null); }}
                 style={{ flex: 1, padding: '11px', background: '#F1F5F9', color: '#64748B', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete ALL Modal ─────────────────────────────────────────────────── */}
+      {confirmDelete === 'all' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '28px 24px', maxWidth: 440, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
+            <div style={{ width: 52, height: 52, background: '#FEF2F2', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 style={{ fontSize: 19, fontWeight: 800, marginBottom: 8, color: '#0F172A' }}>Delete ALL {drugs.length} drugs?</h3>
+            <p style={{ color: '#64748B', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>
+              This will permanently erase every drug in the database. This cannot be undone.
+              Type <strong style={{ color: '#DC2626' }}>DELETE ALL</strong> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteAllInput}
+              onChange={e => setDeleteAllInput(e.target.value)}
+              placeholder="Type DELETE ALL"
+              style={{ width: '100%', padding: '11px 14px', borderRadius: 9, border: '1.5px solid #FECACA', fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 18, fontFamily: 'monospace', letterSpacing: 1 }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={confirmDeleteAll}
+                disabled={deleteAllInput !== 'DELETE ALL' || deletingAll}
+                style={{ flex: 1, padding: '12px', background: deleteAllInput === 'DELETE ALL' && !deletingAll ? '#DC2626' : '#E2E8F0', color: deleteAllInput === 'DELETE ALL' && !deletingAll ? '#fff' : '#94A3B8', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 14, cursor: deleteAllInput === 'DELETE ALL' && !deletingAll ? 'pointer' : 'not-allowed' }}
+              >
+                {deletingAll ? 'Deleting…' : 'Yes, Delete Everything'}
+              </button>
+              <button
+                onClick={() => { setConfirmDelete(null); setDeleteAllInput(''); }}
+                style={{ flex: 1, padding: '12px', background: '#F1F5F9', color: '#64748B', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -286,9 +351,17 @@ export default function AdminPage() {
             <p className="text-drug-muted text-sm">Manage your drug database</p>
           </div>
         </div>
-        <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
-          <Upload className="w-4 h-4" /> Bulk Upload
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setDeleteAllInput(''); setConfirmDelete('all'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9, border: '1.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
+            <Trash2 className="w-4 h-4" /> Delete All
+          </button>
+          <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
+            <Upload className="w-4 h-4" /> Bulk Upload
+          </Link>
+        </div>
       </div>
 
       {/* ── Stats ──────────────────────────────────────────────────────────── */}
