@@ -120,7 +120,7 @@ export default function Layout({ children }) {
         <div className="bg-primary-800 text-white px-4 py-2.5 flex items-center gap-3 text-sm">
           <Pill className="w-4 h-4 flex-shrink-0 text-primary-300" />
           <span className="flex-1 text-primary-100">
-            Install MedIndex for <strong className="text-white">offline access</strong> to all 280 drugs
+            Install MedIndex for <strong className="text-white">offline access</strong> to drugs &amp; lab reference
           </span>
           <button
             onClick={handleInstall}
