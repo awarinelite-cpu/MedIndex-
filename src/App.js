@@ -13,7 +13,6 @@ import DrugListsPage from './pages/DrugListsPage';
 import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
-import LoginPage from './pages/LoginPage';
 import LabReferencePage from './pages/LabReferencePage';
 function App() {
   return (
