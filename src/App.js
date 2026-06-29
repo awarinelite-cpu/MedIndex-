@@ -18,14 +18,9 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-{/* ── Public routes ───────────────────────────────────────────── */}
-        <Route path="/"                  element={<Layout><HomePage /></Layout>} />
-        <Route path="/drug/:id"          element={<Layout><DrugDetailPage /></Layout>} />
-        <Route path="/browse"            element={<Layout><BrowsePage /></Layout>} />
-        <Route path="/browse/:condition" element={<Layout><BrowsePage /></Layout>} />
-        <Route path="/labs"                  element={<Layout><LabReferencePage /></Layout>} />
-        {/* ── Auth pages (public — no login required) ──────────────────── */}
+{/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
+        <Route path="/labs" element={<Layout><LabReferencePage /></Layout>} />
 
         {/* ── User-protected public routes ─────────────────────────────── */}
         <Route path="/" element={
