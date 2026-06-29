@@ -1,26 +1,28 @@
 // src/hooks/useDrugs.js
 // Single source of truth for the drug list.
-// Seeds instantly from static JSON (no loading flash on first paint),
-// then hydrates with live Firestore data so admin-uploaded drugs appear.
+// Primary: Firestore 'drugs' collection (live, uploadable)
+// Fallback: local seedDrugs.json (always available, 280 drugs)
+// In-memory cache (5 min TTL) prevents redundant Firestore reads.
 
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
-import seedData from '../data/seedDrugs.json';
+import SEED_DRUGS from '../data/seedDrugs.json';
 
-function mergeById(seed, live) {
-  const map = {};
-  seed.forEach(d => { map[d.id] = d; });
-  live.forEach(d => { map[d.id] = d; }); // Firestore wins on same id
-  return Object.values(map);
-}
+// Pre-process seed data once — give each drug a stable id
+const SEED_WITH_IDS = SEED_DRUGS.map(d => ({
+  ...d,
+  id: d.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_'),
+  // Map seed field names → app field names
+  indications: d.primary_indications || d.indications || '',
+}));
 
 let cachedDrugs = null;
 let cacheTime   = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export function useDrugs() {
-  const [drugs,   setDrugs]   = useState(cachedDrugs || seedData);
+  const [drugs,   setDrugs]   = useState(cachedDrugs || []);
   const [loading, setLoading] = useState(!cachedDrugs);
 
   useEffect(() => {
@@ -30,22 +32,41 @@ export function useDrugs() {
       setLoading(false);
       return;
     }
+
     (async () => {
       try {
         const snap = await getDocs(
           query(collection(db, 'drugs'), orderBy('last_updated', 'desc'), limit(2000))
         );
-        const live   = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const merged = mergeById(seedData, live);
-        cachedDrugs  = merged;
-        cacheTime    = Date.now();
-        setDrugs(merged);
+
+        if (!snap.empty) {
+          const live = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          cachedDrugs = live;
+          cacheTime   = Date.now();
+          setDrugs(live);
+        } else {
+          // Firestore empty — use local seed
+          console.info('[useDrugs] Firestore empty — using local seed data');
+          cachedDrugs = SEED_WITH_IDS;
+          cacheTime   = Date.now();
+          setDrugs(SEED_WITH_IDS);
+        }
       } catch (e) {
-        console.warn('[useDrugs] Firestore failed, using seed data:', e.message);
+        console.warn('[useDrugs] Firestore failed — using local seed data:', e.message);
+        if (!cachedDrugs) {
+          cachedDrugs = SEED_WITH_IDS;
+          cacheTime   = Date.now();
+        }
+        setDrugs(cachedDrugs);
       }
       setLoading(false);
     })();
   }, []);
 
-  return { drugs, loading };
+  function invalidateCache() {
+    cachedDrugs = null;
+    cacheTime   = 0;
+  }
+
+  return { drugs, loading, invalidateCache };
 }

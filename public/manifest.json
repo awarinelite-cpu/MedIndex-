@@ -1,6 +1,6 @@
 {
-  "name": "MedLookup — Drug Reference",
-  "short_name": "MedLookup",
+  "name": "MedIndex — Drug Reference",
+  "short_name": "MedIndex",
   "description": "Offline Nigerian clinical drug reference — 280 medications with dosages, interactions, and nursing considerations.",
   "start_url": "/",
   "display": "standalone",

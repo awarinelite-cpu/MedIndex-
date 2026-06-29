@@ -13,29 +13,35 @@ root.render(
   </React.StrictMode>
 );
 
-// ── PWA Service Worker Registration ─────────────────────────────────────────
-// Only registers in production (localhost is excluded automatically).
-// CRA serves the SW from /service-worker.js via the public/ folder.
+// ── PWA Service Worker ───────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/service-worker.js')
-      .then(reg => {
-        console.log('[MedLookup SW] Registered, scope:', reg.scope);
+    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+      console.log('[MedLookup SW] Registered:', reg.scope);
 
-        // Check for updates every time the app loads
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New content available — show a toast or just auto-reload
-              console.log('[MedLookup SW] Update available — reloading.');
-              // Optional: dispatch a custom event for an "Update available" banner
-              window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
-            }
-          });
+      // ── When the SW sends SW_UPDATED (it claimed all clients after activate),
+      //    reload immediately so the user gets the latest build. ─────────────
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data?.type === 'SW_UPDATED') {
+          console.log('[MedLookup SW] New version active — reloading.');
+          window.location.reload();
+        }
+      });
+
+      // ── If a new SW is found while the app is open, show the update banner
+      //    dispatched as a custom DOM event that Layout.js listens for. ──────
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New SW installed and waiting — let the user choose to reload
+            window.dispatchEvent(new CustomEvent('swUpdateAvailable', {
+              detail: { worker: newWorker }
+            }));
+          }
         });
-      })
-      .catch(err => console.warn('[MedLookup SW] Registration failed:', err));
+      });
+
+    }).catch(err => console.warn('[MedLookup SW] Registration failed:', err));
   });
 }

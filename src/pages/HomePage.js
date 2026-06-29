@@ -16,9 +16,10 @@ const CATEGORIES = [
 ];
 
 export default function HomePage() {
-  const { drugs: ALL_DRUGS } = useDrugs();
-  const TOTAL       = ALL_DRUGS.length;
+  const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const TOTAL      = ALL_DRUGS.length;
   const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
+  const RX_COUNT    = useMemo(() => new Set(ALL_DRUGS.map(d => d.prescription_status).filter(Boolean)).size, [ALL_DRUGS]);
   const FEATURED    = ALL_DRUGS.slice(0, 6);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,7 +32,7 @@ export default function HomePage() {
     return ALL_DRUGS.filter(d =>
       d.generic_name?.toLowerCase().includes(q) ||
       d.drug_class?.toLowerCase().includes(q) ||
-      d.primary_indications?.toLowerCase().includes(q)
+      d.indications?.toLowerCase().includes(q)
     ).slice(0, 8);
   }, [ALL_DRUGS, searchQuery]);
 
@@ -117,15 +118,15 @@ export default function HomePage() {
           {/* Live stats */}
           <div className="flex justify-center gap-8 mt-10 text-primary-100">
             <div className="text-center">
-              <div className="text-2xl font-bold">{TOTAL}</div>
+              <div className="text-2xl font-bold">{loading ? '—' : TOTAL}</div>
               <div className="text-sm opacity-80">Drugs</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">{CLASS_COUNT}</div>
+              <div className="text-2xl font-bold">{loading ? '—' : CLASS_COUNT}</div>
               <div className="text-sm opacity-80">Drug Classes</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold">3</div>
+              <div className="text-2xl font-bold">{loading ? '—' : RX_COUNT}</div>
               <div className="text-sm opacity-80">Rx Categories</div>
             </div>
           </div>
@@ -186,7 +187,7 @@ export default function HomePage() {
                   {drug.generic_name}
                 </h3>
                 <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
-                <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.primary_indications}</p>
+                <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
               </Link>
             ))}
           </div>

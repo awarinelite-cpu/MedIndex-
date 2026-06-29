@@ -2,9 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
-  FlaskConical, ChevronLeft, Stethoscope
+  FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from '../context/AuthContext';
+import {
+  collection, getDocs, doc, updateDoc, addDoc,
+  serverTimestamp, query, orderBy,
+} from 'firebase/firestore';
+import { db } from '../firebase';
 
 // ── Route badges ─────────────────────────────────────────────────────────────
 const ROUTE_META = {
@@ -21,23 +27,25 @@ const ROUTE_META = {
 };
 
 // Detect which routes appear in dosage text
-function detectRoutes(dosage) {
-  if (!dosage) return [];
+function detectRoutes(doseTexts) {
+  // doseTexts can be a single string or an array of strings (adult/child/renal combined)
+  const combined = Array.isArray(doseTexts) ? doseTexts.filter(Boolean).join(' \n ') : doseTexts;
+  if (!combined) return [];
   const found = [];
   // Check for route abbreviations as whole words
-  const text = dosage.toUpperCase();
+  const text = combined.toUpperCase();
   Object.keys(ROUTE_META).forEach(r => {
     // Match PO, IV etc. as word boundaries
     const re = new RegExp(`\\b${r}\\b`);
     if (re.test(text)) found.push(r);
   });
   // Also detect "buccal", "rectal", "oral", "sublingual" written out
-  if (/\boral\b/i.test(dosage) && !found.includes('PO'))   found.push('PO');
-  if (/\brectal\b/i.test(dosage) && !found.includes('PR')) found.push('PR');
-  if (/\bbuccal\b/i.test(dosage))                          found.push('SL'); // treat buccal like SL display
-  if (/\binhale|inhal|nebul/i.test(dosage) && !found.includes('INH')) found.push('INH');
-  if (/\btopical|transdermal\b/i.test(dosage) && !found.includes('TOP')) found.push('TOP');
-  if (/\bsubcutan|SC\b/i.test(dosage) && !found.includes('SC')) found.push('SC');
+  if (/\boral\b/i.test(combined) && !found.includes('PO'))   found.push('PO');
+  if (/\brectal\b/i.test(combined) && !found.includes('PR')) found.push('PR');
+  if (/\bbuccal\b/i.test(combined))                          found.push('SL'); // treat buccal like SL display
+  if (/\binhale|inhal|nebul/i.test(combined) && !found.includes('INH')) found.push('INH');
+  if (/\btopical|transdermal\b/i.test(combined) && !found.includes('TOP')) found.push('TOP');
+  if (/\bsubcutan|SC\b/i.test(combined) && !found.includes('SC')) found.push('SC');
   return [...new Set(found)];
 }
 
@@ -129,6 +137,151 @@ const TABS = [
   { id: 'nursing',      label: 'Nursing Notes', icon: Stethoscope   },
 ];
 
+/* ── Add to List Button ──────────────────────────────────────────────────── */
+function AddToListButton({ drug }) {
+  const { user }           = useAuth();
+  const [open, setOpen]    = useState(false);
+  const [lists, setLists]  = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [added, setAdded]  = useState({});   // listId → true
+
+  const loadLists = async () => {
+    if (!user?.uid) return;
+    setLoading(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users', user.uid, 'lists'), orderBy('createdAt', 'desc'))
+      );
+      setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error('Load lists for picker:', e); }
+    setLoading(false);
+  };
+
+  const handleOpen = () => { setOpen(true); loadLists(); };
+
+  const addToList = async (list) => {
+    if (!user?.uid) return;
+    const already = (list.drugs || []).some(d => d.drugId === drug.id);
+    if (already) { setAdded(p => ({ ...p, [list.id]: true })); return; }
+    try {
+      const updatedDrugs = [
+        ...(list.drugs || []),
+        {
+          drugId:    drug.id,
+          drugName:  drug.generic_name,
+          drugClass: drug.drug_class || '',
+          notes:     '',
+          addedAt:   serverTimestamp(),
+        },
+      ];
+      await updateDoc(doc(db, 'users', user.uid, 'lists', list.id), {
+        drugs: updatedDrugs,
+        last_updated: serverTimestamp(),
+      });
+      setAdded(p => ({ ...p, [list.id]: true }));
+    } catch (e) { console.error('Add to list error:', e); }
+  };
+
+  const createAndAdd = async () => {
+    if (!user?.uid) return;
+    try {
+      const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
+        title:     `New List`,
+        createdAt: serverTimestamp(),
+        drugs: [{
+          drugId:    drug.id,
+          drugName:  drug.generic_name,
+          drugClass: drug.drug_class || '',
+          notes:     '',
+          addedAt:   serverTimestamp(),
+        }],
+      });
+      setAdded(p => ({ ...p, [ref.id]: true }));
+      await loadLists();
+    } catch (e) { console.error('Create list error:', e); }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleOpen}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-700 font-semibold text-sm hover:bg-primary-100 transition-colors"
+      >
+        <ClipboardList className="w-4 h-4" /> Add to List
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+
+          {/* Dropdown */}
+          <div className="absolute right-0 top-12 z-50 bg-white border border-drug-border rounded-xl shadow-xl w-72 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-drug-border">
+              <span className="font-semibold text-drug-text text-sm">Save to a list</span>
+              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-4 h-4 text-drug-muted" />
+              </button>
+            </div>
+
+            {loading && (
+              <div className="px-4 py-6 text-center text-sm text-drug-muted">Loading lists…</div>
+            )}
+
+            {!loading && lists.length === 0 && (
+              <div className="px-4 py-4 text-center">
+                <p className="text-sm text-drug-muted mb-3">No lists yet</p>
+                <button
+                  onClick={createAndAdd}
+                  className="flex items-center gap-2 mx-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700"
+                >
+                  <Plus className="w-4 h-4" /> Create a List &amp; Add
+                </button>
+              </div>
+            )}
+
+            {!loading && lists.length > 0 && (
+              <div className="max-h-64 overflow-y-auto divide-y divide-drug-border">
+                {lists.map(list => {
+                  const isAdded = added[list.id] || (list.drugs || []).some(d => d.drugId === drug.id);
+                  return (
+                    <button
+                      key={list.id}
+                      onClick={() => addToList(list)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left transition-colors"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-drug-text">{list.title}</div>
+                        <div className="text-xs text-drug-muted">{(list.drugs || []).length} drugs</div>
+                      </div>
+                      {isAdded
+                        ? <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        : <Plus  className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {!loading && lists.length > 0 && (
+              <div className="border-t border-drug-border px-4 py-3">
+                <button
+                  onClick={createAndAdd}
+                  className="flex items-center gap-2 text-sm text-primary-600 font-semibold hover:text-primary-800"
+                >
+                  <Plus className="w-4 h-4" /> New list with this drug
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DrugDetailPage() {
   const { id } = useParams();
   const { drugs } = useDrugs();
@@ -150,7 +303,7 @@ export default function DrugDetailPage() {
   }
 
   const isControlled = drug.prescription_status === 'Controlled';
-  const detectedRoutes = detectRoutes(drug.dosage);
+  const detectedRoutes = detectRoutes([drug.adult_dose, drug.child_dose, drug.renal_dose]);
 
   // ── Special Populations click handlers ───────────────────────────────────
   const goToTab = (tab) => {
@@ -165,9 +318,12 @@ export default function DrugDetailPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
-      <Link to="/browse" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium transition-colors">
-        <ChevronLeft className="w-4 h-4" /> Back to browse
-      </Link>
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/browse" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium transition-colors">
+          <ChevronLeft className="w-4 h-4" /> Back to browse
+        </Link>
+        <AddToListButton drug={drug} />
+      </div>
 
       {/* Header */}
       <div className="mb-8">
@@ -248,15 +404,29 @@ export default function DrugDetailPage() {
 
             <div className="section-card p-6">
               <h2 className="text-lg font-bold mb-3">What it's used for</h2>
-              {drug.primary_indications
-                ? renderCSV(drug.primary_indications)
+              {drug.indications
+                ? renderCSV(drug.indications)
                 : <em className="text-drug-muted">No data available</em>}
             </div>
 
-            {drug.mechanism && (
+            {drug.therapeutic_note && (
               <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Mechanism of Action</h2>
-                <p className="text-drug-text leading-relaxed">{drug.mechanism}</p>
+                <h2 className="text-lg font-bold mb-3">Therapeutic Note</h2>
+                <p className="text-drug-text leading-relaxed">{drug.therapeutic_note}</p>
+              </div>
+            )}
+
+            {drug.pharmacology && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Pharmacology</h2>
+                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
+              </div>
+            )}
+
+            {drug.nafdac_no && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">NAFDAC No.</h2>
+                <p className="text-drug-text leading-relaxed">{drug.nafdac_no}</p>
               </div>
             )}
 
@@ -343,7 +513,7 @@ export default function DrugDetailPage() {
 
             {/* Dosage details */}
             <div className="section-card p-6">
-              <h2 className="text-lg font-bold mb-4">Dosing Information</h2>
+              <h2 className="text-lg font-bold mb-4">Adult Dose</h2>
               <div className="text-xs text-drug-muted mb-4 flex items-center gap-1">
                 <span>Route abbreviations are highlighted:</span>
                 {['PO','IV','IM','SC'].map(r => (
@@ -355,10 +525,38 @@ export default function DrugDetailPage() {
                   </span>
                 ))}
               </div>
-              {drug.dosage
-                ? renderDosageWithRoutes(drug.dosage)
-                : <em className="text-drug-muted">No dosage information available.</em>}
+              {drug.adult_dose
+                ? renderDosageWithRoutes(drug.adult_dose)
+                : <em className="text-drug-muted">No adult dosage information available.</em>}
             </div>
+
+            {drug.child_dose && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Child Dose</h2>
+                {renderDosageWithRoutes(drug.child_dose)}
+              </div>
+            )}
+
+            {drug.renal_dose && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Renal Dose</h2>
+                {renderDosageWithRoutes(drug.renal_dose)}
+              </div>
+            )}
+
+            {drug.administration && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Administration</h2>
+                {renderList(drug.administration, '\n')}
+              </div>
+            )}
+
+            {drug.nstg_recommendations && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">NSTG Recommendations</h2>
+                {renderList(drug.nstg_recommendations, '\n')}
+              </div>
+            )}
           </>
         )}
 
@@ -368,47 +566,68 @@ export default function DrugDetailPage() {
             {/* Pregnancy & Lactation highlight */}
             <div className="section-card p-5">
               <h2 className="text-lg font-bold mb-3">Pregnancy &amp; Lactation</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Baby className="w-4 h-4 text-pink-600" />
-                    <span className="font-semibold text-pink-900 text-sm">Pregnancy</span>
+              {drug.pregnancy_lactation ? (
+                <p className="text-sm text-drug-text leading-relaxed">{drug.pregnancy_lactation}</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Baby className="w-4 h-4 text-pink-600" />
+                      <span className="font-semibold text-pink-900 text-sm">Pregnancy</span>
+                    </div>
+                    <p className="text-sm text-pink-800 leading-relaxed">
+                      Refer to contraindications and consult current prescribing information.
+                    </p>
                   </div>
-                  <p className="text-sm text-pink-800 leading-relaxed">
-                    {drug.contraindications && /pregnan/i.test(drug.contraindications)
-                      ? drug.contraindications.split(/\n|,/).find(s => /pregnan/i.test(s))?.trim() || 'See contraindications below.'
-                      : 'Refer to contraindications and consult current prescribing information.'}
-                  </p>
-                </div>
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Heart className="w-4 h-4 text-blue-600" />
-                    <span className="font-semibold text-blue-900 text-sm">Lactation</span>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Heart className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-900 text-sm">Lactation</span>
+                    </div>
+                    <p className="text-sm text-blue-800 leading-relaxed">
+                      Consult current prescribing information for breastfeeding guidance.
+                    </p>
                   </div>
-                  <p className="text-sm text-blue-800 leading-relaxed">
-                    {drug.contraindications && /lactat|breastfeed|nursing/i.test(drug.contraindications)
-                      ? drug.contraindications.split(/\n|,/).find(s => /lactat|breastfeed|nursing/i.test(s))?.trim()
-                      : 'Consult current prescribing information for breastfeeding guidance.'}
-                  </p>
                 </div>
-              </div>
+              )}
             </div>
 
             {drug.contraindications && (
               <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3 text-red-700">Contraindications</h2>
+                <h2 className="text-lg font-bold mb-3 text-red-700">Contra-indications</h2>
                 {renderList(drug.contraindications, '\n')}
               </div>
             )}
 
-            {drug.side_effects && (
+            {drug.precautions && (
               <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Side Effects</h2>
-                {renderList(drug.side_effects, '\n')}
+                <h2 className="text-lg font-bold mb-3 text-amber-700">Precautions</h2>
+                {renderList(drug.precautions, '\n')}
               </div>
             )}
 
-            {!drug.contraindications && !drug.side_effects && (
+            {drug.adverse_effect && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Adverse Effect</h2>
+                {renderList(drug.adverse_effect, '\n')}
+              </div>
+            )}
+
+            {drug.advice_to_patients && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Advice to Patients</h2>
+                {renderList(drug.advice_to_patients, '\n')}
+              </div>
+            )}
+
+            {drug.pharmacovigilance && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Pharmacovigilance</h2>
+                <p className="text-drug-text leading-relaxed">{drug.pharmacovigilance}</p>
+              </div>
+            )}
+
+            {!drug.contraindications && !drug.adverse_effect && !drug.precautions && (
               <div className="section-card p-6">
                 <em className="text-drug-muted">No safety data available.</em>
               </div>
@@ -424,8 +643,8 @@ export default function DrugDetailPage() {
               Always verify interactions against current prescribing information.
               Consult a pharmacist for patient-specific interaction checking.
             </p>
-            {drug.nursing_considerations
-              ? renderList(drug.nursing_considerations, '\n')
+            {drug.interaction
+              ? renderList(drug.interaction, '\n')
               : <em className="text-drug-muted">Detailed interaction data not available. Refer to product monograph.</em>}
           </div>
         )}
@@ -433,10 +652,10 @@ export default function DrugDetailPage() {
         {/* ── PHARMACOLOGY ─────────────────────────────────────────────── */}
         {activeTab === 'pharmacology' && (
           <>
-            {drug.mechanism && (
+            {drug.pharmacology && (
               <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Mechanism of Action</h2>
-                <p className="text-drug-text leading-relaxed">{drug.mechanism}</p>
+                <h2 className="text-lg font-bold mb-4">Pharmacology</h2>
+                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
               </div>
             )}
             <div className="section-card p-6">
@@ -452,7 +671,35 @@ export default function DrugDetailPage() {
                 )}
               </div>
             </div>
-            {!drug.mechanism && (
+
+            {drug.product_description && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Product Description</h2>
+                <p className="text-drug-text leading-relaxed">{drug.product_description}</p>
+              </div>
+            )}
+
+            {(drug.storage_recommendations || drug.pack_size_price) && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Storage &amp; Pack Information</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {drug.storage_recommendations && (
+                    <div>
+                      <div className="text-sm font-semibold text-drug-muted mb-1">Storage Recommendations</div>
+                      <p className="text-drug-text text-sm leading-relaxed">{drug.storage_recommendations}</p>
+                    </div>
+                  )}
+                  {drug.pack_size_price && (
+                    <div>
+                      <div className="text-sm font-semibold text-drug-muted mb-1">Pack Size &amp; Price</div>
+                      <p className="text-drug-text text-sm leading-relaxed">{drug.pack_size_price}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!drug.pharmacology && (
               <div className="section-card p-6">
                 <em className="text-drug-muted">No pharmacology data available.</em>
               </div>
@@ -463,9 +710,9 @@ export default function DrugDetailPage() {
         {/* ── NURSING NOTES ────────────────────────────────────────────── */}
         {activeTab === 'nursing' && (
           <div className="section-card p-6">
-            <h2 className="text-lg font-bold mb-4">Nursing Considerations</h2>
-            {drug.nursing_considerations
-              ? renderList(drug.nursing_considerations, '\n')
+            <h2 className="text-lg font-bold mb-4">Nursing Action</h2>
+            {drug.nursing_action
+              ? renderList(drug.nursing_action, '\n')
               : <em className="text-drug-muted">No nursing-specific notes available for this drug.</em>}
           </div>
         )}

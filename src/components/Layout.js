@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical } from 'lucide-react';
-
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 export default function Layout({ children }) {
+  const { user, isAdmin, logout } = useAuth();
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [searchQuery,     setSearchQuery]      = useState('');
   const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event
@@ -14,11 +16,12 @@ export default function Layout({ children }) {
   const navigate  = useNavigate();
 
   // ── PWA install prompt ────────────────────────────────────────────────────
+  const [waitingWorker, setWaitingWorker] = useState(null);
+
   useEffect(() => {
     // Detect if already running as installed PWA
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       setIsInstalled(true);
-      return;
     }
 
     const onBeforeInstall = (e) => {
@@ -28,8 +31,11 @@ export default function Layout({ children }) {
     };
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
 
-    // SW update available
-    const onUpdate = () => setShowUpdate(true);
+    // SW update available — store the waiting worker so we can tell it to activate
+    const onUpdate = (e) => {
+      setWaitingWorker(e.detail?.worker || null);
+      setShowUpdate(true);
+    };
     window.addEventListener('swUpdateAvailable', onUpdate);
 
     // Hide install banner once installed
@@ -53,7 +59,18 @@ export default function Layout({ children }) {
 
   const handleUpdate = () => {
     setShowUpdate(false);
-    window.location.reload();
+    // Tell the waiting SW to skip waiting and become active —
+    // index.js listens for the SW_UPDATED message it sends and reloads.
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      window.location.reload();
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -84,7 +101,7 @@ export default function Layout({ children }) {
             <RefreshCw className="w-5 h-5 flex-shrink-0 text-primary-300" />
             <div className="flex-1 text-sm">
               <div className="font-bold">Update available</div>
-              <div className="text-primary-300 text-xs">A new version of MedLookup is ready.</div>
+              <div className="text-primary-300 text-xs">A new version of MedIndex is ready.</div>
             </div>
             <button
               onClick={handleUpdate}
@@ -104,7 +121,7 @@ export default function Layout({ children }) {
         <div className="bg-primary-800 text-white px-4 py-2.5 flex items-center gap-3 text-sm">
           <Pill className="w-4 h-4 flex-shrink-0 text-primary-300" />
           <span className="flex-1 text-primary-100">
-            Install MedLookup for <strong className="text-white">offline access</strong> to all 280 drugs
+            Install MedIndex for <strong className="text-white">offline access</strong> to all 280 drugs
           </span>
           <button
             onClick={handleInstall}
@@ -127,7 +144,7 @@ export default function Layout({ children }) {
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 flex-shrink-0">
               <Pill className="w-7 h-7" />
-              <span className="text-xl font-bold tracking-tight">MedLookup</span>
+              <span className="text-xl font-bold tracking-tight">MedIndex</span>
             </Link>
 
             {/* Search — desktop */}
@@ -162,6 +179,16 @@ export default function Layout({ children }) {
                   {link.label}
                 </Link>
               ))}
+              {/* Return to Admin Portal — only shown to logged-in admins browsing the public site */}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium ml-1"
+                  style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7' }}
+                >
+                  ← Admin Portal
+                </Link>
+              )}
               {/* Install button in nav (desktop, only when prompt available) */}
               {showInstall && !isInstalled && (
                 <button
@@ -172,6 +199,25 @@ export default function Layout({ children }) {
                   <Download className="w-4 h-4" />
                   Install
                 </button>
+              )}
+              {/* User avatar + sign out */}
+              {user && (
+                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
+                  <div className="flex items-center gap-1.5 text-white/80 text-sm">
+                    <User className="w-4 h-4" />
+                    <span className="hidden lg:inline max-w-[120px] truncate">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-white/70
+                               hover:text-white hover:bg-white/10 transition-colors text-sm"
+                    title="Sign out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
               )}
             </nav>
 
@@ -214,6 +260,17 @@ export default function Layout({ children }) {
                   {link.label}
                 </Link>
               ))}
+              {/* Return to Admin Portal — only shown to logged-in admins */}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold"
+                  style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7' }}
+                >
+                  ← Admin Portal
+                </Link>
+              )}
               {showInstall && !isInstalled && (
                 <button
                   onClick={() => { handleInstall(); setMobileMenuOpen(false); }}
@@ -221,8 +278,29 @@ export default function Layout({ children }) {
                              bg-white text-primary-900"
                 >
                   <Download className="w-4 h-4" />
-                  Install MedLookup App
+                  Install MedIndex App
                 </button>
+              )}
+              {/* Mobile sign out */}
+              {user && (
+                <div className="border-t border-white/10 pt-2 mt-2">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <div className="flex items-center gap-2 text-white/70 text-sm">
+                      <User className="w-4 h-4" />
+                      <span className="truncate max-w-[180px]">
+                        {user.displayName || user.email}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-lg
+                                 text-white/80 text-sm font-medium hover:bg-white/20"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -239,11 +317,10 @@ export default function Layout({ children }) {
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-drug-muted">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Pill className="w-4 h-4" />
-            <span className="font-semibold text-drug-text">MedLookup</span>
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">Offline Ready</span>
+            <span className="font-semibold text-drug-text">MedIndex</span>
           </div>
-          <p>Comprehensive Nigerian clinical drug reference · 280 medications</p>
           <p className="mt-1 text-xs">For educational and reference purposes only. Not a substitute for professional medical advice.</p>
+          <p className="mt-1 text-xs font-semibold text-drug-text">Made by: The Elite Nurses</p>
         </div>
       </footer>
     </div>
