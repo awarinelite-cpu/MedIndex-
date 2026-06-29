@@ -5,8 +5,16 @@ import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore
 import { db } from '../firebase';
 import { Upload, FileText, CheckCircle, XCircle, Download } from 'lucide-react';
 
-const REQUIRED_FIELDS = ['generic_name', 'drug_class', 'prescription_status', 'indications'];
-const VALID_STATUSES = ['OTC', 'Prescription', 'Controlled'];
+const REQUIRED_FIELDS = ['generic_name', 'drug_class'];
+
+// Normalize any prescription_status value into one of the 3 valid ones
+function normalizePrescriptionStatus(val) {
+  if (!val) return 'Prescription';
+  const v = val.toLowerCase();
+  if (v.includes('otc') || v.includes('over the counter') || v.includes('over-the-counter')) return 'OTC';
+  if (v.includes('controlled')) return 'Controlled';
+  return 'Prescription';
+}
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);
@@ -45,47 +53,42 @@ export default function UploadPage() {
   });
 
   function validateData(data) {
-    const errors = [];
+    const warnings = [];
 
     data.forEach((row, index) => {
-      const rowNum = index + 2; // +2 for header row and 1-based indexing
+      const rowNum = index + 2;
 
-      // Check required fields
+      // Only block on truly missing required fields (generic_name, drug_class)
       REQUIRED_FIELDS.forEach(field => {
         if (!row[field] || row[field].trim() === '') {
-          errors.push({ row: rowNum, field, message: `Missing required field: ${field}` });
+          warnings.push({ row: rowNum, field, message: `Missing required field: ${field}` });
         }
       });
 
-      // Validate prescription_status
-      if (row.prescription_status && !VALID_STATUSES.includes(row.prescription_status)) {
-        errors.push({ row: rowNum, field: 'prescription_status', message: `Invalid status: "${row.prescription_status}". Must be OTC, Prescription, or Controlled.` });
-      }
-
-      // Validate controlled substance schedule
-      if (row.prescription_status === 'Controlled' && (!row.controlled_substance_schedule || row.controlled_substance_schedule === 'N/A')) {
-        errors.push({ row: rowNum, field: 'controlled_substance_schedule', message: 'Controlled substances require a schedule (CI, CII, CIII, CIV, CV)' });
-      }
-
-      // Validate black box warning
-      if (row.black_box_warning === 'TRUE' && (!row.black_box_warning_text || row.black_box_warning_text.trim() === '')) {
-        errors.push({ row: rowNum, field: 'black_box_warning_text', message: 'Black box warning text required when black_box_warning is TRUE' });
-      }
-
-      // Validate boolean fields
-      ['orphan_drug', 'generic_availability', 'biosimilar'].forEach(field => {
-        if (row[field] && !['TRUE', 'FALSE', ''].includes(row[field])) {
-          errors.push({ row: rowNum, field, message: `${field} must be TRUE, FALSE, or blank` });
+      // prescription_status: warn if non-standard but will be auto-normalized on upload
+      if (row.prescription_status) {
+        const normalized = normalizePrescriptionStatus(row.prescription_status);
+        const v = row.prescription_status.trim();
+        if (!['OTC', 'Prescription', 'Controlled'].includes(v)) {
+          warnings.push({
+            row: rowNum,
+            field: 'prescription_status',
+            message: `"${v}" will be auto-normalized to "${normalized}" on upload.`,
+            isWarning: true
+          });
         }
-      });
+      }
     });
 
-    setValidationErrors(errors);
-    setUploadStatus(errors.length === 0 ? 'ready' : 'error');
+    setValidationErrors(warnings);
+    // Only block upload if there are hard errors (missing required fields)
+    const hardErrors = warnings.filter(w => !w.isWarning);
+    setUploadStatus(hardErrors.length === 0 ? 'ready' : 'error');
   }
 
   async function handleUpload() {
-    if (validationErrors.length > 0) return;
+    const hardErrors = validationErrors.filter(w => !w.isWarning);
+    if (hardErrors.length > 0) return;
 
     setUploadStatus('uploading');
     setUploadProgress({ current: 0, total: parsedData.length });
@@ -109,6 +112,12 @@ export default function UploadPage() {
           const val = row[key];
           cleanRow[key] = val && val.trim() !== '' ? val.trim() : null;
         });
+        // Auto-normalize prescription_status
+        if (cleanRow.prescription_status) {
+          cleanRow.prescription_status = normalizePrescriptionStatus(cleanRow.prescription_status);
+        } else {
+          cleanRow.prescription_status = 'Prescription';
+        }
         cleanRow.created_at   = serverTimestamp();
         cleanRow.last_updated = serverTimestamp();
         cleanRow.status       = 'Active';
@@ -236,7 +245,12 @@ export default function UploadPage() {
             <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <XCircle className="w-5 h-5 text-red-600" />
-                <h3 className="font-bold text-red-800">{validationErrors.length} Validation Errors Found</h3>
+                <h3 className="font-bold text-red-800">
+                  {validationErrors.filter(w => !w.isWarning).length > 0
+                    ? `${validationErrors.filter(w => !w.isWarning).length} Error${validationErrors.filter(w => !w.isWarning).length > 1 ? 's' : ''} Found — Fix before uploading`
+                    : `${validationErrors.filter(w => w.isWarning).length} Warning${validationErrors.filter(w => w.isWarning).length > 1 ? 's' : ''} — Will be auto-corrected on upload`
+                  }
+                </h3>
               </div>
               <p className="text-sm text-red-700 mb-3">Fix these errors in your CSV and re-upload.</p>
 
@@ -355,11 +369,11 @@ export default function UploadPage() {
             <div className="flex gap-3">
               <button 
                 onClick={handleUpload} 
-                disabled={validationErrors.length > 0}
-                className={`btn-primary flex-1 flex items-center justify-center gap-2 ${validationErrors.length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={validationErrors.filter(w => !w.isWarning).length > 0}
+                className={`btn-primary flex-1 flex items-center justify-center gap-2 ${validationErrors.filter(w => !w.isWarning).length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Upload className="w-4 h-4" />
-                {validationErrors.length > 0 ? 'Fix Errors to Upload' : `Upload ${parsedData.length} Drugs`}
+                {validationErrors.filter(w => !w.isWarning).length > 0 ? 'Fix Errors to Upload' : `Upload ${parsedData.length} Drugs`}
               </button>
             </div>
           )}
