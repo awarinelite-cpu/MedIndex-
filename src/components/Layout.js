@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw } from 'lucide-react';
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout({ children }) {
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
@@ -172,6 +173,25 @@ export default function Layout({ children }) {
                   Install
                 </button>
               )}
+              {/* User avatar + sign out */}
+              {user && (
+                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
+                  <div className="flex items-center gap-1.5 text-white/80 text-sm">
+                    <User className="w-4 h-4" />
+                    <span className="hidden lg:inline max-w-[120px] truncate">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-white/70
+                               hover:text-white hover:bg-white/10 transition-colors text-sm"
+                    title="Sign out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </nav>
 
             {/* Mobile hamburger */}
@@ -222,6 +242,27 @@ export default function Layout({ children }) {
                   <Download className="w-4 h-4" />
                   Install MedIndex App
                 </button>
+              )}
+              {/* Mobile sign out */}
+              {user && (
+                <div className="border-t border-white/10 pt-2 mt-2">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <div className="flex items-center gap-2 text-white/70 text-sm">
+                      <User className="w-4 h-4" />
+                      <span className="truncate max-w-[180px]">
+                        {user.displayName || user.email}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-lg
+                                 text-white/80 text-sm font-medium hover:bg-white/20"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
