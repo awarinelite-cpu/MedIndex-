@@ -10,6 +10,7 @@ import BrowsePage from './pages/BrowsePage';
 import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
 import LoginPage from './pages/LoginPage';
+import LabReferencePage from './pages/LabReferencePage';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/drug/:id"          element={<Layout><DrugDetailPage /></Layout>} />
         <Route path="/browse"            element={<Layout><BrowsePage /></Layout>} />
         <Route path="/browse/:condition" element={<Layout><BrowsePage /></Layout>} />
+        <Route path="/labs"                  element={<Layout><LabReferencePage /></Layout>} />
 
         {/* ── Admin login (public) ─────────────────────────────────────── */}
         <Route path="/admin/login" element={<LoginPage />} />

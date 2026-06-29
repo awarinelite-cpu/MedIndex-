@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw } from 'lucide-react';
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical } from 'lucide-react';
 
 export default function Layout({ children }) {
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
@@ -68,8 +68,9 @@ export default function Layout({ children }) {
 
   // ── Nav ───────────────────────────────────────────────────────────────────
   const navLinks = [
-    { to: '/',       label: 'Home',   icon: Home     },
-    { to: '/browse', label: 'Browse', icon: Grid3X3  },
+    { to: '/',       label: 'Home',      icon: Home         },
+    { to: '/browse', label: 'Browse',    icon: Grid3X3      },
+    { to: '/labs',   label: 'Lab Ref',   icon: FlaskConical },
   ];
   const isActive = (path) => location.pathname === path;
 
