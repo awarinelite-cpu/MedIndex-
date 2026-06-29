@@ -4,7 +4,7 @@
 //   title, createdAt, drugs: [{ drugId, drugName, drugClass, notes, addedAt }]
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   collection, addDoc, getDocs, doc,
   deleteDoc, updateDoc, serverTimestamp, orderBy, query,

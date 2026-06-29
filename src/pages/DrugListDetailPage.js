@@ -10,7 +10,7 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import {
-  Pill, Trash2, ChevronLeft, Edit2,
+  Pill, Trash2, ChevronLeft,
   Check, X, StickyNote, BookOpen,
 } from 'lucide-react';
 
