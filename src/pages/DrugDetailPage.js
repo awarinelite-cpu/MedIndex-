@@ -184,6 +184,7 @@ function AddToListButton({ drug }) {
 
   const createAndAdd = async () => {
     if (!user?.uid) return;
+    setLoading(true);
     try {
       const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
         title:     `New List`,
@@ -198,7 +199,9 @@ function AddToListButton({ drug }) {
       });
       setAdded(p => ({ ...p, [ref.id]: true }));
       await loadLists();
+      setOpen(false);
     } catch (e) { console.error('Create list error:', e); }
+    setLoading(false);
   };
 
   if (!user) return null;
@@ -234,7 +237,7 @@ function AddToListButton({ drug }) {
               <div className="px-4 py-4 text-center">
                 <p className="text-sm text-drug-muted mb-3">No lists yet</p>
                 <button
-                  onClick={createAndAdd}
+                  onClick={(e) => { e.stopPropagation(); createAndAdd(); }}
                   className="flex items-center gap-2 mx-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700"
                 >
                   <Plus className="w-4 h-4" /> Create a List &amp; Add
