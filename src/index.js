@@ -14,8 +14,6 @@ root.render(
 );
 
 // ── PWA Service Worker Registration ─────────────────────────────────────────
-// Only registers in production (localhost is excluded automatically).
-// CRA serves the SW from /service-worker.js via the public/ folder.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
@@ -23,19 +21,36 @@ if ('serviceWorker' in navigator) {
       .then(reg => {
         console.log('[MedIndex SW] Registered, scope:', reg.scope);
 
-        // Check for updates every time the app loads
+        // When a new SW is found, activate it immediately
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New content available — show a toast or just auto-reload
-              console.log('[MedIndex SW] Update available — reloading.');
-              // Optional: dispatch a custom event for an "Update available" banner
-              window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
+              console.log('[MedIndex SW] New version installed — reloading now.');
+              // Force reload all tabs to serve the latest version immediately
+              window.location.reload();
             }
           });
         });
       })
       .catch(err => console.warn('[MedIndex SW] Registration failed:', err));
+
+    // Listen for SW_UPDATED message sent from the new service worker on activate
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'SW_UPDATED') {
+        console.log('[MedIndex SW] Received SW_UPDATED — reloading.');
+        window.location.reload();
+      }
+    });
+
+    // If the SW controller changes (new SW took over), reload immediately
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        console.log('[MedIndex SW] Controller changed — reloading.');
+        window.location.reload();
+      }
+    });
   });
 }
