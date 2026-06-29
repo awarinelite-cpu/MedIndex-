@@ -55,6 +55,24 @@ export default function UploadPage() {
   function validateData(data) {
     const warnings = [];
 
+    // Check for duplicates within the CSV itself
+    const nameSeen = {};
+    data.forEach((row, index) => {
+      if (row.generic_name) {
+        const key = row.generic_name.toLowerCase().trim();
+        if (nameSeen[key] !== undefined) {
+          warnings.push({
+            row: index + 2,
+            field: 'generic_name',
+            message: `Duplicate of row ${nameSeen[key]}: "${row.generic_name}" already exists in this file. The later row will overwrite the earlier one.`,
+            isWarning: true
+          });
+        } else {
+          nameSeen[key] = index + 2;
+        }
+      }
+    });
+
     data.forEach((row, index) => {
       const rowNum = index + 2;
 
@@ -122,8 +140,9 @@ export default function UploadPage() {
         cleanRow.last_updated = serverTimestamp();
         cleanRow.status       = 'Active';
         cleanRow.source       = cleanRow.source || 'CSV Upload';
+        // Deterministic doc ID — lowercase + sanitised so same drug never duplicates
         const docId = cleanRow.generic_name
-          ? cleanRow.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_')
+          ? cleanRow.generic_name.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_')
           : doc(collection(db, 'drugs')).id;
         const ref = doc(db, 'drugs', docId);
         batch.set(ref, cleanRow);
