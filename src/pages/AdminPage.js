@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
-  writeBatch, setDoc, getCountFromServer, serverTimestamp,
+  writeBatch, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
