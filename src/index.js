@@ -13,44 +13,35 @@ root.render(
   </React.StrictMode>
 );
 
-// ── PWA Service Worker Registration ─────────────────────────────────────────
+// ── PWA Service Worker ───────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/service-worker.js')
-      .then(reg => {
-        console.log('[MedIndex SW] Registered, scope:', reg.scope);
+    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+      console.log('[MedLookup SW] Registered:', reg.scope);
 
-        // When a new SW is found, activate it immediately
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[MedIndex SW] New version installed — reloading now.');
-              // Force reload all tabs to serve the latest version immediately
-              window.location.reload();
-            }
-          });
+      // ── When the SW sends SW_UPDATED (it claimed all clients after activate),
+      //    reload immediately so the user gets the latest build. ─────────────
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data?.type === 'SW_UPDATED') {
+          console.log('[MedLookup SW] New version active — reloading.');
+          window.location.reload();
+        }
+      });
+
+      // ── If a new SW is found while the app is open, show the update banner
+      //    dispatched as a custom DOM event that Layout.js listens for. ──────
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // New SW installed and waiting — let the user choose to reload
+            window.dispatchEvent(new CustomEvent('swUpdateAvailable', {
+              detail: { worker: newWorker }
+            }));
+          }
         });
-      })
-      .catch(err => console.warn('[MedIndex SW] Registration failed:', err));
+      });
 
-    // Listen for SW_UPDATED message sent from the new service worker on activate
-    navigator.serviceWorker.addEventListener('message', event => {
-      if (event.data?.type === 'SW_UPDATED') {
-        console.log('[MedIndex SW] Received SW_UPDATED — reloading.');
-        window.location.reload();
-      }
-    });
-
-    // If the SW controller changes (new SW took over), reload immediately
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) {
-        refreshing = true;
-        console.log('[MedIndex SW] Controller changed — reloading.');
-        window.location.reload();
-      }
-    });
+    }).catch(err => console.warn('[MedLookup SW] Registration failed:', err));
   });
 }

@@ -16,11 +16,12 @@ export default function Layout({ children }) {
   const navigate  = useNavigate();
 
   // ── PWA install prompt ────────────────────────────────────────────────────
+  const [waitingWorker, setWaitingWorker] = useState(null);
+
   useEffect(() => {
     // Detect if already running as installed PWA
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       setIsInstalled(true);
-      return;
     }
 
     const onBeforeInstall = (e) => {
@@ -30,8 +31,11 @@ export default function Layout({ children }) {
     };
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
 
-    // SW update available
-    const onUpdate = () => setShowUpdate(true);
+    // SW update available — store the waiting worker so we can tell it to activate
+    const onUpdate = (e) => {
+      setWaitingWorker(e.detail?.worker || null);
+      setShowUpdate(true);
+    };
     window.addEventListener('swUpdateAvailable', onUpdate);
 
     // Hide install banner once installed
@@ -55,7 +59,13 @@ export default function Layout({ children }) {
 
   const handleUpdate = () => {
     setShowUpdate(false);
-    window.location.reload();
+    // Tell the waiting SW to skip waiting and become active —
+    // index.js listens for the SW_UPDATED message it sends and reloads.
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      window.location.reload();
+    }
   };
 
   const handleLogout = async () => {

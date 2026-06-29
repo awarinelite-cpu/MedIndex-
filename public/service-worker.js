@@ -2,7 +2,7 @@
 // Strategy: Network-first for HTML pages (always get latest),
 // Cache-first for static assets (JS/CSS/icons — these have hashed filenames from CRA build)
 
-const CACHE_VERSION = 'medindex-v3';
+const CACHE_VERSION = 'medindex-v4';
 const OFFLINE_URL   = '/offline.html';
 
 const PRECACHE_URLS = [
@@ -13,7 +13,14 @@ const PRECACHE_URLS = [
   '/icon-512x512.svg',
 ];
 
-// ── Install: pre-cache shell, skip waiting immediately ─────────────────────
+// ── Message handler: SKIP_WAITING sent by Layout's "Reload" button ─────────
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// ── Install: pre-cache shell ────────────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
