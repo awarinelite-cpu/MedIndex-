@@ -1,4 +1,4 @@
-// MedLookup Service Worker
+// MedIndex Service Worker
 // Strategy: Cache-first for all app assets (everything is bundled locally —
 // no API calls needed). All 280 drugs are embedded in the JS bundle via
 // seedDrugs.json import, so the app works 100% offline after first load.

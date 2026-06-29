@@ -83,7 +83,7 @@ export default function Layout({ children }) {
             <RefreshCw className="w-5 h-5 flex-shrink-0 text-primary-300" />
             <div className="flex-1 text-sm">
               <div className="font-bold">Update available</div>
-              <div className="text-primary-300 text-xs">A new version of MedLookup is ready.</div>
+              <div className="text-primary-300 text-xs">A new version of MedIndex is ready.</div>
             </div>
             <button
               onClick={handleUpdate}
@@ -103,7 +103,7 @@ export default function Layout({ children }) {
         <div className="bg-primary-800 text-white px-4 py-2.5 flex items-center gap-3 text-sm">
           <Pill className="w-4 h-4 flex-shrink-0 text-primary-300" />
           <span className="flex-1 text-primary-100">
-            Install MedLookup for <strong className="text-white">offline access</strong> to all 280 drugs
+            Install MedIndex for <strong className="text-white">offline access</strong> to all 280 drugs
           </span>
           <button
             onClick={handleInstall}
@@ -126,7 +126,7 @@ export default function Layout({ children }) {
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2 flex-shrink-0">
               <Pill className="w-7 h-7" />
-              <span className="text-xl font-bold tracking-tight">MedLookup</span>
+              <span className="text-xl font-bold tracking-tight">MedIndex</span>
             </Link>
 
             {/* Search — desktop */}
@@ -220,7 +220,7 @@ export default function Layout({ children }) {
                              bg-white text-primary-900"
                 >
                   <Download className="w-4 h-4" />
-                  Install MedLookup App
+                  Install MedIndex App
                 </button>
               )}
             </div>
@@ -238,11 +238,10 @@ export default function Layout({ children }) {
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-drug-muted">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Pill className="w-4 h-4" />
-            <span className="font-semibold text-drug-text">MedLookup</span>
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">Offline Ready</span>
+            <span className="font-semibold text-drug-text">MedIndex</span>
           </div>
-          <p>Comprehensive Nigerian clinical drug reference · 280 medications</p>
           <p className="mt-1 text-xs">For educational and reference purposes only. Not a substitute for professional medical advice.</p>
+          <p className="mt-1 text-xs font-semibold text-drug-text">Made by: The Elite Nurses</p>
         </div>
       </footer>
     </div>

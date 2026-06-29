@@ -21,7 +21,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/service-worker.js')
       .then(reg => {
-        console.log('[MedLookup SW] Registered, scope:', reg.scope);
+        console.log('[MedIndex SW] Registered, scope:', reg.scope);
 
         // Check for updates every time the app loads
         reg.addEventListener('updatefound', () => {
@@ -29,13 +29,13 @@ if ('serviceWorker' in navigator) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               // New content available — show a toast or just auto-reload
-              console.log('[MedLookup SW] Update available — reloading.');
+              console.log('[MedIndex SW] Update available — reloading.');
               // Optional: dispatch a custom event for an "Update available" banner
               window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
             }
           });
         });
       })
-      .catch(err => console.warn('[MedLookup SW] Registration failed:', err));
+      .catch(err => console.warn('[MedIndex SW] Registration failed:', err));
   });
 }
