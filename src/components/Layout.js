@@ -4,6 +4,7 @@ import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout({ children }) {
+  const { user, logout } = useAuth();
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [searchQuery,     setSearchQuery]      = useState('');
   const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event
@@ -55,6 +56,11 @@ export default function Layout({ children }) {
   const handleUpdate = () => {
     setShowUpdate(false);
     window.location.reload();
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   // ── Search ────────────────────────────────────────────────────────────────
