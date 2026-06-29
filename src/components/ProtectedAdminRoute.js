@@ -23,7 +23,7 @@ export default function ProtectedAdminRoute({ children }) {
     );
   }
 
-  if (!user) return <Navigate to="/admin/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
 
   if (!isAdmin) {
     return (
@@ -46,7 +46,7 @@ export default function ProtectedAdminRoute({ children }) {
             Your account ({user.email}) does not have admin privileges.
           </p>
           <a
-            href="/admin/login"
+            href="/login"
             style={{
               display: 'inline-block', padding: '10px 24px', borderRadius: 10,
               background: '#0B1F3A', color: '#fff', fontWeight: 700, fontSize: 14,

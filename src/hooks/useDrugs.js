@@ -1,18 +1,27 @@
 // src/hooks/useDrugs.js
 // Single source of truth for the drug list.
-// Loads from Firestore only — no static seed fallback shown to users.
-// In-memory cache (5 min TTL) prevents redundant Firestore reads within a session.
+// Primary: Firestore 'drugs' collection (live, uploadable)
+// Fallback: local seedDrugs.json (always available, 280 drugs)
+// In-memory cache (5 min TTL) prevents redundant Firestore reads.
 
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
+import SEED_DRUGS from '../data/seedDrugs.json';
+
+// Pre-process seed data once — give each drug a stable id
+const SEED_WITH_IDS = SEED_DRUGS.map(d => ({
+  ...d,
+  id: d.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_'),
+  // Map seed field names → app field names
+  indications: d.primary_indications || d.indications || '',
+}));
 
 let cachedDrugs = null;
 let cacheTime   = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export function useDrugs() {
-  // Start with empty array — never show stale seed data
   const [drugs,   setDrugs]   = useState(cachedDrugs || []);
   const [loading, setLoading] = useState(!cachedDrugs);
 
@@ -23,25 +32,37 @@ export function useDrugs() {
       setLoading(false);
       return;
     }
+
     (async () => {
       try {
         const snap = await getDocs(
           query(collection(db, 'drugs'), orderBy('last_updated', 'desc'), limit(2000))
         );
-        const live = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        cachedDrugs = live;
-        cacheTime   = Date.now();
-        setDrugs(live);
+
+        if (!snap.empty) {
+          const live = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          cachedDrugs = live;
+          cacheTime   = Date.now();
+          setDrugs(live);
+        } else {
+          // Firestore empty — use local seed
+          console.info('[useDrugs] Firestore empty — using local seed data');
+          cachedDrugs = SEED_WITH_IDS;
+          cacheTime   = Date.now();
+          setDrugs(SEED_WITH_IDS);
+        }
       } catch (e) {
-        console.warn('[useDrugs] Firestore failed:', e.message);
-        // Don't fall back to stale seed — just leave as empty so UI shows 0, not wrong number
-        setDrugs([]);
+        console.warn('[useDrugs] Firestore failed — using local seed data:', e.message);
+        if (!cachedDrugs) {
+          cachedDrugs = SEED_WITH_IDS;
+          cacheTime   = Date.now();
+        }
+        setDrugs(cachedDrugs);
       }
       setLoading(false);
     })();
   }, []);
 
-  // Invalidate cache so next call to useDrugs() fetches fresh data
   function invalidateCache() {
     cachedDrugs = null;
     cacheTime   = 0;

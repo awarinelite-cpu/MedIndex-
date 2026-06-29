@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Pill, Eye, EyeOff, AlertCircle, UserPlus, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export default function UserAuthPage() {
-  const [mode,        setMode]        = useState('login'); // 'login' | 'register'
-  const [name,        setName]        = useState('');
-  const [email,       setEmail]       = useState('');
-  const [password,    setPassword]    = useState('');
-  const [confirm,     setConfirm]     = useState('');
-  const [showPass,    setShowPass]    = useState(false);
-  const [error,       setError]       = useState('');
-  const [loading,     setLoading]     = useState(false);
+  const [mode,     setMode]     = useState('login');
+  const [name,     setName]     = useState('');
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm,  setConfirm]  = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -22,12 +24,24 @@ export default function UserAuthPage() {
     switch (code) {
       case 'auth/invalid-credential':
       case 'auth/user-not-found':
-      case 'auth/wrong-password':      return 'Invalid email or password.';
-      case 'auth/email-already-in-use':return 'An account with this email already exists.';
-      case 'auth/weak-password':       return 'Password must be at least 6 characters.';
-      case 'auth/invalid-email':       return 'Please enter a valid email address.';
-      case 'auth/too-many-requests':   return 'Too many attempts. Please wait a moment and try again.';
-      default:                         return 'Something went wrong. Please try again.';
+      case 'auth/wrong-password':       return 'Invalid email or password.';
+      case 'auth/email-already-in-use': return 'An account with this email already exists.';
+      case 'auth/weak-password':        return 'Password must be at least 6 characters.';
+      case 'auth/invalid-email':        return 'Please enter a valid email address.';
+      case 'auth/too-many-requests':    return 'Too many attempts. Please wait a moment and try again.';
+      default:                          return 'Something went wrong. Please try again.';
+    }
+  }
+
+  async function checkIsAdmin(userEmail) {
+    try {
+      const exactSnap = await getDoc(doc(db, 'admins', userEmail));
+      if (exactSnap.exists() && exactSnap.data()?.role === 'admin') return true;
+      const q = query(collection(db, 'admins'), where('email', '==', userEmail));
+      const qSnap = await getDocs(q);
+      return !qSnap.empty && qSnap.docs[0].data()?.role === 'admin';
+    } catch {
+      return false;
     }
   }
 
@@ -36,19 +50,22 @@ export default function UserAuthPage() {
     setError('');
 
     if (mode === 'register') {
-      if (!name.trim())              { setError('Please enter your name.');              return; }
-      if (password !== confirm)      { setError('Passwords do not match.');              return; }
-      if (password.length < 6)       { setError('Password must be at least 6 characters.'); return; }
+      if (!name.trim())         { setError('Please enter your name.');                return; }
+      if (password !== confirm) { setError('Passwords do not match.');                return; }
+      if (password.length < 6)  { setError('Password must be at least 6 characters.'); return; }
     }
 
     setLoading(true);
     try {
       if (mode === 'login') {
         await login(email.trim(), password);
+        // After login, check if admin → send to /admin, otherwise go to intended page
+        const adminUser = await checkIsAdmin(email.trim());
+        navigate(adminUser ? '/admin' : from, { replace: true });
       } else {
         await register(email.trim(), password, name.trim());
+        navigate(from, { replace: true });
       }
-      navigate(from, { replace: true });
     } catch (err) {
       setError(friendlyError(err.code));
     }

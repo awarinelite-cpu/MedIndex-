@@ -2,9 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
-  FlaskConical, ChevronLeft, Stethoscope
+  FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from '../context/AuthContext';
+import {
+  collection, getDocs, doc, updateDoc, addDoc,
+  serverTimestamp, query, orderBy,
+} from 'firebase/firestore';
+import { db } from '../firebase';
 
 // ── Route badges ─────────────────────────────────────────────────────────────
 const ROUTE_META = {
@@ -131,6 +137,151 @@ const TABS = [
   { id: 'nursing',      label: 'Nursing Notes', icon: Stethoscope   },
 ];
 
+/* ── Add to List Button ──────────────────────────────────────────────────── */
+function AddToListButton({ drug }) {
+  const { user }           = useAuth();
+  const [open, setOpen]    = useState(false);
+  const [lists, setLists]  = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [added, setAdded]  = useState({});   // listId → true
+
+  const loadLists = async () => {
+    if (!user?.uid) return;
+    setLoading(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'users', user.uid, 'lists'), orderBy('createdAt', 'desc'))
+      );
+      setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error('Load lists for picker:', e); }
+    setLoading(false);
+  };
+
+  const handleOpen = () => { setOpen(true); loadLists(); };
+
+  const addToList = async (list) => {
+    if (!user?.uid) return;
+    const already = (list.drugs || []).some(d => d.drugId === drug.id);
+    if (already) { setAdded(p => ({ ...p, [list.id]: true })); return; }
+    try {
+      const updatedDrugs = [
+        ...(list.drugs || []),
+        {
+          drugId:    drug.id,
+          drugName:  drug.generic_name,
+          drugClass: drug.drug_class || '',
+          notes:     '',
+          addedAt:   serverTimestamp(),
+        },
+      ];
+      await updateDoc(doc(db, 'users', user.uid, 'lists', list.id), {
+        drugs: updatedDrugs,
+        last_updated: serverTimestamp(),
+      });
+      setAdded(p => ({ ...p, [list.id]: true }));
+    } catch (e) { console.error('Add to list error:', e); }
+  };
+
+  const createAndAdd = async () => {
+    if (!user?.uid) return;
+    try {
+      const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
+        title:     `New List`,
+        createdAt: serverTimestamp(),
+        drugs: [{
+          drugId:    drug.id,
+          drugName:  drug.generic_name,
+          drugClass: drug.drug_class || '',
+          notes:     '',
+          addedAt:   serverTimestamp(),
+        }],
+      });
+      setAdded(p => ({ ...p, [ref.id]: true }));
+      await loadLists();
+    } catch (e) { console.error('Create list error:', e); }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleOpen}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-700 font-semibold text-sm hover:bg-primary-100 transition-colors"
+      >
+        <ClipboardList className="w-4 h-4" /> Add to List
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+
+          {/* Dropdown */}
+          <div className="absolute right-0 top-12 z-50 bg-white border border-drug-border rounded-xl shadow-xl w-72 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-drug-border">
+              <span className="font-semibold text-drug-text text-sm">Save to a list</span>
+              <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100">
+                <X className="w-4 h-4 text-drug-muted" />
+              </button>
+            </div>
+
+            {loading && (
+              <div className="px-4 py-6 text-center text-sm text-drug-muted">Loading lists…</div>
+            )}
+
+            {!loading && lists.length === 0 && (
+              <div className="px-4 py-4 text-center">
+                <p className="text-sm text-drug-muted mb-3">No lists yet</p>
+                <button
+                  onClick={createAndAdd}
+                  className="flex items-center gap-2 mx-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700"
+                >
+                  <Plus className="w-4 h-4" /> Create a List &amp; Add
+                </button>
+              </div>
+            )}
+
+            {!loading && lists.length > 0 && (
+              <div className="max-h-64 overflow-y-auto divide-y divide-drug-border">
+                {lists.map(list => {
+                  const isAdded = added[list.id] || (list.drugs || []).some(d => d.drugId === drug.id);
+                  return (
+                    <button
+                      key={list.id}
+                      onClick={() => addToList(list)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left transition-colors"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-drug-text">{list.title}</div>
+                        <div className="text-xs text-drug-muted">{(list.drugs || []).length} drugs</div>
+                      </div>
+                      {isAdded
+                        ? <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        : <Plus  className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {!loading && lists.length > 0 && (
+              <div className="border-t border-drug-border px-4 py-3">
+                <button
+                  onClick={createAndAdd}
+                  className="flex items-center gap-2 text-sm text-primary-600 font-semibold hover:text-primary-800"
+                >
+                  <Plus className="w-4 h-4" /> New list with this drug
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DrugDetailPage() {
   const { id } = useParams();
   const { drugs } = useDrugs();
@@ -167,9 +318,12 @@ export default function DrugDetailPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
-      <Link to="/browse" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium transition-colors">
-        <ChevronLeft className="w-4 h-4" /> Back to browse
-      </Link>
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/browse" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium transition-colors">
+          <ChevronLeft className="w-4 h-4" /> Back to browse
+        </Link>
+        <AddToListButton drug={drug} />
+      </div>
 
       {/* Header */}
       <div className="mb-8">

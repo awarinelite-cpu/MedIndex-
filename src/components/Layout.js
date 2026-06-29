@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User } from 'lucide-react';
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User, ClipboardList } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout({ children }) {

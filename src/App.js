@@ -6,10 +6,11 @@ import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
 import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import UserAuthPage from './pages/UserAuthPage';
-import AdminLoginPage from './pages/AdminLoginPage';
 import HomePage from './pages/HomePage';
 import DrugDetailPage from './pages/DrugDetailPage';
 import BrowsePage from './pages/BrowsePage';
+import DrugListsPage from './pages/DrugListsPage';
+import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
 
@@ -19,8 +20,7 @@ function App() {
       <Routes>
 
         {/* ── Auth pages (public — no login required) ──────────────────── */}
-        <Route path="/login"       element={<UserAuthPage />} />
-        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/login" element={<UserAuthPage />} />
 
         {/* ── User-protected public routes ─────────────────────────────── */}
         <Route path="/" element={
@@ -41,6 +41,16 @@ function App() {
         <Route path="/browse/:condition" element={
           <ProtectedUserRoute>
             <Layout><BrowsePage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/lists" element={
+          <ProtectedUserRoute>
+            <Layout><DrugListsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/lists/:listId" element={
+          <ProtectedUserRoute>
+            <Layout><DrugListDetailPage /></Layout>
           </ProtectedUserRoute>
         } />
 
