@@ -4,7 +4,7 @@ import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, LogOut, User
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [searchQuery,     setSearchQuery]      = useState('');
   const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event
@@ -178,6 +178,16 @@ export default function Layout({ children }) {
                   {link.label}
                 </Link>
               ))}
+              {/* Return to Admin Portal — only shown to logged-in admins browsing the public site */}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium ml-1"
+                  style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7' }}
+                >
+                  ← Admin Portal
+                </Link>
+              )}
               {/* Install button in nav (desktop, only when prompt available) */}
               {showInstall && !isInstalled && (
                 <button
@@ -249,6 +259,17 @@ export default function Layout({ children }) {
                   {link.label}
                 </Link>
               ))}
+              {/* Return to Admin Portal — only shown to logged-in admins */}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold"
+                  style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7' }}
+                >
+                  ← Admin Portal
+                </Link>
+              )}
               {showInstall && !isInstalled && (
                 <button
                   onClick={() => { handleInstall(); setMobileMenuOpen(false); }}
