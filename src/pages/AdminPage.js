@@ -483,10 +483,18 @@ export default function AdminPage() {
                   </td>
                   <td className="px-4 py-3">
                     <Link to={`/drug/${drug.id}`} className="font-semibold text-primary-700 hover:underline">{drug.generic_name}</Link>
-                    <div className="sm:hidden text-xs text-drug-muted mt-0.5">{drug.drug_class}</div>
+                    <div className="sm:hidden text-xs text-drug-muted mt-0.5">
+                      <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_class}</Link>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-drug-muted hidden sm:table-cell">{drug.drug_class}</td>
-                  <td className="px-4 py-3 text-drug-muted hidden md:table-cell text-xs">{drug.drug_subclass||'—'}</td>
+                  <td className="px-4 py-3 text-drug-muted hidden sm:table-cell">
+                    <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_class}</Link>
+                  </td>
+                  <td className="px-4 py-3 text-drug-muted hidden md:table-cell text-xs">
+                    {drug.drug_subclass
+                      ? <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_subclass}</Link>
+                      : '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-bold px-2 py-1 rounded ${
                       drug.prescription_status==='OTC'?'bg-green-100 text-green-700':
