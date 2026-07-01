@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
+  Sparkles, RefreshCw,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -135,7 +136,143 @@ const TABS = [
   { id: 'interactions', label: 'Interactions',  icon: FlaskConical  },
   { id: 'pharmacology', label: 'Pharmacology',  icon: Heart         },
   { id: 'nursing',      label: 'Nursing Notes', icon: Stethoscope   },
+  { id: 'ai-insights',  label: 'AI Insights',   icon: Sparkles      },
 ];
+
+/* ── Simple markdown-ish renderer for AI response (## headers, - bullets, paragraphs) ── */
+function renderAiText(text) {
+  if (!text) return null;
+  const blocks = text.split(/\n(?=##\s)/g);
+  return blocks.map((block, i) => {
+    const headerMatch = block.match(/^##\s+(.+)/);
+    const body = headerMatch ? block.replace(/^##\s+.+\n?/, '') : block;
+    const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
+    return (
+      <div key={i} className="mb-6 last:mb-0">
+        {headerMatch && (
+          <h3 className="text-base font-bold text-drug-text mb-2">{headerMatch[1]}</h3>
+        )}
+        <div className="space-y-1.5">
+          {lines.map((line, j) => {
+            if (/^[-*]\s+/.test(line)) {
+              return (
+                <div key={j} className="flex items-start gap-2 text-sm text-drug-text leading-relaxed">
+                  <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
+                  <span>{line.replace(/^[-*]\s+/, '')}</span>
+                </div>
+              );
+            }
+            return (
+              <p key={j} className="text-sm text-drug-text leading-relaxed">{line}</p>
+            );
+          })}
+        </div>
+      </div>
+    );
+  });
+}
+
+/* ── AI Insights Tab ─────────────────────────────────────────────────────── */
+function AiInsightsTab({ drug }) {
+  const [state, setState] = useState('idle'); // idle | loading | done | error
+  const [text, setText]   = useState('');
+  const [error, setError] = useState('');
+
+  const fetchInsights = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const knownData = [
+        drug.pharmacology && `Pharmacology: ${drug.pharmacology}`,
+        drug.contraindications && `Known contraindications: ${drug.contraindications}`,
+        drug.adverse_effect && `Known adverse effects: ${drug.adverse_effect}`,
+      ].filter(Boolean).join('\n');
+
+      const res = await fetch('/api/drug-ai-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          genericName: drug.generic_name,
+          brandNames: drug.brand_names || '',
+          drugClass: drug.drug_class || '',
+          knownData,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      setText(data.text || '');
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI insights.');
+      setState('error');
+    }
+  };
+
+  if (state === 'idle') {
+    return (
+      <div className="section-card p-8 text-center">
+        <Sparkles className="w-10 h-10 text-primary-400 mx-auto mb-3" />
+        <h2 className="text-lg font-bold text-drug-text mb-2">Get Extensive AI Details</h2>
+        <p className="text-sm text-drug-muted max-w-md mx-auto mb-5">
+          Generate an in-depth clinical reference summary for {drug.generic_name} — mechanism of action,
+          pharmacokinetics, special populations, interactions, monitoring, and nursing education points.
+        </p>
+        <button
+          onClick={fetchInsights}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" /> Generate AI Insights
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'loading') {
+    return (
+      <div className="section-card p-8 text-center">
+        <RefreshCw className="w-8 h-8 text-primary-400 mx-auto mb-3 animate-spin" />
+        <p className="text-sm text-drug-muted">Generating extensive details for {drug.generic_name}…</p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="section-card p-6 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <p className="text-sm text-red-600 mb-4">{error}</p>
+        <button
+          onClick={fetchInsights}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+        >
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="section-card p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary-500" />
+          <h2 className="text-lg font-bold text-drug-text">AI Clinical Insights</h2>
+        </div>
+        <button
+          onClick={fetchInsights}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+        </button>
+      </div>
+      {renderAiText(text)}
+      <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
+        AI-generated content is a reference aid, not a substitute for the current product monograph or clinical
+        judgment. Verify against official prescribing information before applying to patient care.
+      </div>
+    </div>
+  );
+}
 
 /* ── Add to List Button ──────────────────────────────────────────────────── */
 function AddToListButton({ drug }) {
@@ -719,6 +856,9 @@ export default function DrugDetailPage() {
               : <em className="text-drug-muted">No nursing-specific notes available for this drug.</em>}
           </div>
         )}
+
+        {/* ── AI INSIGHTS ──────────────────────────────────────────────── */}
+        {activeTab === 'ai-insights' && <AiInsightsTab drug={drug} />}
 
       </div>
 
