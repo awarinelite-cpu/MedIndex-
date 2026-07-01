@@ -31,20 +31,49 @@ export default async function handler(req) {
     });
   }
 
-  const { genericName, brandNames, drugClass, knownData, notInDatabase } = body || {};
+  const {
+    mode = 'drug',
+    genericName, brandNames, drugClass, knownData, notInDatabase,
+    className, knownDrugNames,
+  } = body || {};
 
-  if (!genericName || typeof genericName !== 'string') {
-    return new Response(JSON.stringify({ error: 'genericName is required.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  let prompt;
 
-  const notInDatabaseNote = notInDatabase
-    ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. If "${genericName}" is not a real or recognized medication (e.g. it's a typo, a non-drug term, or you are not confident it exists), say so clearly at the very top of your response instead of inventing information. Only proceed with the full structured breakdown if you are reasonably confident this is a genuine medication.\n`
-    : '';
+  if (mode === 'class') {
+    if (!className || typeof className !== 'string') {
+      return new Response(JSON.stringify({ error: 'className is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-  const prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
+    const knownList = Array.isArray(knownDrugNames) && knownDrugNames.length
+      ? `\nMedications already in the app's database for this class (do not repeat these — focus on other medications in the same class and its subclasses):\n${knownDrugNames.join(', ')}\n`
+      : '';
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is browsing the drug class "${className}" and wants a broader list of medications within this class and its subclasses beyond what's currently in the app's database.
+${knownList}
+List commonly used medications (generic names) that belong to the drug class "${className}" or its recognized subclasses. Group them by subclass using ## markdown headers where subclasses exist (e.g. "## Beta-1 Selective Beta-Blockers"), otherwise use a single "## ${className}" header.
+
+For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: primary indication, typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), and any notable distinguishing feature versus others in the same subclass. Example format:
+- **Metoprolol** — Beta-1 selective; PO/IV; hypertension, angina, arrhythmia; less bronchospasm risk than non-selective agents.
+
+Aim for a reasonably thorough list (roughly 10-25 medications depending on how broad the class is) so the nurse gets real coverage of the class, not just one or two examples. If "${className}" is not a recognized drug class or you're not confident it's real, say so clearly instead of inventing medications.
+
+This is reference material only, not a substitute for the current product monograph — do not fabricate specific dosing figures.`;
+  } else {
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'genericName is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const notInDatabaseNote = notInDatabase
+      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. If "${genericName}" is not a real or recognized medication (e.g. it's a typo, a non-drug term, or you are not confident it exists), say so clearly at the very top of your response instead of inventing information. Only proceed with the full structured breakdown if you are reasonably confident this is a genuine medication.\n`
+      : '';
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
 ${notInDatabaseNote}
 Drug: ${genericName}
 ${brandNames ? `Known brand names: ${brandNames}` : ''}
@@ -81,6 +110,7 @@ Write every section listed above, even briefly — if a section is not well esta
 Within each section, bold any sub-labels using **double asterisks** (e.g. "**Absorption:** ...", "**Renal impairment:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists of items like contraindications, adverse effects, or interactions.
 
 Be precise, clinically accurate, and concise within each section. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
+  }
 
   let anthropicRes;
   try {
@@ -93,7 +123,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: mode === 'class' ? 3000 : 2000,
         stream: true,
         messages: [{ role: 'user', content: prompt }],
       }),

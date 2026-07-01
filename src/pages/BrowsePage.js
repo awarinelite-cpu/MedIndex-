@@ -123,6 +123,125 @@ function AiSearchFallback({ searchQuery }) {
   );
 }
 
+/* ── AI fallback for sparse class/subclass results ───────────────────────── */
+function AiClassFallback({ className, knownDrugNames }) {
+  const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
+  const [text, setText]   = useState('');
+  const [error, setError] = useState('');
+  const [queriedFor, setQueriedFor] = useState('');
+
+  const runLookup = async () => {
+    setState('loading');
+    setError('');
+    setText('');
+    setQueriedFor(className);
+    try {
+      const res = await fetch('/api/drug-ai-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'class', className: className.trim(), knownDrugNames }),
+      });
+
+      if (!res.ok || !res.body) {
+        let message = 'Something went wrong.';
+        try { message = (await res.json()).error || message; } catch {}
+        throw new Error(message);
+      }
+
+      setState('streaming');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value, { stream: true });
+        setText(full);
+      }
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI lookup.');
+      setState('error');
+    }
+  };
+
+  if (!className.trim()) return null;
+
+  if (state === 'idle') {
+    return (
+      <div className="mt-6 bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
+        <Sparkles className="w-8 h-8 text-primary-500 mx-auto mb-3" />
+        <p className="text-sm text-drug-text mb-4">
+          Only a few medications in "{className}" are in our database so far. Want the AI to list other
+          medications in this class and its subclasses?
+        </p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" /> Ask AI for more in "{className}"
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'loading') {
+    return (
+      <div className="mt-6 bg-white border border-drug-border rounded-xl p-8 text-center">
+        <RefreshCw className="w-8 h-8 text-primary-400 mx-auto mb-3 animate-spin" />
+        <p className="text-sm text-drug-muted">Gathering medications in "{queriedFor}"…</p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="mt-6 bg-white border border-drug-border rounded-xl p-6 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <p className="text-sm text-red-600 mb-4">{error}</p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+        >
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
+  }
+
+  // streaming or done — render text as it arrives
+  return (
+    <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary-500" />
+          <h2 className="text-lg font-bold text-drug-text">AI: More in "{queriedFor}"</h2>
+          {state === 'streaming' && (
+            <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
+          )}
+        </div>
+        {state === 'done' && (
+          <button
+            onClick={runLookup}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+          </button>
+        )}
+      </div>
+      {text
+        ? renderAiText(text)
+        : <p className="text-sm text-drug-muted">Starting…</p>}
+      {state === 'done' && (
+        <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
+          These medications are AI-generated on demand and not yet verified in our database. Verify before
+          applying to patient care.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BrowsePage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
   const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
@@ -130,21 +249,25 @@ export default function BrowsePage() {
   const { condition }             = useParams();
   const [searchParams]            = useSearchParams();
   const initialQ                  = searchParams.get('q') || condition || '';
+  const initialClass              = searchParams.get('class') || '';
 
   const [searchQuery,  setSearchQuery]  = useState(initialQ);
-  const [filterClass,  setFilterClass]  = useState('');
+  const [filterClass,  setFilterClass]  = useState(initialClass);
   const [filterStatus, setFilterStatus] = useState('');
   const [viewMode,     setViewMode]     = useState('grid');
 
   const filteredDrugs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const fc = filterClass.trim().toLowerCase();
     return ALL_DRUGS.filter(drug => {
       const matchesSearch = !q ||
         drug.generic_name?.toLowerCase().includes(q) ||
         drug.drug_class?.toLowerCase().includes(q) ||
         drug.indications?.toLowerCase().includes(q) ||
         drug.overview?.toLowerCase().includes(q);
-      const matchesClass  = !filterClass  || drug.drug_class === filterClass;
+      const matchesClass  = !fc ||
+        drug.drug_class?.toLowerCase() === fc ||
+        drug.drug_subclass?.toLowerCase() === fc;
       const matchesStatus = !filterStatus || drug.prescription_status === filterStatus;
       return matchesSearch && matchesClass && matchesStatus;
     });
@@ -211,7 +334,9 @@ export default function BrowsePage() {
                   className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">
             Clear filters
           </button>
-          <AiSearchFallback searchQuery={searchQuery} />
+          {filterClass.trim()
+            ? <AiClassFallback className={filterClass} knownDrugNames={[]} />
+            : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -261,6 +386,14 @@ export default function BrowsePage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Sparse class results — offer AI expansion even when 1-2 drugs already matched */}
+      {filteredDrugs.length > 0 && filteredDrugs.length <= 2 && filterClass.trim() && (
+        <AiClassFallback
+          className={filterClass}
+          knownDrugNames={filteredDrugs.map(d => d.generic_name).filter(Boolean)}
+        />
       )}
     </div>
   );

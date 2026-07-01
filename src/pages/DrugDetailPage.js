@@ -495,7 +495,17 @@ export default function DrugDetailPage() {
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
         <p className="text-lg text-primary-600 font-medium mt-1">
-          {drug.drug_class}{drug.drug_subclass && drug.drug_subclass !== drug.drug_class ? ` — ${drug.drug_subclass}` : ''}
+          <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="hover:underline">
+            {drug.drug_class}
+          </Link>
+          {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
+            <>
+              {' — '}
+              <Link to={`/browse?class=${encodeURIComponent(drug.drug_subclass)}`} className="hover:underline">
+                {drug.drug_subclass}
+              </Link>
+            </>
+          )}
         </p>
 
         {/* Route of Administration badges — shown on header */}
@@ -812,13 +822,19 @@ export default function DrugDetailPage() {
             <div className="section-card p-6">
               <h2 className="text-lg font-bold mb-4">Drug Class</h2>
               <div className="flex flex-wrap gap-2">
-                <span className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
+                <Link
+                  to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`}
+                  className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 transition-colors"
+                >
                   {drug.drug_class}
-                </span>
+                </Link>
                 {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
-                  <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
+                  <Link
+                    to={`/browse?class=${encodeURIComponent(drug.drug_subclass)}`}
+                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-200 transition-colors"
+                  >
                     {drug.drug_subclass}
-                  </span>
+                  </Link>
                 )}
               </div>
             </div>
