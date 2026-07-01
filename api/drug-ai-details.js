@@ -1,22 +1,43 @@
-// Vercel serverless function (Node.js runtime).
+// Vercel Edge Function — streams the AI response back as plain text so the
+// UI can render it progressively instead of waiting for the full completion.
 // Calls the Anthropic API server-side so the API key is never exposed to the client.
 // Requires an ANTHROPIC_API_KEY environment variable set in the Vercel project settings.
 
-export default async function handler(req, res) {
+export const config = { runtime: 'edge' };
+
+export default async function handler(req) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json', Allow: 'POST' },
+    });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Server is not configured with an ANTHROPIC_API_KEY.' });
+    return new Response(JSON.stringify({ error: 'Server is not configured with an ANTHROPIC_API_KEY.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
-  const { genericName, brandNames, drugClass, knownData, notInDatabase } = req.body || {};
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid request body.' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const { genericName, brandNames, drugClass, knownData, notInDatabase } = body || {};
 
   if (!genericName || typeof genericName !== 'string') {
-    return res.status(400).json({ error: 'genericName is required.' });
+    return new Response(JSON.stringify({ error: 'genericName is required.' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   const notInDatabaseNote = notInDatabase
@@ -43,8 +64,9 @@ Structure your response with these sections, using clear markdown headers (##):
 
 Be precise, clinically accurate, and concise within each section. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
 
+  let anthropicRes;
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,25 +76,65 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 2000,
+        stream: true,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Anthropic API error:', response.status, errText);
-      return res.status(502).json({ error: 'Failed to reach the AI service.' });
-    }
-
-    const data = await response.json();
-    const text = (data.content || [])
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n');
-
-    return res.status(200).json({ text });
   } catch (err) {
-    console.error('drug-ai-details error:', err);
-    return res.status(500).json({ error: 'Unexpected server error.' });
+    return new Response(JSON.stringify({ error: 'Unexpected server error.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
+
+  if (!anthropicRes.ok || !anthropicRes.body) {
+    let detail = '';
+    try { detail = await anthropicRes.text(); } catch {}
+    console.error('Anthropic API error:', anthropicRes.status, detail);
+    return new Response(JSON.stringify({ error: 'Failed to reach the AI service.' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Parse the Anthropic SSE stream and re-emit just the text deltas as plain text.
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = anthropicRes.body.getReader();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let buffer = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const dataStr = line.slice(6).trim();
+            if (!dataStr || dataStr === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(dataStr);
+              if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+                controller.enqueue(encoder.encode(evt.delta.text));
+              }
+            } catch {
+              // ignore malformed SSE lines
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Stream read error:', err);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
+  });
 }

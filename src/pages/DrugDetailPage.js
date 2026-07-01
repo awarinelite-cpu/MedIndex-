@@ -142,13 +142,14 @@ const TABS = [
 
 /* ── AI Insights Tab ─────────────────────────────────────────────────────── */
 function AiInsightsTab({ drug }) {
-  const [state, setState] = useState('idle'); // idle | loading | done | error
+  const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
   const [text, setText]   = useState('');
   const [error, setError] = useState('');
 
   const fetchInsights = async () => {
     setState('loading');
     setError('');
+    setText('');
     try {
       const knownData = [
         drug.pharmacology && `Pharmacology: ${drug.pharmacology}`,
@@ -166,9 +167,23 @@ function AiInsightsTab({ drug }) {
           knownData,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
-      setText(data.text || '');
+
+      if (!res.ok || !res.body) {
+        let message = 'Something went wrong.';
+        try { message = (await res.json()).error || message; } catch {}
+        throw new Error(message);
+      }
+
+      setState('streaming');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value, { stream: true });
+        setText(full);
+      }
       setState('done');
     } catch (e) {
       setError(e.message || 'Failed to load AI insights.');
@@ -219,25 +234,35 @@ function AiInsightsTab({ drug }) {
     );
   }
 
+  // streaming or done — render text as it arrives
   return (
     <div className="section-card p-6">
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary-500" />
           <h2 className="text-lg font-bold text-drug-text">AI Clinical Insights</h2>
+          {state === 'streaming' && (
+            <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
+          )}
         </div>
-        <button
-          onClick={fetchInsights}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-        </button>
+        {state === 'done' && (
+          <button
+            onClick={fetchInsights}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+          </button>
+        )}
       </div>
-      {renderAiText(text)}
-      <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
-        AI-generated content is a reference aid, not a substitute for the current product monograph or clinical
-        judgment. Verify against official prescribing information before applying to patient care.
-      </div>
+      {text
+        ? renderAiText(text)
+        : <p className="text-sm text-drug-muted">Starting…</p>}
+      {state === 'done' && (
+        <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
+          AI-generated content is a reference aid, not a substitute for the current product monograph or clinical
+          judgment. Verify against official prescribing information before applying to patient care.
+        </div>
+      )}
     </div>
   );
 }
