@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 import { renderAiText } from '../utils/renderAiText';
 
@@ -12,6 +12,7 @@ export default function AiDrugPage() {
   const [searchParams] = useSearchParams();
   const drugClass = searchParams.get('class') || '';
   const genericName = decodeURIComponent(name || '');
+  const navigate = useNavigate();
 
   const [state, setState] = useState('loading'); // loading | streaming | done | error
   const [text, setText]   = useState('');
@@ -65,13 +66,23 @@ export default function AiDrugPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genericName]);
 
-  const backTo = drugClass ? `/browse?class=${encodeURIComponent(drugClass)}` : '/browse';
+  const goBack = () => {
+    // Prefer real browser back so the previous page (search/filter state and
+    // scroll position) is restored exactly as the user left it. Fall back to
+    // /browse only if this page was opened with no prior history (e.g. a
+    // shared link opened directly).
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(drugClass ? `/browse?class=${encodeURIComponent(drugClass)}` : '/browse');
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Link to={backTo} className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium">
+      <button onClick={goBack} className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium">
         <ArrowLeft className="w-4 h-4" /> Back{drugClass ? ` to ${drugClass}` : ''}
-      </Link>
+      </button>
 
       <div className="bg-white border border-drug-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-5">

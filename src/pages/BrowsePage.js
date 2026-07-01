@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
@@ -278,14 +278,30 @@ export default function BrowsePage() {
   const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
 
   const { condition }             = useParams();
-  const [searchParams]            = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialQ                  = searchParams.get('q') || condition || '';
   const initialClass              = searchParams.get('class') || '';
+  const initialStatus             = searchParams.get('status') || '';
+  const initialView               = searchParams.get('view') || 'grid';
 
   const [searchQuery,  setSearchQuery]  = useState(initialQ);
   const [filterClass,  setFilterClass]  = useState(initialClass);
-  const [filterStatus, setFilterStatus] = useState('');
-  const [viewMode,     setViewMode]     = useState('grid');
+  const [filterStatus, setFilterStatus] = useState(initialStatus);
+  const [viewMode,     setViewMode]     = useState(initialView);
+
+  // Keep the URL in sync with the current filters (replacing, not pushing, so
+  // this doesn't spam the history stack). This way, if the user navigates
+  // away — e.g. tapping into a drug's overview — and then presses back, the
+  // page they land back on still has the exact same search/filter/view state.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (searchQuery)  next.set('q', searchQuery);
+    if (filterClass)  next.set('class', filterClass);
+    if (filterStatus) next.set('status', filterStatus);
+    if (viewMode !== 'grid') next.set('view', viewMode);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, filterClass, filterStatus, viewMode]);
 
   const filteredDrugs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

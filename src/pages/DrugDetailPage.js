@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
@@ -435,6 +435,7 @@ function AddToListButton({ drug }) {
 
 export default function DrugDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { drugs } = useDrugs();
   const drug = useMemo(() => drugs.find(d => d.id === id) || null, [drugs, id]);
   const [activeTab, setActiveTab] = useState('overview');
@@ -470,9 +471,12 @@ export default function DrugDetailPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
       <div className="flex items-center justify-between mb-6">
-        <Link to="/browse" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium transition-colors">
-          <ChevronLeft className="w-4 h-4" /> Back to browse
-        </Link>
+        <button
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/browse'))}
+          className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back
+        </button>
         <AddToListButton drug={drug} />
       </div>
 
