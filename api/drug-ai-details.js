@@ -52,15 +52,31 @@ ${drugClass ? `Drug class: ${drugClass}` : ''}
 ${knownData ? `\nExisting reference data already shown to the nurse (do not simply repeat this — add depth, nuance, and anything missing):\n${knownData}` : ''}
 
 Structure your response with these sections, using clear markdown headers (##):
-- Mechanism of Action
+- Overview (concise summary of what the drug is and its place in therapy)
+- Drug Class & Subclass
+- Indications (primary approved uses)
+- Therapeutic Note (clinically useful context: place in therapy, comparison to alternatives, key caveats)
+- Mechanism of Action & Pharmacology
 - Pharmacokinetics (absorption, distribution, metabolism, elimination, half-life)
-- Clinical Uses (including any notable off-label uses)
-- Dosage & Route of Administration (typical adult dosing, route(s) — PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD as applicable — frequency, and any renal/hepatic dose adjustment)
-- Dosage Considerations & Special Populations (renal/hepatic impairment, elderly, pediatric, pregnancy/lactation nuance)
-- Important Drug Interactions (mechanism-level detail, not just a list)
-- Monitoring Parameters
-- Patient/Nursing Education Points
-- Notable Clinical Pearls or Recent Practice Updates
+- Adult Dose (typical dosing, frequency, route(s) — PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD as applicable)
+- Child Dose (pediatric dosing where established; note if not recommended in children)
+- Renal Dose (adjustment for renal impairment)
+- Administration (practical administration instructions — timing with food, reconstitution, infusion rate, etc.)
+- NSTG Recommendations (Nigeria Standard Treatment Guidelines context if known; otherwise general standard-of-care guidance)
+- Contraindications
+- Precautions
+- Pregnancy & Lactation
+- Interaction (important drug interactions, mechanism-level detail)
+- Adverse Effect
+- Advice to Patients (patient counseling points)
+- Nursing Action (nursing-specific monitoring and administration responsibilities)
+- Pharmacovigilance (notable safety signals, black box warnings, reporting considerations)
+- Product Description (formulation/appearance if commonly known)
+- Storage Recommendations
+- Pack Size & Price (general Nigerian market context if known; otherwise note this varies and should be verified locally)
+- Prescription Status & NAFDAC Note (OTC / Prescription / Controlled; state that the NAFDAC registration number must be verified against the product label — never invent one)
+
+Write every section listed above, even briefly — if a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it, so the response fully mirrors this reference schema.
 
 Be precise, clinically accurate, and concise within each section. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
 

@@ -152,9 +152,27 @@ function AiInsightsTab({ drug }) {
     setText('');
     try {
       const knownData = [
+        drug.overview && `Overview: ${drug.overview}`,
+        drug.indications && `Indications: ${drug.indications}`,
+        drug.therapeutic_note && `Therapeutic note: ${drug.therapeutic_note}`,
+        drug.adult_dose && `Adult dose: ${drug.adult_dose}`,
+        drug.child_dose && `Child dose: ${drug.child_dose}`,
+        drug.renal_dose && `Renal dose: ${drug.renal_dose}`,
+        drug.administration && `Administration: ${drug.administration}`,
+        drug.nstg_recommendations && `NSTG recommendations: ${drug.nstg_recommendations}`,
         drug.pharmacology && `Pharmacology: ${drug.pharmacology}`,
-        drug.contraindications && `Known contraindications: ${drug.contraindications}`,
+        drug.advice_to_patients && `Advice to patients: ${drug.advice_to_patients}`,
+        drug.contraindications && `Contraindications: ${drug.contraindications}`,
+        drug.precautions && `Precautions: ${drug.precautions}`,
+        drug.pregnancy_lactation && `Pregnancy/lactation: ${drug.pregnancy_lactation}`,
+        drug.interaction && `Interactions: ${drug.interaction}`,
         drug.adverse_effect && `Known adverse effects: ${drug.adverse_effect}`,
+        drug.nursing_action && `Nursing action: ${drug.nursing_action}`,
+        drug.pharmacovigilance && `Pharmacovigilance: ${drug.pharmacovigilance}`,
+        drug.product_description && `Product description: ${drug.product_description}`,
+        drug.storage_recommendations && `Storage: ${drug.storage_recommendations}`,
+        drug.pack_size_price && `Pack size/price: ${drug.pack_size_price}`,
+        drug.nafdac_no && `NAFDAC no.: ${drug.nafdac_no}`,
       ].filter(Boolean).join('\n');
 
       const res = await fetch('/api/drug-ai-details', {
