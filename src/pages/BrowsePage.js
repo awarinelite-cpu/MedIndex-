@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { renderAiText } from '../utils/renderAiText';
+import { parseAiDrugList } from '../utils/parseAiDrugList';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -185,7 +186,7 @@ function AiClassFallback({ className, knownDrugNames }) {
     );
   }
 
-  if (state === 'loading') {
+  if (state === 'loading' || state === 'streaming') {
     return (
       <div className="mt-6 bg-white border border-drug-border rounded-xl p-8 text-center">
         <RefreshCw className="w-8 h-8 text-primary-400 mx-auto mb-3 animate-spin" />
@@ -209,35 +210,65 @@ function AiClassFallback({ className, knownDrugNames }) {
     );
   }
 
-  // streaming or done — render text as it arrives
+  // done — render as clickable rows matching the app's normal browse list
+  const items = parseAiDrugList(text);
+
   return (
-    <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
-      <div className="flex items-center justify-between mb-5">
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary-500" />
           <h2 className="text-lg font-bold text-drug-text">AI: More in "{queriedFor}"</h2>
-          {state === 'streaming' && (
-            <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
-          )}
         </div>
-        {state === 'done' && (
-          <button
-            onClick={runLookup}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-          </button>
-        )}
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+        </button>
       </div>
-      {text
-        ? renderAiText(text)
-        : <p className="text-sm text-drug-muted">Starting…</p>}
-      {state === 'done' && (
-        <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
-          These medications are AI-generated on demand and not yet verified in our database. Verify before
-          applying to patient care.
+
+      {items.length > 0 ? (
+        <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
+          {items.map((item, i) => (
+            <Link
+              key={`${item.name}-${i}`}
+              to={`/ai-drug/${encodeURIComponent(item.name)}?class=${encodeURIComponent(item.subclass || className)}`}
+              className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
+                i !== items.length - 1 ? 'border-b border-drug-border' : ''
+              }`}
+            >
+              <div className="p-2 bg-primary-50 rounded-lg flex-shrink-0">
+                <Pill className="w-5 h-5 text-primary-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-bold truncate">{item.name}</h3>
+                <p className="text-sm text-primary-600 truncate">{item.subclass || className}</p>
+              </div>
+              <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-purple-100 text-purple-700 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI
+              </span>
+              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+            </Link>
+          ))}
+        </div>
+      ) : (
+        // Fallback if the response didn't follow the expected bullet format
+        // (e.g. "this isn't a recognized drug class") — show the raw text instead.
+        <div className="bg-white border border-drug-border rounded-xl p-6">
+          {text
+            ? renderAiText(text, {
+                getLinkPath: (drugName) =>
+                  `/ai-drug/${encodeURIComponent(drugName)}?class=${encodeURIComponent(className)}`,
+              })
+            : <p className="text-sm text-drug-muted">No results.</p>}
         </div>
       )}
+
+      <div className="mt-3 text-xs text-drug-muted leading-relaxed px-1">
+        These medications are AI-generated on demand and not yet verified in our database. Tap a name above
+        for its full breakdown. Verify before applying to patient care.
+      </div>
     </div>
   );
 }

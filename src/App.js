@@ -8,6 +8,7 @@ import ProtectedAdminRoute from './components/ProtectedAdminRoute';
 import UserAuthPage from './pages/UserAuthPage';
 import HomePage from './pages/HomePage';
 import DrugDetailPage from './pages/DrugDetailPage';
+import AiDrugPage from './pages/AiDrugPage';
 import BrowsePage from './pages/BrowsePage';
 import DrugListsPage from './pages/DrugListsPage';
 import DrugListDetailPage from './pages/DrugListDetailPage';
@@ -31,6 +32,11 @@ function App() {
         <Route path="/drug/:id" element={
           <ProtectedUserRoute>
             <Layout><DrugDetailPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/ai-drug/:name" element={
+          <ProtectedUserRoute>
+            <Layout><AiDrugPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/browse" element={
