@@ -1,7 +1,102 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Pill, ChevronRight, Grid3X3, List } from 'lucide-react';
+import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { renderAiText } from '../utils/renderAiText';
+
+/* ── AI fallback lookup for drugs not yet in the database ───────────────── */
+function AiSearchFallback({ searchQuery }) {
+  const [state, setState] = useState('idle'); // idle | loading | done | error
+  const [text, setText]   = useState('');
+  const [error, setError] = useState('');
+  const [queriedFor, setQueriedFor] = useState('');
+
+  const runLookup = async () => {
+    setState('loading');
+    setError('');
+    setQueriedFor(searchQuery);
+    try {
+      const res = await fetch('/api/drug-ai-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ genericName: searchQuery.trim(), notInDatabase: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+      setText(data.text || '');
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI lookup.');
+      setState('error');
+    }
+  };
+
+  if (!searchQuery.trim()) return null;
+
+  if (state === 'idle') {
+    return (
+      <div className="mt-6 bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
+        <Sparkles className="w-8 h-8 text-primary-500 mx-auto mb-3" />
+        <p className="text-sm text-drug-text mb-4">
+          "{searchQuery}" isn't in our database yet. Want the AI to look it up — dosage, route of
+          administration, and full clinical details — on the spot?
+        </p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" /> Ask AI about "{searchQuery}"
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'loading') {
+    return (
+      <div className="mt-6 bg-white border border-drug-border rounded-xl p-8 text-center">
+        <RefreshCw className="w-8 h-8 text-primary-400 mx-auto mb-3 animate-spin" />
+        <p className="text-sm text-drug-muted">Looking up "{queriedFor}"…</p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="mt-6 bg-white border border-drug-border rounded-xl p-6 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <p className="text-sm text-red-600 mb-4">{error}</p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+        >
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary-500" />
+          <h2 className="text-lg font-bold text-drug-text">AI Lookup: {queriedFor}</h2>
+        </div>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+        </button>
+      </div>
+      {renderAiText(text)}
+      <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
+        This drug is not yet in the verified database — the above is AI-generated on demand and not a
+        substitute for the current product monograph or clinical judgment. Verify before applying to patient care.
+      </div>
+    </div>
+  );
+}
 
 export default function BrowsePage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
@@ -91,6 +186,7 @@ export default function BrowsePage() {
                   className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">
             Clear filters
           </button>
+          <AiSearchFallback searchQuery={searchQuery} />
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

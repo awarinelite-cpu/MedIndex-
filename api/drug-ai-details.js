@@ -13,14 +13,18 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server is not configured with an ANTHROPIC_API_KEY.' });
   }
 
-  const { genericName, brandNames, drugClass, knownData } = req.body || {};
+  const { genericName, brandNames, drugClass, knownData, notInDatabase } = req.body || {};
 
   if (!genericName || typeof genericName !== 'string') {
     return res.status(400).json({ error: 'genericName is required.' });
   }
 
-  const prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
+  const notInDatabaseNote = notInDatabase
+    ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. If "${genericName}" is not a real or recognized medication (e.g. it's a typo, a non-drug term, or you are not confident it exists), say so clearly at the very top of your response instead of inventing information. Only proceed with the full structured breakdown if you are reasonably confident this is a genuine medication.\n`
+    : '';
 
+  const prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
+${notInDatabaseNote}
 Drug: ${genericName}
 ${brandNames ? `Known brand names: ${brandNames}` : ''}
 ${drugClass ? `Drug class: ${drugClass}` : ''}
@@ -30,6 +34,7 @@ Structure your response with these sections, using clear markdown headers (##):
 - Mechanism of Action
 - Pharmacokinetics (absorption, distribution, metabolism, elimination, half-life)
 - Clinical Uses (including any notable off-label uses)
+- Dosage & Route of Administration (typical adult dosing, route(s) — PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD as applicable — frequency, and any renal/hepatic dose adjustment)
 - Dosage Considerations & Special Populations (renal/hepatic impairment, elderly, pediatric, pregnancy/lactation nuance)
 - Important Drug Interactions (mechanism-level detail, not just a list)
 - Monitoring Parameters
