@@ -5,7 +5,12 @@
 // Optionally set GEMINI_MODEL to override the default (e.g. "gemini-2.5-flash"
 // for higher quality, vs the default "gemini-2.5-flash-lite" for lowest cost).
 
-export const config = { runtime: 'edge' };
+// Pinned to iad1 (US East) rather than left to auto-select the region nearest
+// the client: Gemini's free tier rejects requests from some regions (notably
+// EU-adjacent ones) with "User location is not supported for the API use",
+// and Vercel Edge Functions otherwise execute nearest the connecting client —
+// which for Nigeria-origin traffic can land in a blocked region.
+export const config = { runtime: 'edge', regions: ['iad1'] };
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 
