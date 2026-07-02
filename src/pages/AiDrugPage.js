@@ -1,7 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Lock } from 'lucide-react';
+import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
+import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+
+// Same deterministic-ID convention used by UploadPage.js's CSV import, so an
+// AI-saved drug and a later CSV upload of the same generic name land on the
+// same document instead of duplicating.
+function slugifyName(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
+}
 
 // Auto-runs the same on-demand AI lookup used elsewhere in the app (the one
 // that follows the full CSV field pattern — overview, indications, dosing,
@@ -14,10 +25,16 @@ export default function AiDrugPage() {
   const genericName = decodeURIComponent(name || '');
   const navigate = useNavigate();
 
+  const { isAdmin } = useAuth();
+
   const [state, setState] = useState('loading'); // loading | streaming | done | error
   const [text, setText]   = useState('');
   const [error, setError] = useState('');
   const startedFor = useRef('');
+
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+  const [saveError, setSaveError] = useState('');
+  const [savedId, setSavedId]     = useState('');
 
   const runLookup = async () => {
     setState('loading');
@@ -66,6 +83,51 @@ export default function AiDrugPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genericName]);
 
+  const saveToDatabase = async () => {
+    setSaveState('saving');
+    setSaveError('');
+    try {
+      const parsed = parseAiDrugDetail(text);
+      const finalClass = drugClass || parsed.drug_class || '';
+      if (!finalClass) {
+        throw new Error('No drug class found — reopen this lookup from a class list, or add the class via Admin after saving.');
+      }
+
+      const docId = slugifyName(genericName);
+      const ref = doc(db, 'drugs', docId);
+
+      const existing = await getDoc(ref);
+      if (existing.exists()) {
+        const ok = window.confirm(
+          `"${genericName}" already exists in the database. Overwrite it with this AI-generated version?`
+        );
+        if (!ok) {
+          setSaveState('idle');
+          return;
+        }
+      }
+
+      await setDoc(ref, {
+        ...parsed,
+        generic_name: genericName,
+        drug_class: finalClass,
+        drug_subclass: parsed.drug_subclass || null,
+        prescription_status: parsed.prescription_status || 'Prescription',
+        nafdac_no: null, // never invented — must be verified and entered manually
+        source: 'AI Generated',
+        status: 'Active',
+        created_at: existing.exists() ? existing.data().created_at || serverTimestamp() : serverTimestamp(),
+        last_updated: serverTimestamp(),
+      }, { merge: false });
+
+      setSavedId(docId);
+      setSaveState('saved');
+    } catch (e) {
+      setSaveError(e.message || 'Failed to save this drug.');
+      setSaveState('error');
+    }
+  };
+
   const goBack = () => {
     // Prefer real browser back so the previous page (search/filter state and
     // scroll position) is restored exactly as the user left it. Fall back to
@@ -94,12 +156,25 @@ export default function AiDrugPage() {
             )}
           </div>
           {state === 'done' && (
-            <button
-              onClick={runLookup}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 flex-shrink-0"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-            </button>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {isAdmin && saveState !== 'saved' && (
+                <button
+                  onClick={saveToDatabase}
+                  disabled={saveState === 'saving'}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-60 px-3 py-1.5 rounded-lg"
+                >
+                  {saveState === 'saving'
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                    : <><Save className="w-3.5 h-3.5" /> Save to Database</>}
+                </button>
+              )}
+              <button
+                onClick={runLookup}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+              </button>
+            </div>
           )}
         </div>
 
@@ -127,6 +202,33 @@ export default function AiDrugPage() {
           text
             ? renderAiText(text)
             : <p className="text-sm text-drug-muted">Starting…</p>
+        )}
+
+        {saveState === 'saved' && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              Saved to the database. You can{' '}
+              <button onClick={() => navigate(`/drug/${savedId}`)} className="font-semibold underline">
+                view it now
+              </button>{' '}
+              or edit it further in Admin.
+            </span>
+          </div>
+        )}
+
+        {saveState === 'error' && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{saveError}</span>
+          </div>
+        )}
+
+        {state === 'done' && !isAdmin && (
+          <div className="mt-4 flex items-center gap-2 text-xs text-drug-muted">
+            <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+            Only admins can save AI-generated drugs into the shared database.
+          </div>
         )}
 
         {state === 'done' && (
