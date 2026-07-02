@@ -1,9 +1,13 @@
 // Vercel Edge Function — streams the AI response back as plain text so the
 // UI can render it progressively instead of waiting for the full completion.
-// Calls the Anthropic API server-side so the API key is never exposed to the client.
-// Requires an ANTHROPIC_API_KEY environment variable set in the Vercel project settings.
+// Calls the Gemini API server-side so the API key is never exposed to the client.
+// Requires a GEMINI_API_KEY environment variable set in the Vercel project settings.
+// Optionally set GEMINI_MODEL to override the default (e.g. "gemini-2.5-flash"
+// for higher quality, vs the default "gemini-2.5-flash-lite" for lowest cost).
 
 export const config = { runtime: 'edge' };
+
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -13,13 +17,15 @@ export default async function handler(req) {
     });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server is not configured with an ANTHROPIC_API_KEY.' }), {
+    return new Response(JSON.stringify({ error: 'Server is not configured with a GEMINI_API_KEY.' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
 
   let body;
   try {
@@ -112,22 +118,22 @@ Within each section, bold any sub-labels using **double asterisks** (e.g. "**Abs
 Be precise, clinically accurate, and concise within each section. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
   }
 
-  let anthropicRes;
+  let geminiRes;
   try {
-    anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: mode === 'class' ? 3000 : 2000,
-        stream: true,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
+    geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : 2000 },
+        }),
+      }
+    );
   } catch (err) {
     return new Response(JSON.stringify({ error: 'Unexpected server error.' }), {
       status: 500,
@@ -135,20 +141,22 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
     });
   }
 
-  if (!anthropicRes.ok || !anthropicRes.body) {
+  if (!geminiRes.ok || !geminiRes.body) {
     let detail = '';
-    try { detail = await anthropicRes.text(); } catch {}
-    console.error('Anthropic API error:', anthropicRes.status, detail);
+    try { detail = await geminiRes.text(); } catch {}
+    console.error('Gemini API error:', geminiRes.status, detail);
     return new Response(JSON.stringify({ error: 'Failed to reach the AI service.' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  // Parse the Anthropic SSE stream and re-emit just the text deltas as plain text.
+  // Parse the Gemini SSE stream and re-emit just the text deltas as plain text.
+  // Each SSE "data:" line is a full GenerateContentResponse JSON object; the
+  // text lives at candidates[0].content.parts[*].text.
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const reader = anthropicRes.body.getReader();
+  const reader = geminiRes.body.getReader();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -166,8 +174,13 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
             if (!dataStr || dataStr === '[DONE]') continue;
             try {
               const evt = JSON.parse(dataStr);
-              if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-                controller.enqueue(encoder.encode(evt.delta.text));
+              const parts = evt?.candidates?.[0]?.content?.parts;
+              if (Array.isArray(parts)) {
+                for (const part of parts) {
+                  if (typeof part.text === 'string') {
+                    controller.enqueue(encoder.encode(part.text));
+                  }
+                }
               }
             } catch {
               // ignore malformed SSE lines
