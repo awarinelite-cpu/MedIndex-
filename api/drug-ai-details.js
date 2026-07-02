@@ -124,33 +124,61 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
   }
 
   let geminiRes;
-  try {
-    geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : 2000 },
-        }),
-      }
-    );
-  } catch (err) {
-    return new Response(JSON.stringify({ error: 'Unexpected server error.' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  let attempts = 0;
+  const MAX_RETRIES = 3;
+
+  while (attempts <= MAX_RETRIES) {
+    try {
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : 2000 },
+          }),
+        }
+      );
+    } catch (err) {
+      return new Response(JSON.stringify({ error: 'Unexpected server error.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (geminiRes.status === 429 && attempts < MAX_RETRIES) {
+      // Parse the retry delay Gemini tells us to wait
+      let waitMs = 60000; // default 60s
+      try {
+        const errBody = await geminiRes.clone().json();
+        const retryInfo = errBody?.error?.details?.find(d => d['@type']?.includes('RetryInfo'));
+        if (retryInfo?.retryDelay) {
+          const secs = parseFloat(retryInfo.retryDelay.replace('s', ''));
+          if (!isNaN(secs)) waitMs = Math.ceil(secs * 1000) + 500;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, waitMs));
+      attempts++;
+      continue;
+    }
+
+    break;
   }
 
   if (!geminiRes.ok || !geminiRes.body) {
     let detail = '';
     try { detail = await geminiRes.text(); } catch {}
     console.error('Gemini API error:', geminiRes.status, detail);
-    return new Response(JSON.stringify({ error: 'Failed to reach the AI service.' }), {
+    const isQuota = geminiRes.status === 429;
+    return new Response(JSON.stringify({
+      error: isQuota
+        ? 'AI quota exceeded. The free tier allows 20 requests/day. Upgrade your Gemini API key at aistudio.google.com, or try again tomorrow.'
+        : 'Failed to reach the AI service.',
+    }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
