@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Lock } from 'lucide-react';
-import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
-import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
-
-// Same deterministic-ID convention used by UploadPage.js's CSV import, so an
-// AI-saved drug and a later CSV upload of the same generic name land on the
-// same document instead of duplicating.
-function slugifyName(name) {
-  return name.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
-}
+import { saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
 
 // Auto-runs the same on-demand AI lookup used elsewhere in the app (the one
 // that follows the full CSV field pattern — overview, indications, dosing,
@@ -87,17 +78,13 @@ export default function AiDrugPage() {
     setSaveState('saving');
     setSaveError('');
     try {
-      const parsed = parseAiDrugDetail(text);
-      const finalClass = drugClass || parsed.drug_class || '';
-      if (!finalClass) {
-        throw new Error('No drug class found — reopen this lookup from a class list, or add the class via Admin after saving.');
-      }
+      const docId = slugifyDrugName(genericName);
+      let overwrite = false;
 
-      const docId = slugifyName(genericName);
-      const ref = doc(db, 'drugs', docId);
-
-      const existing = await getDoc(ref);
-      if (existing.exists()) {
+      // Pre-check for an existing entry so we can confirm before overwriting
+      // (saveAiDrugToDatabase itself would just silently skip instead).
+      const firstAttempt = await saveAiDrugToDatabase({ genericName, drugClass, text });
+      if (firstAttempt.status === 'skipped') {
         const ok = window.confirm(
           `"${genericName}" already exists in the database. Overwrite it with this AI-generated version?`
         );
@@ -105,20 +92,9 @@ export default function AiDrugPage() {
           setSaveState('idle');
           return;
         }
+        overwrite = true;
+        await saveAiDrugToDatabase({ genericName, drugClass, text, overwrite });
       }
-
-      await setDoc(ref, {
-        ...parsed,
-        generic_name: genericName,
-        drug_class: finalClass,
-        drug_subclass: parsed.drug_subclass || null,
-        prescription_status: parsed.prescription_status || 'Prescription',
-        nafdac_no: null, // never invented — must be verified and entered manually
-        source: 'AI Generated',
-        status: 'Active',
-        created_at: existing.exists() ? existing.data().created_at || serverTimestamp() : serverTimestamp(),
-        last_updated: serverTimestamp(),
-      }, { merge: false });
 
       setSavedId(docId);
       setSaveState('saved');

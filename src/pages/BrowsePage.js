@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
+import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -126,10 +128,40 @@ function AiSearchFallback({ searchQuery }) {
 
 /* ── AI fallback for sparse class/subclass results ───────────────────────── */
 function AiClassFallback({ className, knownDrugNames }) {
+  const { isAdmin } = useAuth();
   const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
   const [text, setText]   = useState('');
   const [error, setError] = useState('');
   const [queriedFor, setQueriedFor] = useState('');
+
+  const [bulkState, setBulkState]       = useState('idle'); // idle | running | done
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [bulkResults, setBulkResults]   = useState(null); // { saved, skipped, errors: [{name, message}] }
+
+  const saveAllToDatabase = async (items) => {
+    setBulkState('running');
+    setBulkResults(null);
+    let saved = 0, skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
+      const drugClassForItem = item.subclass || className;
+      try {
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
+        const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: drugClassForItem, text: itemText });
+        if (result.status === 'saved') saved += 1; else skipped += 1;
+      } catch (e) {
+        errors.push({ name: item.name, message: e.message || 'Failed to save.' });
+      }
+      // Brief pause between requests to stay gentle on the AI provider's rate limits.
+      await new Promise(r => setTimeout(r, 350));
+    }
+
+    setBulkResults({ saved, skipped, errors });
+    setBulkState('done');
+  };
 
   const runLookup = async () => {
     setState('loading');
@@ -216,17 +248,70 @@ function AiClassFallback({ className, knownDrugNames }) {
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-primary-500" />
-          <h2 className="text-lg font-bold text-drug-text">AI: More in "{queriedFor}"</h2>
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-5 h-5 text-primary-500 flex-shrink-0" />
+          <h2 className="text-lg font-bold text-drug-text truncate">AI: More in "{queriedFor}"</h2>
         </div>
-        <button
-          onClick={runLookup}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-        </button>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {isAdmin && items.length > 0 && bulkState !== 'running' && (
+            <button
+              onClick={() => saveAllToDatabase(items)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg"
+            >
+              <Save className="w-3.5 h-3.5" /> Save All to Database
+            </button>
+          )}
+          <button
+            onClick={runLookup}
+            disabled={bulkState === 'running'}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+          </button>
+        </div>
       </div>
+
+      {bulkState === 'running' && (
+        <div className="mb-3 bg-primary-50 border border-primary-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-sm text-drug-text mb-2">
+            <RefreshCw className="w-4 h-4 text-primary-500 animate-spin flex-shrink-0" />
+            <span className="truncate">
+              Saving {bulkProgress.current} of {bulkProgress.total} — {bulkProgress.currentName}…
+            </span>
+          </div>
+          <div className="h-1.5 bg-primary-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary-500 rounded-full transition-all"
+              style={{ width: `${(bulkProgress.current / Math.max(bulkProgress.total, 1)) * 100}%` }}
+            />
+          </div>
+          <p className="text-xs text-drug-muted mt-2">
+            This makes one AI request per medication, so it can take a while for a long list — feel free to
+            stay on this screen until it finishes.
+          </p>
+        </div>
+      )}
+
+      {bulkState === 'done' && bulkResults && (
+        <div className={`mb-3 rounded-xl p-4 border text-sm ${
+          bulkResults.errors.length > 0 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'
+        }`}>
+          <div className={`flex items-center gap-2 font-semibold ${
+            bulkResults.errors.length > 0 ? 'text-amber-700' : 'text-green-700'
+          }`}>
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            Saved {bulkResults.saved}{bulkResults.skipped > 0 ? `, skipped ${bulkResults.skipped} (already in database)` : ''}
+            {bulkResults.errors.length > 0 ? `, ${bulkResults.errors.length} failed` : ''}.
+          </div>
+          {bulkResults.errors.length > 0 && (
+            <ul className="mt-2 text-xs text-amber-700 space-y-0.5">
+              {bulkResults.errors.map((err, i) => (
+                <li key={i}>• {err.name}: {err.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {items.length > 0 ? (
         <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
