@@ -9,10 +9,12 @@ import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
-  const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
-  const [text, setText]   = useState('');
+  const cacheKey = `ai_search_${searchQuery.trim().toLowerCase()}`;
+
+  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError] = useState('');
-  const [queriedFor, setQueriedFor] = useState('');
+  const [queriedFor, setQueriedFor] = useState(searchQuery);
 
   const runLookup = async () => {
     setState('loading');
@@ -42,6 +44,8 @@ function AiSearchFallback({ searchQuery }) {
         full += decoder.decode(value, { stream: true });
         setText(full);
       }
+      // Cache result so Back navigation restores it instantly
+      sessionStorage.setItem(cacheKey, full);
       setState('done');
     } catch (e) {
       setError(e.message || 'Failed to load AI lookup.');
@@ -106,7 +110,7 @@ function AiSearchFallback({ searchQuery }) {
         </div>
         {state === 'done' && (
           <button
-            onClick={runLookup}
+            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Regenerate
@@ -129,10 +133,11 @@ function AiSearchFallback({ searchQuery }) {
 /* ── AI fallback for sparse class/subclass results ───────────────────────── */
 function AiClassFallback({ className, knownDrugNames }) {
   const { isAdmin } = useAuth();
-  const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
-  const [text, setText]   = useState('');
+  const cacheKey = `ai_class_${className.trim().toLowerCase()}`;
+  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError] = useState('');
-  const [queriedFor, setQueriedFor] = useState('');
+  const [queriedFor, setQueriedFor] = useState(className);
 
   const [bulkState, setBulkState]       = useState('idle'); // idle | running | done
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
@@ -191,6 +196,8 @@ function AiClassFallback({ className, knownDrugNames }) {
         full += decoder.decode(value, { stream: true });
         setText(full);
       }
+      // Cache so Back button restores result instantly
+      sessionStorage.setItem(cacheKey, full);
       setState('done');
     } catch (e) {
       setError(e.message || 'Failed to load AI lookup.');
@@ -262,7 +269,7 @@ function AiClassFallback({ className, knownDrugNames }) {
             </button>
           )}
           <button
-            onClick={runLookup}
+            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
             disabled={bulkState === 'running'}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
           >
@@ -373,6 +380,26 @@ export default function BrowsePage() {
   const [filterClass,  setFilterClass]  = useState(initialClass);
   const [filterStatus, setFilterStatus] = useState(initialStatus);
   const [viewMode,     setViewMode]     = useState(initialView);
+
+  // Restore scroll position when returning via Back button
+  const SCROLL_KEY = 'browse_scroll_y';
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SCROLL_KEY);
+    if (saved) {
+      requestAnimationFrame(() => window.scrollTo(0, parseInt(saved, 10)));
+      sessionStorage.removeItem(SCROLL_KEY);
+    }
+  }, []);
+  useEffect(() => {
+    const save = () => sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+    window.addEventListener('beforeunload', save);
+    // Also save on any link click (SPA navigation)
+    document.addEventListener('click', save);
+    return () => {
+      window.removeEventListener('beforeunload', save);
+      document.removeEventListener('click', save);
+    };
+  }, []);
 
   // Keep the URL in sync with the current filters (replacing, not pushing, so
   // this doesn't spam the history stack). This way, if the user navigates
