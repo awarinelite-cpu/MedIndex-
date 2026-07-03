@@ -9,19 +9,16 @@ import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
-  Sparkles, ChevronRight, Zap,
+  Sparkles, ChevronRight, Zap, PlayCircle,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
-import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
+import { generateAndSaveIfComplete, REQUIRED_FIELD_GROUPS, getMissingGroups } from '../utils/aiDrugSave';
 
-// ── Required fields — a drug is "incomplete" if ANY of these is blank ──────
-const REQUIRED_FIELDS = [
-  'overview', 'primary_indications', 'dosage', 'mechanism',
-  'side_effects', 'contraindications', 'nursing_considerations',
-];
-
+// ── Completeness check using unified field group aliases ──────────────────
+// Handles both AI schema (indications/adverse_effect/nursing_action)
+// and legacy CSV schema (primary_indications/side_effects/nursing_considerations)
 function isIncomplete(drug) {
-  return REQUIRED_FIELDS.some(f => !drug[f] || String(drug[f]).trim().length < 20);
+  return getMissingGroups(drug).length > 0;
 }
 
 // ── Editable fields ────────────────────────────────────────────────────────
@@ -32,19 +29,17 @@ const EDITABLE_FIELDS = [
   { key: 'prescription_status',   label: 'Prescription Status',   type: 'select',   required: true,
     options: ['OTC', 'Prescription', 'Controlled'] },
   { key: 'overview',              label: 'Overview',              type: 'textarea', required: false },
-  { key: 'primary_indications',   label: 'Primary Indications',   type: 'textarea', required: false },
-  { key: 'dosage',                label: 'Dosage',                type: 'textarea', required: false },
-  { key: 'mechanism',             label: 'Mechanism of Action',   type: 'textarea', required: false },
-  { key: 'side_effects',          label: 'Side Effects',          type: 'textarea', required: false },
+  { key: 'indications',           label: 'Indications',           type: 'textarea', required: false },
+  { key: 'adult_dose',            label: 'Adult Dose',            type: 'textarea', required: false },
+  { key: 'pharmacology',          label: 'Mechanism / Pharmacology', type: 'textarea', required: false },
+  { key: 'adverse_effect',        label: 'Adverse Effects',       type: 'textarea', required: false },
   { key: 'contraindications',     label: 'Contraindications',     type: 'textarea', required: false },
-  { key: 'nursing_considerations',label: 'Nursing Considerations',type: 'textarea', required: false },
+  { key: 'nursing_action',        label: 'Nursing Considerations', type: 'textarea', required: false },
   { key: 'source',                label: 'Source',                type: 'text',     required: false },
 ];
 
 const ALL_STATUSES = ['OTC', 'Prescription', 'Controlled'];
-
-// ── Parallel save (Pro tier) — up to N concurrent saves ───────────────────
-const PARALLEL_SAVES = 5; // safe for Gemini paid tier
+const PARALLEL_SAVES = 4;
 
 async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
   const results = [];
@@ -58,7 +53,7 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('drugs'); // 'drugs' | 'ai'
+  const [activeTab, setActiveTab]  = useState('drugs');
 
   // ── Drug list state ────────────────────────────────────────────────────
   const [drugs,            setDrugs]            = useState([]);
@@ -79,10 +74,10 @@ export default function AdminPage() {
   const [deleteTarget,     setDeleteTarget]     = useState(null);
 
   // ── AI Generate state ──────────────────────────────────────────────────
-  const [aiClassList,     setAiClassList]     = useState([]); // [{className, count, incomplete}]
-  const [expandedClass,   setExpandedClass]   = useState(null);
-  const [classAiState,    setClassAiState]    = useState({}); // {className: {status,log,newDrugs,toFix}}
-  const [runningClass,    setRunningClass]    = useState(null);
+  const [aiClassList,   setAiClassList]   = useState([]);
+  const [expandedClass, setExpandedClass] = useState(null);
+  const [classAiState,  setClassAiState]  = useState({});
+  const [runningClass,  setRunningClass]  = useState(null);
   const abortRef = useRef(false);
 
   // ── Load from Firestore ────────────────────────────────────────────────
@@ -90,18 +85,13 @@ export default function AdminPage() {
     setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'drugs'));
-      if (snap.empty) {
-        await seedFirestore();
-        return;
-      }
+      if (snap.empty) { await seedFirestore(); return; }
       const data = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
       data.sort((a, b) => (a.generic_name || '').localeCompare(b.generic_name || ''));
       setDrugs(data);
-    } catch (err) {
-      showToast('Failed to load: ' + err.message, 'error');
-    }
+    } catch (err) { showToast('Failed to load: ' + err.message, 'error'); }
     setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line
 
   useEffect(() => { loadDrugs(); }, [loadDrugs]);
 
@@ -137,9 +127,7 @@ export default function AdminPage() {
         await batch.commit();
       }
       showToast(`Seeded ${seedDrugs.length} drugs.`);
-    } catch (err) {
-      showToast('Seed failed: ' + err.message, 'error');
-    }
+    } catch (err) { showToast('Seed failed: ' + err.message, 'error'); }
     setSeeding(false);
     await loadDrugs();
   }
@@ -150,41 +138,47 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 4500);
   }
 
-  function setClassLog(className, update) {
+  function patchClassState(className, update) {
     setClassAiState(prev => ({
       ...prev,
       [className]: { ...(prev[className] || {}), ...update },
     }));
   }
 
+  function addClassLog(className, msg) {
+    setClassAiState(prev => ({
+      ...prev,
+      [className]: {
+        ...(prev[className] || {}),
+        log: [...(prev[className]?.log || []), msg],
+      },
+    }));
+  }
+
   // ── AI: Generate for one class ─────────────────────────────────────────
-  // Steps:
-  //  1. Call AI in 'class' mode to get a list of all drugs in the class
-  //  2. Diff against existing drugs — find new ones + find incomplete ones
-  //  3. For each new drug: fetch full AI detail + save (parallel)
-  //  4. For each incomplete drug: regenerate full AI detail + overwrite (parallel)
+  // Flow:
+  //   1. Ask AI for full drug list in this class
+  //   2. Diff: new drugs (not in DB) + incomplete existing drugs
+  //   3. For each: generate → validate ALL required fields → save ONLY if complete
+  //   4. Background: each drug saves as soon as it's fully verified
   async function runAiForClass(className) {
     if (runningClass) return;
     abortRef.current = false;
     setRunningClass(className);
     setExpandedClass(className);
-    setClassLog(className, { status: 'running', log: [`🔍 Scanning class: ${className}…`], newDrugs: [], toFix: [], saved: [], failed: [] });
+    patchClassState(className, {
+      status: 'running', log: [`🔍 Scanning class: ${className}…`],
+      newDrugs: [], toFix: [], saved: [], incomplete: [], failed: [],
+    });
 
-    const addLog = (msg) => setClassAiState(prev => ({
-      ...prev,
-      [className]: {
-        ...prev[className],
-        log: [...(prev[className]?.log || []), msg],
-      },
-    }));
+    const log = (msg) => addClassLog(className, msg);
 
     try {
-      // ── Step 1: get AI drug list for class ──────────────────────────────
+      // ── Step 1: get AI drug list ─────────────────────────────────────────
       const existingInClass = drugs.filter(d => d.drug_class === className);
       const existingNames   = existingInClass.map(d => (d.generic_name || '').toLowerCase());
 
-      addLog(`📋 Fetching AI list for "${className}"…`);
-
+      log(`📋 Fetching AI drug list for "${className}"…`);
       const listRes = await fetch('/api/drug-ai-details', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,82 +191,93 @@ export default function AdminPage() {
       if (!listRes.ok) throw new Error('AI class list request failed.');
       const listText = await listRes.text();
 
-      // Parse drug names from the AI list response (bold names: **Name**)
       const aiNames = [...listText.matchAll(/\*\*([^*]+)\*\*/g)]
         .map(m => m[1].trim())
         .filter(n => n.length > 1 && n.length < 60);
-
-      // Deduplicate
       const uniqueAiNames = [...new Set(aiNames)];
-      addLog(`✅ AI found ${uniqueAiNames.length} drugs in "${className}"`);
+      log(`✅ AI found ${uniqueAiNames.length} drugs in "${className}"`);
 
       // ── Step 2: classify ─────────────────────────────────────────────────
-      const newDrugs  = uniqueAiNames.filter(n => !existingNames.includes(n.toLowerCase()));
-      const toFix     = existingInClass.filter(isIncomplete).map(d => d.generic_name);
+      const newDrugs = uniqueAiNames.filter(n => !existingNames.includes(n.toLowerCase()));
+      const toFix    = existingInClass
+        .filter(isIncomplete)
+        .map(d => d.generic_name);
 
-      setClassLog(className, { newDrugs, toFix });
-      addLog(`🆕 New drugs to add: ${newDrugs.length}`);
-      addLog(`🔧 Incomplete drugs to regenerate: ${toFix.length}`);
+      patchClassState(className, { newDrugs, toFix });
+      log(`🆕 New drugs to add: ${newDrugs.length}`);
+      log(`🔧 Incomplete drugs to fix: ${toFix.length}`);
 
       if (newDrugs.length === 0 && toFix.length === 0) {
-        addLog('🎉 Class is complete — nothing to do!');
-        setClassLog(className, { status: 'done' });
+        log('🎉 Class is already complete — nothing to do!');
+        patchClassState(className, { status: 'done' });
         setRunningClass(null);
         return;
       }
 
-      const saved = [];
-      const failed = [];
+      const saved     = [];
+      const incomplete = [];
+      const failed    = [];
 
-      // ── Step 3: save new drugs (parallel) ───────────────────────────────
+      // ── Shared handler: generate → validate → save ────────────────────────
+      // Each drug is saved to Firestore ONLY when ALL required fields are verified.
+      // If the first generation is incomplete, one automatic retry runs.
+      // A drug is NEVER saved with missing or trivially-short fields.
+      const processOneDrug = async (name, overwrite) => {
+        if (abortRef.current) return;
+        const result = await generateAndSaveIfComplete({
+          genericName: name,
+          drugClass:   className,
+          overwrite,
+          onProgress:  log,
+        });
+        if (result.status === 'saved') {
+          saved.push(name);
+          patchClassState(className, { saved: [...saved] });
+          // Update local drug list so the table shows the new entry
+          setDrugs(prev => {
+            const exists = prev.find(d => d.id === result.id);
+            if (exists) return prev.map(d => d.id === result.id ? { ...d, source: 'AI Generated' } : d);
+            return prev; // full reload happens at end
+          });
+        } else if (result.status === 'incomplete') {
+          incomplete.push(name);
+          patchClassState(className, { incomplete: [...incomplete] });
+        } else if (result.status === 'failed') {
+          failed.push(name);
+          patchClassState(className, { failed: [...failed] });
+        }
+      };
+
+      // ── Step 3: process new drugs in parallel ────────────────────────────
       if (newDrugs.length > 0) {
-        addLog(`⚡ Saving ${newDrugs.length} new drugs (${PARALLEL_SAVES} at a time)…`);
-
-        await parallelMap(newDrugs, async (name) => {
-          if (abortRef.current) return;
-          try {
-            const text = await fetchAiDrugText({ genericName: name, drugClass: className });
-            await saveAiDrugToDatabase({ genericName: name, drugClass: className, text, overwrite: false });
-            saved.push(name);
-            addLog(`  ✅ Saved: ${name}`);
-            setClassLog(className, { saved: [...saved] });
-          } catch (e) {
-            failed.push(name);
-            addLog(`  ❌ Failed: ${name} — ${e.message}`);
-            setClassLog(className, { failed: [...failed] });
-          }
-        });
+        log(`⚡ Generating ${newDrugs.length} new drugs (${PARALLEL_SAVES} at a time)…`);
+        await parallelMap(newDrugs, name => processOneDrug(name, false));
       }
 
-      // ── Step 4: regenerate incomplete drugs (parallel) ───────────────────
+      // ── Step 4: fix incomplete drugs in parallel ─────────────────────────
       if (toFix.length > 0) {
-        addLog(`🔧 Regenerating ${toFix.length} incomplete drugs…`);
-
-        await parallelMap(toFix, async (name) => {
-          if (abortRef.current) return;
-          try {
-            const text = await fetchAiDrugText({ genericName: name, drugClass: className });
-            await saveAiDrugToDatabase({ genericName: name, drugClass: className, text, overwrite: true });
-            saved.push(`${name} (regenerated)`);
-            addLog(`  ✅ Regenerated: ${name}`);
-            setClassLog(className, { saved: [...saved] });
-          } catch (e) {
-            failed.push(name);
-            addLog(`  ❌ Failed to regenerate: ${name} — ${e.message}`);
-            setClassLog(className, { failed: [...failed] });
-          }
-        });
+        log(`🔧 Regenerating ${toFix.length} incomplete drugs…`);
+        await parallelMap(toFix, name => processOneDrug(name, true));
       }
 
-      addLog(`\n🏁 Done. Saved: ${saved.length} | Failed: ${failed.length}`);
-      setClassLog(className, { status: 'done', saved, failed });
+      const summary = [
+        `✅ ${saved.length} saved`,
+        incomplete.length > 0 ? `⚠ ${incomplete.length} could not be completed` : '',
+        failed.length    > 0 ? `❌ ${failed.length} failed` : '',
+      ].filter(Boolean).join('  |  ');
+      log(`\n🏁 Done — ${summary}`);
 
-      // Reload so the table reflects new drugs
-      await loadDrugs();
+      if (incomplete.length > 0) {
+        log(`⚠ These drugs had incomplete AI responses and were NOT saved:`);
+        incomplete.forEach(n => log(`   • ${n}`));
+      }
+
+      patchClassState(className, { status: 'done', saved, incomplete, failed });
+      await loadDrugs(); // refresh full list
 
     } catch (e) {
-      addLog(`❌ Error: ${e.message}`);
-      setClassLog(className, { status: 'error' });
+      log(`❌ Error: ${e.message}`);
+      patchClassState(className, { status: 'error' });
     }
 
     setRunningClass(null);
@@ -280,13 +285,11 @@ export default function AdminPage() {
 
   function stopAi() {
     abortRef.current = true;
+    if (runningClass) patchClassState(runningClass, { status: 'stopped' });
     setRunningClass(null);
-    if (runningClass) {
-      setClassLog(runningClass, { status: 'stopped' });
-    }
   }
 
-  // ── Derived filter lists ───────────────────────────────────────────────
+  // ── Derived lists ──────────────────────────────────────────────────────
   const allClasses = useMemo(() =>
     [...new Set(drugs.map(d => d.drug_class).filter(Boolean))].sort(), [drugs]);
 
@@ -304,12 +307,14 @@ export default function AdminPage() {
         drug.generic_name?.toLowerCase().includes(q) ||
         drug.drug_class?.toLowerCase().includes(q) ||
         drug.drug_subclass?.toLowerCase().includes(q) ||
+        drug.indications?.toLowerCase().includes(q) ||
         drug.primary_indications?.toLowerCase().includes(q) ||
         drug.overview?.toLowerCase().includes(q);
       const matchClass    = !filterClass    || drug.drug_class === filterClass;
       const matchSubclass = !filterSubclass || drug.drug_subclass === filterSubclass;
       const matchStatus   = !filterStatus   || drug.prescription_status === filterStatus;
       const matchInd      = !filterIndication ||
+        drug.indications?.toLowerCase().includes(filterIndication.toLowerCase()) ||
         drug.primary_indications?.toLowerCase().includes(filterIndication.toLowerCase());
       return matchSearch && matchClass && matchSubclass && matchStatus && matchInd;
     });
@@ -328,15 +333,15 @@ export default function AdminPage() {
     setSearchQuery(''); setFilterClass(''); setFilterSubclass('');
     setFilterStatus(''); setFilterIndication(''); setSelectedIds(new Set());
   }
-
   function toggleSelectAll() {
     allSelected ? setSelectedIds(new Set()) : setSelectedIds(new Set(filteredDrugs.map(d => d.firestoreId)));
   }
   function toggleSelect(fid) {
     setSelectedIds(prev => { const n = new Set(prev); n.has(fid) ? n.delete(fid) : n.add(fid); return n; });
   }
+  function promptDelete(fid)  { setDeleteTarget(fid); setConfirmDelete('single'); }
+  function promptBulkDelete() { setConfirmDelete('bulk'); }
 
-  function promptDelete(fid) { setDeleteTarget(fid); setConfirmDelete('single'); }
   async function confirmSingleDelete() {
     try {
       await deleteDoc(doc(db, 'drugs', deleteTarget));
@@ -346,7 +351,6 @@ export default function AdminPage() {
     } catch (err) { showToast('Delete failed: ' + err.message, 'error'); }
     setConfirmDelete(null); setDeleteTarget(null);
   }
-  function promptBulkDelete() { setConfirmDelete('bulk'); }
   async function confirmBulkDelete() {
     const ids = [...selectedIds];
     try {
@@ -486,8 +490,8 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-drug-border">
         {[
-          {id:'drugs',  label:'Drug List',     icon:Database},
-          {id:'ai',     label:'AI Generate',   icon:Sparkles},
+          {id:'drugs', label:'Drug List',   icon:Database},
+          {id:'ai',    label:'AI Generate', icon:Sparkles},
         ].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
@@ -635,6 +639,7 @@ export default function AdminPage() {
       {/* ═══════════════════════ AI GENERATE TAB ══════════════════════════ */}
       {activeTab === 'ai' && (
         <div className="space-y-4">
+
           {/* Intro banner */}
           <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">
             <div className="flex items-start gap-3">
@@ -642,11 +647,27 @@ export default function AdminPage() {
               <div>
                 <h2 className="font-bold text-primary-900 mb-1">AI Drug Generator</h2>
                 <p className="text-sm text-primary-700 leading-relaxed">
-                  For each drug class, the AI will: <strong>(1)</strong> find drugs in the class not yet in your database and generate their full profiles, <strong>(2)</strong> detect existing drugs with incomplete data and regenerate them. Saves run {PARALLEL_SAVES} at a time for speed.
+                  For each class, the AI <strong>generates all missing drugs</strong> and <strong>fixes incomplete ones</strong>.
+                  Every drug is fully generated and validated <em>before</em> being saved —
+                  no drug with missing sections is ever written to the database.
+                  If a drug's AI response is incomplete, it retries once automatically.
                 </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Zap className="w-3.5 h-3.5 text-amber-500"/>
-                  <span className="text-xs font-semibold text-amber-700">{PARALLEL_SAVES} parallel saves — Pro tier speed</span>
+                <div className="flex items-center gap-4 mt-2 flex-wrap">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                    <Zap className="w-3.5 h-3.5 text-amber-500"/>{PARALLEL_SAVES} parallel per class
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                    ✅ Validates before saving
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                    🔁 Auto-retries incomplete
+                  </span>
+                </div>
+                {/* Required fields reference */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {REQUIRED_FIELD_GROUPS.map(g => (
+                    <span key={g.label} style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'rgba(99,102,241,0.1)',color:'#4338ca',fontWeight:600}}>{g.label}</span>
+                  ))}
                 </div>
               </div>
             </div>
@@ -655,7 +676,7 @@ export default function AdminPage() {
           {/* Stop button */}
           {runningClass && (
             <button onClick={stopAi} className="w-full py-3 bg-red-50 border border-red-200 text-red-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
-              <X className="w-4 h-4"/> Stop AI ({runningClass})
+              <X className="w-4 h-4"/> Stop ({runningClass})
             </button>
           )}
 
@@ -665,23 +686,21 @@ export default function AdminPage() {
           ) : (
             <div className="space-y-2">
               {aiClassList.map(({ className, count, incomplete }) => {
-                const state = classAiState[className] || {};
-                const isRunning = runningClass === className;
-                const isDone = state.status === 'done';
-                const isError = state.status === 'error';
-                const isStopped = state.status === 'stopped';
+                const state      = classAiState[className] || {};
+                const isRunning  = runningClass === className;
+                const isDone     = state.status === 'done';
+                const isError    = state.status === 'error';
+                const isStopped  = state.status === 'stopped';
                 const isExpanded = expandedClass === className;
 
                 return (
                   <div key={className} className={`bg-white border rounded-xl overflow-hidden transition-all ${isRunning?'border-primary-400 shadow-md':isDone?'border-green-300':isError?'border-red-300':'border-drug-border'}`}>
-                    {/* Class row header */}
+                    {/* Class row */}
                     <div className="flex items-center gap-3 px-4 py-3">
-                      {/* Expand/collapse */}
                       <button onClick={()=>setExpandedClass(isExpanded?null:className)} className="p-1 text-drug-muted hover:text-drug-text">
                         <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded?'rotate-90':''}`}/>
                       </button>
 
-                      {/* Class name + badges */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-drug-text">{className}</span>
@@ -692,11 +711,12 @@ export default function AdminPage() {
                           {isStopped&&<span className="text-xs font-bold px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">⏹ Stopped</span>}
                           {isRunning&&<span className="text-xs font-bold px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin"/>Running…</span>}
                         </div>
-                        {/* Progress summary */}
-                        {(state.saved?.length>0||state.failed?.length>0)&&(
-                          <div className="text-xs text-drug-muted mt-0.5">
-                            {state.saved?.length>0&&<span className="text-green-600 font-semibold mr-3">✅ {state.saved.length} saved</span>}
-                            {state.failed?.length>0&&<span className="text-red-600 font-semibold">❌ {state.failed.length} failed</span>}
+                        {/* Live progress counters */}
+                        {(state.saved?.length>0 || state.incomplete?.length>0 || state.failed?.length>0) && (
+                          <div className="text-xs mt-0.5 flex gap-3 flex-wrap">
+                            {state.saved?.length>0     && <span className="text-green-600 font-semibold">✅ {state.saved.length} saved</span>}
+                            {state.incomplete?.length>0 && <span className="text-amber-600 font-semibold">⚠ {state.incomplete.length} not saved (incomplete)</span>}
+                            {state.failed?.length>0    && <span className="text-red-600 font-semibold">❌ {state.failed.length} failed</span>}
                           </div>
                         )}
                       </div>
@@ -706,9 +726,9 @@ export default function AdminPage() {
                         onClick={()=>runAiForClass(className)}
                         disabled={!!runningClass}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
-                          isRunning ? 'bg-primary-100 text-primary-600 cursor-not-allowed'
-                          : runningClass ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : isDone ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                          isRunning       ? 'bg-primary-100 text-primary-600 cursor-not-allowed'
+                          : runningClass  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : isDone        ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
                           : 'bg-primary-600 text-white hover:bg-primary-700'
                         }`}
                       >
@@ -716,33 +736,35 @@ export default function AdminPage() {
                           ? <><RefreshCw className="w-3 h-3 animate-spin"/>Running</>
                           : isDone
                           ? <><RefreshCw className="w-3 h-3"/>Re-run</>
-                          : <><Sparkles className="w-3 h-3"/>Generate</>}
+                          : <><PlayCircle className="w-3 h-3"/>Generate</>}
                       </button>
                     </div>
 
                     {/* Expanded log */}
                     {isExpanded && state.log && (
-                      <div className="border-t border-drug-border bg-gray-950 px-4 py-3 max-h-72 overflow-y-auto">
+                      <div className="border-t border-drug-border bg-gray-950 px-4 py-3 max-h-80 overflow-y-auto">
                         <div className="font-mono text-xs leading-relaxed space-y-0.5">
                           {state.log.map((line, i) => (
                             <div key={i} className={
-                              line.includes('✅')?'text-green-400':
-                              line.includes('❌')?'text-red-400':
-                              line.includes('⚠')||line.includes('🔧')?'text-amber-400':
-                              line.includes('⚡')||line.includes('🆕')?'text-blue-400':
-                              line.includes('🏁')?'text-purple-400':
+                              line.includes('✅') ? 'text-green-400' :
+                              line.includes('❌') ? 'text-red-400'   :
+                              line.includes('⚠')  ? 'text-amber-400' :
+                              line.includes('⚡') || line.includes('🆕') ? 'text-blue-400' :
+                              line.includes('🏁') ? 'text-purple-400' :
+                              line.includes('🔧') ? 'text-amber-300'  :
+                              line.includes('⏭')  ? 'text-gray-500'  :
                               'text-gray-300'
                             }>{line}</div>
                           ))}
-                          {isRunning&&<div className="text-primary-400 animate-pulse">▌</div>}
+                          {isRunning && <div className="text-primary-400 animate-pulse">▌</div>}
                         </div>
                       </div>
                     )}
 
-                    {/* Expanded: what was found before running */}
                     {isExpanded && !state.log && (
                       <div className="border-t border-drug-border px-4 py-3 text-sm text-drug-muted">
-                        Press <strong>Generate</strong> to scan this class, find missing drugs, and fix incomplete entries.
+                        Press <strong>Generate</strong> — the system will find missing drugs, fix incomplete ones,
+                        and only save each drug once <em>all</em> required sections are verified complete.
                       </div>
                     )}
                   </div>
