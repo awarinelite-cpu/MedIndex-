@@ -3,13 +3,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
-  Sparkles, RefreshCw, Save,
+  Sparkles, RefreshCw, Save, ImageIcon,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { needsStrengthOnly } from '../utils/aiDrugSave';
+import { generateDrugImage, saveDrugImage } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
   serverTimestamp, query, orderBy,
@@ -141,6 +142,82 @@ const TABS = [
   { id: 'nursing',      label: 'Nursing Notes', icon: Stethoscope   },
   { id: 'ai-insights',  label: 'AI Insights',   icon: Sparkles      },
 ];
+
+/* ── Drug Image (AI illustration) ────────────────────────────────────────── */
+function DrugImageCard({ drug }) {
+  const { isAdmin } = useAuth();
+  const [state, setState] = useState('idle'); // idle | generating | error
+  const [error, setError] = useState('');
+
+  const handleGenerate = async () => {
+    setState('generating');
+    setError('');
+    try {
+      const imageDataUrl = await generateDrugImage({
+        genericName: drug.generic_name,
+        drugClass:   drug.drug_class,
+        strength:    drug.strength,
+      });
+      await saveDrugImage({ docId: drug.firestoreId || drug.id, imageDataUrl });
+      window.location.reload();
+    } catch (e) {
+      setError(e.message || 'Failed to generate an image.');
+      setState('error');
+    }
+  };
+
+  // Already has a saved image — show it to everyone automatically.
+  if (drug.image_url) {
+    return (
+      <div className="section-card p-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold">Image</h2>
+          {isAdmin && (
+            <button
+              onClick={handleGenerate}
+              disabled={state === 'generating'}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${state === 'generating' ? 'animate-spin' : ''}`} />
+              {state === 'generating' ? 'Regenerating…' : 'Regenerate'}
+            </button>
+          )}
+        </div>
+        <img
+          src={drug.image_url}
+          alt={`AI-generated illustration of ${drug.generic_name}`}
+          className="w-full max-w-sm mx-auto rounded-lg border border-drug-border"
+        />
+        <p className="text-xs text-drug-muted mt-3 text-center">
+          AI-generated illustration for reference only — not the actual product packaging.
+        </p>
+        {error && <p className="text-xs text-red-600 mt-2 text-center">{error}</p>}
+      </div>
+    );
+  }
+
+  // No image yet — only admins can trigger generation; regular users see nothing.
+  if (!isAdmin) return null;
+
+  return (
+    <div className="section-card p-6 text-center">
+      <ImageIcon className="w-8 h-8 text-primary-400 mx-auto mb-3" />
+      <p className="text-sm text-drug-muted mb-4">No image yet for {drug.generic_name}.</p>
+      <button
+        onClick={handleGenerate}
+        disabled={state === 'generating'}
+        className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
+      >
+        {state === 'generating' ? (
+          <><RefreshCw className="w-4 h-4 animate-spin" /> Generating…</>
+        ) : (
+          <><Sparkles className="w-4 h-4" /> Generate AI Illustration</>
+        )}
+      </button>
+      {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
+    </div>
+  );
+}
 
 /* ── AI Insights Tab ─────────────────────────────────────────────────────── */
 function AiInsightsTab({ drug }) {
@@ -714,6 +791,8 @@ export default function DrugDetailPage() {
         {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <>
+            <DrugImageCard drug={drug} />
+
             {drug.overview && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3">Overview</h2>
