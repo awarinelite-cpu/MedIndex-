@@ -61,93 +61,39 @@ export async function fetchAiDrugText({ genericName, drugClass }) {
 }
 
 // ── Generate, validate, and save a drug ──────────────────────────────────
-// Complete drugs are saved to Firestore immediately.
-// Incomplete drugs are regenerated up to MAX_RETRIES times until complete,
-// then saved. A drug is NEVER written with missing or trivially-short fields.
-// Returns: { status: 'saved' | 'skipped' | 'incomplete' | 'failed', id, missingGroups? }
+// generateDrugOnce: generates AI text for one drug and returns parsed result
+// with completeness status. Does NOT save to Firestore.
+export async function generateDrugOnce({ genericName, drugClass }) {
+  const text   = await fetchAiDrugText({ genericName, drugClass });
+  const parsed = parseAiDrugDetail(text);
+  const missing = getMissingGroups(parsed);
+  return { parsed, missing, complete: missing.length === 0 };
+}
 
-const MAX_RETRIES = 3;
+// saveParsedDrug: writes a fully-validated parsed drug to Firestore.
+// Only call this after confirming isDrugComplete(parsed) === true.
+export async function saveParsedDrug({ genericName, drugClass, parsed }) {
+  const docId     = slugifyDrugName(genericName);
+  const ref       = doc(db, 'drugs', docId);
+  const existing  = await getDoc(ref);
+  const finalClass = drugClass || parsed.drug_class || 'Unknown';
 
-export async function generateAndSaveIfComplete({
-  genericName,
-  drugClass,
-  overwrite = false,
-  onProgress,
-}) {
-  const log   = (msg) => { if (onProgress) onProgress(msg); };
-  const docId = slugifyDrugName(genericName);
-  const ref   = doc(db, 'drugs', docId);
+  await setDoc(ref, {
+    ...parsed,
+    generic_name:        genericName,
+    drug_class:          finalClass,
+    drug_subclass:       parsed.drug_subclass       || null,
+    prescription_status: parsed.prescription_status || 'Prescription',
+    nafdac_no:           null,
+    source:              'AI Generated',
+    status:              'Active',
+    created_at:  existing.exists()
+      ? (existing.data().created_at || serverTimestamp())
+      : serverTimestamp(),
+    last_updated: serverTimestamp(),
+  }, { merge: false });
 
-  // ── Skip fully-complete existing drugs ──────────────────────────────────
-  if (!overwrite) {
-    const existing = await getDoc(ref);
-    if (existing.exists() && isDrugComplete(existing.data())) {
-      log(`  ⏭ Skipped (already complete): ${genericName}`);
-      return { status: 'skipped', id: docId };
-    }
-  }
-
-  log(`  🤖 Generating: ${genericName}…`);
-
-  let parsed   = null;
-  let missing  = REQUIRED_FIELD_GROUPS; // all missing until proven otherwise
-  let attempt  = 0;
-
-  // ── Generate → validate → retry loop ─────────────────────────────────────
-  // Complete drugs are saved immediately on first success.
-  // Incomplete drugs are regenerated up to MAX_RETRIES times.
-  while (attempt < MAX_RETRIES && missing.length > 0) {
-    attempt++;
-    if (attempt > 1) {
-      log(`  🔁 Retry ${attempt - 1}/${MAX_RETRIES - 1} — regenerating: ${genericName} (missing: ${missing.map(g => g.label).join(', ')})…`);
-    }
-
-    try {
-      const text  = await fetchAiDrugText({ genericName, drugClass });
-      const draft = parseAiDrugDetail(text);
-      const stillMissing = getMissingGroups(draft);
-
-      if (stillMissing.length < missing.length || attempt === 1) {
-        // Better result — keep it
-        parsed  = draft;
-        missing = stillMissing;
-      }
-
-      // ── Complete on this attempt — save immediately ─────────────────────
-      if (missing.length === 0) {
-        const existing   = await getDoc(ref);
-        const finalClass = drugClass || parsed.drug_class || 'Unknown';
-
-        await setDoc(ref, {
-          ...parsed,
-          generic_name:        genericName,
-          drug_class:          finalClass,
-          drug_subclass:       parsed.drug_subclass       || null,
-          prescription_status: parsed.prescription_status || 'Prescription',
-          nafdac_no:           null,
-          source:              'AI Generated',
-          status:              'Active',
-          created_at:  existing.exists()
-            ? (existing.data().created_at || serverTimestamp())
-            : serverTimestamp(),
-          last_updated: serverTimestamp(),
-        }, { merge: false });
-
-        log(`  ✅ Saved (complete after ${attempt} attempt${attempt > 1 ? 's' : ''}): ${genericName}`);
-        return { status: 'saved', id: docId };
-      }
-    } catch (e) {
-      if (attempt >= MAX_RETRIES) {
-        log(`  ❌ Failed: ${genericName} — ${e.message}`);
-        return { status: 'failed', id: docId, error: e.message };
-      }
-      log(`  ⚠ Attempt ${attempt} errored — retrying: ${e.message}`);
-    }
-  }
-
-  // ── Exhausted all retries, still incomplete — do NOT save ─────────────────
-  log(`  ❌ Could not complete after ${MAX_RETRIES} attempts — NOT saved: ${genericName} (still missing: ${missing.map(g => g.label).join(', ')})`);
-  return { status: 'incomplete', id: docId, missingGroups: missing };
+  return { status: 'saved', id: docId };
 }
 
 // ── Backwards-compatibility export ────────────────────────────────────────

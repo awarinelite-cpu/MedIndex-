@@ -12,7 +12,7 @@ import {
   Sparkles, ChevronRight, Zap, PlayCircle,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
-import { generateAndSaveIfComplete, REQUIRED_FIELD_GROUPS, getMissingGroups } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, slugifyDrugName, isDrugComplete, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -156,11 +156,16 @@ export default function AdminPage() {
   }
 
   // ── AI: Generate for one class ─────────────────────────────────────────
-  // Flow:
-  //   1. Ask AI for full drug list in this class
-  //   2. Diff: new drugs (not in DB) + incomplete existing drugs
-  //   3. For each: generate → validate ALL required fields → save ONLY if complete
-  //   4. Background: each drug saves as soon as it's fully verified
+  // Round-based wave approach:
+  //   Round 1 — Generate ALL new/incomplete drugs in parallel
+  //             → Complete ones are saved to Firestore immediately in the background
+  //             → Incomplete ones are collected for the next round
+  //   Round 2 — Regenerate only the incomplete ones from round 1
+  //             → Save the complete ones, collect still-incomplete
+  //   Round 3 — Final attempt on remaining incomplete ones
+  //             → Save complete ones; give up on any still incomplete (never saved)
+  const MAX_ROUNDS = 3;
+
   async function runAiForClass(className) {
     if (runningClass) return;
     abortRef.current = false;
@@ -199,13 +204,10 @@ export default function AdminPage() {
 
       // ── Step 2: classify ─────────────────────────────────────────────────
       const newDrugs = uniqueAiNames.filter(n => !existingNames.includes(n.toLowerCase()));
-      const toFix    = existingInClass
-        .filter(isIncomplete)
-        .map(d => d.generic_name);
+      const toFix    = existingInClass.filter(d => !isDrugComplete(d)).map(d => d.generic_name);
 
       patchClassState(className, { newDrugs, toFix });
-      log(`🆕 New drugs to add: ${newDrugs.length}`);
-      log(`🔧 Incomplete drugs to fix: ${toFix.length}`);
+      log(`🆕 New drugs: ${newDrugs.length}  |  🔧 Incomplete (to fix): ${toFix.length}`);
 
       if (newDrugs.length === 0 && toFix.length === 0) {
         log('🎉 Class is already complete — nothing to do!');
@@ -214,66 +216,66 @@ export default function AdminPage() {
         return;
       }
 
-      const saved     = [];
-      const incomplete = [];
-      const failed    = [];
+      const saved    = [];
+      const failed   = [];
 
-      // ── Shared handler: generate → validate → save ────────────────────────
-      // Each drug is saved to Firestore ONLY when ALL required fields are verified.
-      // If the first generation is incomplete, one automatic retry runs.
-      // A drug is NEVER saved with missing or trivially-short fields.
-      const processOneDrug = async (name, overwrite) => {
-        if (abortRef.current) return;
-        const result = await generateAndSaveIfComplete({
-          genericName: name,
-          drugClass:   className,
-          overwrite,
-          onProgress:  log,
-        });
-        if (result.status === 'saved') {
-          saved.push(name);
-          patchClassState(className, { saved: [...saved] });
-          // Update local drug list so the table shows the new entry
-          setDrugs(prev => {
-            const exists = prev.find(d => d.id === result.id);
-            if (exists) return prev.map(d => d.id === result.id ? { ...d, source: 'AI Generated' } : d);
-            return prev; // full reload happens at end
-          });
-        } else if (result.status === 'incomplete') {
-          incomplete.push(name);
-          patchClassState(className, { incomplete: [...incomplete] });
-        } else if (result.status === 'failed') {
-          failed.push(name);
-          patchClassState(className, { failed: [...failed] });
+      // ── Steps 3–5: wave rounds ───────────────────────────────────────────
+      // pendingNames = drugs still needing generation this round
+      let pendingNames = [...newDrugs, ...toFix];
+
+      for (let round = 1; round <= MAX_ROUNDS; round++) {
+        if (abortRef.current || pendingNames.length === 0) break;
+
+        if (round === 1) {
+          log(`\n⚡ Round 1 — Generating ${pendingNames.length} drugs (${PARALLEL_SAVES} at a time)…`);
+        } else {
+          log(`\n🔁 Round ${round} — Regenerating ${pendingNames.length} incomplete drug${pendingNames.length > 1 ? 's' : ''}…`);
         }
-      };
 
-      // ── Step 3: process new drugs in parallel ────────────────────────────
-      if (newDrugs.length > 0) {
-        log(`⚡ Generating ${newDrugs.length} new drugs (${PARALLEL_SAVES} at a time)…`);
-        await parallelMap(newDrugs, name => processOneDrug(name, false));
-      }
+        const stillIncomplete = []; // collect drugs that need another round
 
-      // ── Step 4: fix incomplete drugs in parallel ─────────────────────────
-      if (toFix.length > 0) {
-        log(`🔧 Regenerating ${toFix.length} incomplete drugs…`);
-        await parallelMap(toFix, name => processOneDrug(name, true));
+        await parallelMap(pendingNames, async (name) => {
+          if (abortRef.current) return;
+          try {
+            const { parsed, complete, missing } = await generateDrugOnce({ genericName: name, drugClass: className });
+
+            if (complete) {
+              // ── Save immediately in the background ──────────────────────
+              await saveParsedDrug({ genericName: name, drugClass: className, parsed });
+              saved.push(name);
+              log(`  ✅ Saved: ${name}`);
+              patchClassState(className, { saved: [...saved] });
+            } else {
+              if (round < MAX_ROUNDS) {
+                // Queue for next round
+                stillIncomplete.push(name);
+                log(`  ⚠ Incomplete (${missing.map(g => g.label).join(', ')}) — will regenerate: ${name}`);
+              } else {
+                // Final round — give up, never save
+                failed.push(name);
+                log(`  ❌ Not saved after ${MAX_ROUNDS} rounds: ${name} (missing: ${missing.map(g => g.label).join(', ')})`);
+                patchClassState(className, { incomplete: [...failed] });
+              }
+            }
+          } catch (e) {
+            failed.push(name);
+            log(`  ❌ Error: ${name} — ${e.message}`);
+            patchClassState(className, { failed: [...failed] });
+          }
+        });
+
+        pendingNames = stillIncomplete; // only regenerate the incomplete ones next round
       }
 
       const summary = [
         `✅ ${saved.length} saved`,
-        incomplete.length > 0 ? `⚠ ${incomplete.length} could not be completed` : '',
-        failed.length    > 0 ? `❌ ${failed.length} failed` : '',
+        pendingNames.length > 0 ? `⚠ ${pendingNames.length} could not be completed` : '',
+        failed.length > 0       ? `❌ ${failed.length} failed` : '',
       ].filter(Boolean).join('  |  ');
       log(`\n🏁 Done — ${summary}`);
 
-      if (incomplete.length > 0) {
-        log(`⚠ These drugs had incomplete AI responses and were NOT saved:`);
-        incomplete.forEach(n => log(`   • ${n}`));
-      }
-
-      patchClassState(className, { status: 'done', saved, incomplete, failed });
-      await loadDrugs(); // refresh full list
+      patchClassState(className, { status: 'done', saved, failed });
+      await loadDrugs();
 
     } catch (e) {
       log(`❌ Error: ${e.message}`);
