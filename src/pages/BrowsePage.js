@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
-import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -246,8 +246,11 @@ function AiSearchFallback({ searchQuery }) {
 }
 
 /* ── AI fallback for sparse class/subclass results ───────────────────────── */
-function AiClassFallback({ className, knownDrugNames }) {
+function AiClassFallback({ className, existingDrugs }) {
   const { isAdmin } = useAuth();
+  const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
+  const incompleteExisting = useMemo(() => existingDrugs.filter(d => !isDrugComplete(d)), [existingDrugs]);
+
   const cacheKey = `ai_class_${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
   const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
@@ -257,6 +260,10 @@ function AiClassFallback({ className, knownDrugNames }) {
   const [bulkState, setBulkState]       = useState('idle'); // idle | running | done
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
   const [bulkResults, setBulkResults]   = useState(null); // { saved, skipped, errors: [{name, message}] }
+
+  const [fixState, setFixState]       = useState('idle'); // idle | running | done
+  const [fixProgress, setFixProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [fixResults, setFixResults]   = useState(null); // { fixed, errors: [{name, message}] }
 
   const saveAllToDatabase = async (items) => {
     setBulkState('running');
@@ -281,6 +288,43 @@ function AiClassFallback({ className, knownDrugNames }) {
 
     setBulkResults({ saved, skipped, errors });
     setBulkState('done');
+  };
+
+  // Regenerates ONLY existing drugs in this class that are missing required
+  // fields — never touches drugs that are already complete, and never
+  // creates a new duplicate entry since these already exist in Firestore.
+  // saveAiDrugToDatabase itself refuses to save anything still incomplete
+  // after regeneration, so a drug that fails to come back complete is left
+  // as-is rather than being overwritten with another incomplete version.
+  const fixIncompleteExisting = async () => {
+    setFixState('running');
+    setFixResults(null);
+    let fixed = 0;
+    const errors = [];
+
+    for (let i = 0; i < incompleteExisting.length; i++) {
+      const drug = incompleteExisting[i];
+      setFixProgress({ current: i + 1, total: incompleteExisting.length, currentName: drug.generic_name });
+      try {
+        const itemText = await fetchAiDrugText({ genericName: drug.generic_name, drugClass: drug.drug_class || className });
+        const result = await saveAiDrugToDatabase({
+          genericName: drug.generic_name,
+          drugClass: drug.drug_class || className,
+          text: itemText,
+        });
+        if (result.status === 'saved') {
+          fixed += 1;
+        } else if (result.status === 'incomplete') {
+          errors.push({ name: drug.generic_name, message: 'AI response was still missing required fields — left unchanged.' });
+        }
+      } catch (e) {
+        errors.push({ name: drug.generic_name, message: e.message || 'Failed to regenerate.' });
+      }
+      await new Promise(r => setTimeout(r, 350));
+    }
+
+    setFixResults({ fixed, errors });
+    setFixState('done');
   };
 
   const runLookup = async () => {
@@ -322,8 +366,61 @@ function AiClassFallback({ className, knownDrugNames }) {
 
   if (!className.trim()) return null;
 
+  const fixBanner = isAdmin && incompleteExisting.length > 0 && (
+    <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+      {fixState !== 'running' && fixState !== 'done' && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-amber-800">
+            <strong>{incompleteExisting.length}</strong> existing drug{incompleteExisting.length !== 1 ? 's' : ''} in
+            "{className}" {incompleteExisting.length !== 1 ? 'are' : 'is'} missing required info.
+          </p>
+          <button
+            onClick={fixIncompleteExisting}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg flex-shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Complete Missing Info
+          </button>
+        </div>
+      )}
+
+      {fixState === 'running' && (
+        <div>
+          <div className="flex items-center gap-2 text-sm text-amber-800 mb-2">
+            <RefreshCw className="w-4 h-4 text-amber-500 animate-spin flex-shrink-0" />
+            <span className="truncate">
+              Fixing {fixProgress.current} of {fixProgress.total} — {fixProgress.currentName}…
+            </span>
+          </div>
+          <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber-500 rounded-full transition-all"
+              style={{ width: `${(fixProgress.current / Math.max(fixProgress.total, 1)) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {fixState === 'done' && fixResults && (
+        <div>
+          <div className="flex items-center gap-2 font-semibold text-sm text-amber-800">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            Completed {fixResults.fixed} of {incompleteExisting.length}
+            {fixResults.errors.length > 0 ? `, ${fixResults.errors.length} still need attention` : ''}.
+          </div>
+          {fixResults.errors.length > 0 && (
+            <ul className="mt-2 text-xs text-amber-700 space-y-0.5">
+              {fixResults.errors.map((err, i) => <li key={i}>• {err.name}: {err.message}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  let content;
+
   if (state === 'idle') {
-    return (
+    content = (
       <div className="mt-6 bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
         <Sparkles className="w-8 h-8 text-primary-500 mx-auto mb-3" />
         <p className="text-sm text-drug-text mb-4">
@@ -337,19 +434,15 @@ function AiClassFallback({ className, knownDrugNames }) {
         </button>
       </div>
     );
-  }
-
-  if (state === 'loading' || state === 'streaming') {
-    return (
+  } else if (state === 'loading' || state === 'streaming') {
+    content = (
       <div className="mt-6 bg-white border border-drug-border rounded-xl p-8 text-center">
         <RefreshCw className="w-8 h-8 text-primary-400 mx-auto mb-3 animate-spin" />
         <p className="text-sm text-drug-muted">Gathering medications in "{queriedFor}"…</p>
       </div>
     );
-  }
-
-  if (state === 'error') {
-    return (
+  } else if (state === 'error') {
+    content = (
       <div className="mt-6 bg-white border border-drug-border rounded-xl p-6 text-center">
         <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
         <p className="text-sm text-red-600 mb-4">{error}</p>
@@ -361,12 +454,11 @@ function AiClassFallback({ className, knownDrugNames }) {
         </button>
       </div>
     );
-  }
-
+  } else {
   // done — render as clickable rows matching the app's normal browse list
   const items = parseAiDrugList(text);
 
-  return (
+  content = (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -476,6 +568,14 @@ function AiClassFallback({ className, knownDrugNames }) {
         for its full breakdown. Verify before applying to patient care.
       </div>
     </div>
+  );
+  }
+
+  return (
+    <>
+      {fixBanner}
+      {content}
+    </>
   );
 }
 
@@ -642,6 +742,19 @@ export default function BrowsePage() {
     return pool;
   }, [ALL_DRUGS, searchQuery, filterClass, filterStatus]);
 
+  // Full roster of drugs in the currently filtered class, independent of any
+  // search/status narrowing — used so the AI class-expansion knows about
+  // every existing drug in the class (not just whichever ones are currently
+  // visible), so it never suggests duplicates of a drug that's simply
+  // filtered out of view right now.
+  const classDrugs = useMemo(() => {
+    const fc = filterClass.trim().toLowerCase();
+    if (!fc) return [];
+    return ALL_DRUGS.filter(drug =>
+      drug.drug_class?.toLowerCase() === fc || drug.drug_subclass?.toLowerCase() === fc
+    );
+  }, [ALL_DRUGS, filterClass]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -704,7 +817,7 @@ export default function BrowsePage() {
             Clear filters
           </button>
           {filterClass.trim()
-            ? <AiClassFallback className={filterClass} knownDrugNames={[]} />
+            ? <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
             : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
       ) : viewMode === 'grid' ? (
@@ -778,7 +891,7 @@ export default function BrowsePage() {
       {filteredDrugs.length > 0 && filterClass.trim() && (
         <AiClassFallback
           className={filterClass}
-          knownDrugNames={filteredDrugs.map(d => d.generic_name).filter(Boolean)}
+          existingDrugs={classDrugs}
         />
       )}
 

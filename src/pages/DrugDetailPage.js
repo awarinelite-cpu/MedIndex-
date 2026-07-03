@@ -119,16 +119,56 @@ function renderList(value, separator = '|') {
   );
 }
 
-function renderCSV(value) {
+// Splits on commas, but not on commas that fall inside parentheses — so
+// "ACS (NSTEMI, STEMI adjunct — ESSENCE/SYNERGY trials)" stays one item
+// instead of being torn apart mid-phrase.
+function splitCSVRespectingParens(value) {
+  const items = [];
+  let current = '';
+  let depth = 0;
+  for (const char of value) {
+    if (char === '(') depth++;
+    if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0) {
+      items.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) items.push(current.trim());
+  return items.filter(Boolean);
+}
+
+// For a badge like "DVT/PE — treatment and secondary prevention" or
+// "ACS (NSTEMI, STEMI adjunct)", use just the core condition ("DVT/PE",
+// "ACS") as the search term — the full explanatory clause is unlikely to
+// appear verbatim in another drug's indications list.
+function coreConditionTerm(indication) {
+  return indication.split(/—|\(/)[0].trim() || indication;
+}
+
+function renderCSV(value, opts = {}) {
   if (!value) return <em className="text-drug-muted">No data available</em>;
-  const items = value.split(',').map(s => s.trim()).filter(Boolean);
+  const { linkTo } = opts;
+  const items = splitCSVRespectingParens(value);
   return (
     <div className="flex flex-wrap gap-2">
-      {items.map((item, i) => (
-        <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
-          {item}
-        </span>
-      ))}
+      {items.map((item, i) =>
+        linkTo ? (
+          <Link
+            key={i}
+            to={linkTo(item)}
+            className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 hover:underline transition-colors"
+          >
+            {item}
+          </Link>
+        ) : (
+          <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
+            {item}
+          </span>
+        )
+      )}
     </div>
   );
 }
@@ -810,7 +850,9 @@ export default function DrugDetailPage() {
             <div className="section-card p-6">
               <h2 className="text-lg font-bold mb-3">What it's used for</h2>
               {drug.indications
-                ? renderCSV(drug.indications)
+                ? renderCSV(drug.indications, {
+                    linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
+                  })
                 : <em className="text-drug-muted">No data available</em>}
             </div>
 
