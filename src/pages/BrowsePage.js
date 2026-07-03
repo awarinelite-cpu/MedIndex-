@@ -212,8 +212,7 @@ function AiClassFallback({ className, knownDrugNames }) {
       <div className="mt-6 bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
         <Sparkles className="w-8 h-8 text-primary-500 mx-auto mb-3" />
         <p className="text-sm text-drug-text mb-4">
-          Only a few medications in "{className}" are in our database so far. Want the AI to list other
-          medications in this class and its subclasses?
+          Want the AI to find other medications in "{className}" and its subclasses not yet in our database?
         </p>
         <button
           onClick={runLookup}
@@ -547,8 +546,8 @@ export default function BrowsePage() {
         </div>
       )}
 
-      {/* Sparse class results — offer AI expansion even when 1-2 drugs already matched */}
-      {filteredDrugs.length > 0 && filteredDrugs.length <= 2 && filterClass.trim() && (
+      {/* AI expansion — always show when browsing a specific class */}
+      {filteredDrugs.length > 0 && filterClass.trim() && (
         <AiClassFallback
           className={filterClass}
           knownDrugNames={filteredDrugs.map(d => d.generic_name).filter(Boolean)}
