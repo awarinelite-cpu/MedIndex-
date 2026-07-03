@@ -1,16 +1,29 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
-  writeBatch, serverTimestamp,
+  writeBatch, serverTimestamp, setDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
+  Sparkles, CheckCircle, ChevronRight, Zap,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
+import { fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
+import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+
+// ── Required fields — a drug is "incomplete" if ANY of these is blank ──────
+const REQUIRED_FIELDS = [
+  'overview', 'primary_indications', 'dosage', 'mechanism',
+  'side_effects', 'contraindications', 'nursing_considerations',
+];
+
+function isIncomplete(drug) {
+  return REQUIRED_FIELDS.some(f => !drug[f] || String(drug[f]).trim().length < 20);
+}
 
 // ── Editable fields ────────────────────────────────────────────────────────
 const EDITABLE_FIELDS = [
@@ -31,7 +44,24 @@ const EDITABLE_FIELDS = [
 
 const ALL_STATUSES = ['OTC', 'Prescription', 'Controlled'];
 
+// ── Parallel save (Pro tier) — up to N concurrent saves ───────────────────
+const PARALLEL_SAVES = 5; // safe for Gemini paid tier
+
+async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const settled = await Promise.allSettled(batch.map(fn));
+    results.push(...settled);
+  }
+  return results;
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState('drugs'); // 'drugs' | 'ai'
+
+  // ── Drug list state ────────────────────────────────────────────────────
   const [drugs,            setDrugs]            = useState([]);
   const [loading,          setLoading]          = useState(true);
   const [seeding,          setSeeding]          = useState(false);
@@ -49,18 +79,23 @@ export default function AdminPage() {
   const [confirmDelete,    setConfirmDelete]    = useState(null);
   const [deleteTarget,     setDeleteTarget]     = useState(null);
 
-  // ── Load from Firestore ──────────────────────────────────────────────────
+  // ── AI Generate state ──────────────────────────────────────────────────
+  const [aiClassList,     setAiClassList]     = useState([]); // [{className, count, incomplete}]
+  const [expandedClass,   setExpandedClass]   = useState(null);
+  const [classAiState,    setClassAiState]    = useState({}); // {className: {status,log,newDrugs,toFix}}
+  const [runningClass,    setRunningClass]    = useState(null);
+  const abortRef = useRef(false);
+
+  // ── Load from Firestore ────────────────────────────────────────────────
   const loadDrugs = useCallback(async () => {
     setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'drugs'));
       if (snap.empty) {
-        // Firestore is empty — seed it from the JSON bundle
         await seedFirestore();
-        return; // seedFirestore calls loadDrugs again after seeding
+        return;
       }
       const data = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-      // Sort by generic_name
       data.sort((a, b) => (a.generic_name || '').localeCompare(b.generic_name || ''));
       setDrugs(data);
     } catch (err) {
@@ -71,7 +106,24 @@ export default function AdminPage() {
 
   useEffect(() => { loadDrugs(); }, [loadDrugs]);
 
-  // ── Seed Firestore from local JSON (runs once if collection is empty) ────
+  // Build AI class list whenever drugs change
+  useEffect(() => {
+    if (!drugs.length) return;
+    const map = {};
+    drugs.forEach(d => {
+      const cls = d.drug_class || 'Unknown';
+      if (!map[cls]) map[cls] = { className: cls, drugs: [] };
+      map[cls].drugs.push(d);
+    });
+    const list = Object.values(map).map(({ className, drugs: ds }) => ({
+      className,
+      count: ds.length,
+      incomplete: ds.filter(isIncomplete).length,
+    })).sort((a, b) => a.className.localeCompare(b.className));
+    setAiClassList(list);
+  }, [drugs]);
+
+  // ── Seed Firestore ─────────────────────────────────────────────────────
   async function seedFirestore() {
     setSeeding(true);
     showToast('First run — seeding database…', 'info');
@@ -85,7 +137,7 @@ export default function AdminPage() {
         });
         await batch.commit();
       }
-      showToast(`Seeded ${seedDrugs.length} drugs successfully.`);
+      showToast(`Seeded ${seedDrugs.length} drugs.`);
     } catch (err) {
       showToast('Seed failed: ' + err.message, 'error');
     }
@@ -93,13 +145,149 @@ export default function AdminPage() {
     await loadDrugs();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 4500);
   }
 
-  // ── Derived filter lists ──────────────────────────────────────────────────
+  function setClassLog(className, update) {
+    setClassAiState(prev => ({
+      ...prev,
+      [className]: { ...(prev[className] || {}), ...update },
+    }));
+  }
+
+  // ── AI: Generate for one class ─────────────────────────────────────────
+  // Steps:
+  //  1. Call AI in 'class' mode to get a list of all drugs in the class
+  //  2. Diff against existing drugs — find new ones + find incomplete ones
+  //  3. For each new drug: fetch full AI detail + save (parallel)
+  //  4. For each incomplete drug: regenerate full AI detail + overwrite (parallel)
+  async function runAiForClass(className) {
+    if (runningClass) return;
+    abortRef.current = false;
+    setRunningClass(className);
+    setExpandedClass(className);
+    setClassLog(className, { status: 'running', log: [`🔍 Scanning class: ${className}…`], newDrugs: [], toFix: [], saved: [], failed: [] });
+
+    const addLog = (msg) => setClassAiState(prev => ({
+      ...prev,
+      [className]: {
+        ...prev[className],
+        log: [...(prev[className]?.log || []), msg],
+      },
+    }));
+
+    try {
+      // ── Step 1: get AI drug list for class ──────────────────────────────
+      const existingInClass = drugs.filter(d => d.drug_class === className);
+      const existingNames   = existingInClass.map(d => (d.generic_name || '').toLowerCase());
+
+      addLog(`📋 Fetching AI list for "${className}"…`);
+
+      const listRes = await fetch('/api/drug-ai-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'class',
+          className,
+          knownDrugNames: existingInClass.map(d => d.generic_name),
+        }),
+      });
+      if (!listRes.ok) throw new Error('AI class list request failed.');
+      const listText = await listRes.text();
+
+      // Parse drug names from the AI list response (bold names: **Name**)
+      const aiNames = [...listText.matchAll(/\*\*([^*]+)\*\*/g)]
+        .map(m => m[1].trim())
+        .filter(n => n.length > 1 && n.length < 60);
+
+      // Deduplicate
+      const uniqueAiNames = [...new Set(aiNames)];
+      addLog(`✅ AI found ${uniqueAiNames.length} drugs in "${className}"`);
+
+      // ── Step 2: classify ─────────────────────────────────────────────────
+      const newDrugs  = uniqueAiNames.filter(n => !existingNames.includes(n.toLowerCase()));
+      const toFix     = existingInClass.filter(isIncomplete).map(d => d.generic_name);
+
+      setClassLog(className, { newDrugs, toFix });
+      addLog(`🆕 New drugs to add: ${newDrugs.length}`);
+      addLog(`🔧 Incomplete drugs to regenerate: ${toFix.length}`);
+
+      if (newDrugs.length === 0 && toFix.length === 0) {
+        addLog('🎉 Class is complete — nothing to do!');
+        setClassLog(className, { status: 'done' });
+        setRunningClass(null);
+        return;
+      }
+
+      const saved = [];
+      const failed = [];
+
+      // ── Step 3: save new drugs (parallel) ───────────────────────────────
+      if (newDrugs.length > 0) {
+        addLog(`⚡ Saving ${newDrugs.length} new drugs (${PARALLEL_SAVES} at a time)…`);
+
+        await parallelMap(newDrugs, async (name) => {
+          if (abortRef.current) return;
+          try {
+            const text = await fetchAiDrugText({ genericName: name, drugClass: className });
+            await saveAiDrugToDatabase({ genericName: name, drugClass: className, text, overwrite: false });
+            saved.push(name);
+            addLog(`  ✅ Saved: ${name}`);
+            setClassLog(className, { saved: [...saved] });
+          } catch (e) {
+            failed.push(name);
+            addLog(`  ❌ Failed: ${name} — ${e.message}`);
+            setClassLog(className, { failed: [...failed] });
+          }
+        });
+      }
+
+      // ── Step 4: regenerate incomplete drugs (parallel) ───────────────────
+      if (toFix.length > 0) {
+        addLog(`🔧 Regenerating ${toFix.length} incomplete drugs…`);
+
+        await parallelMap(toFix, async (name) => {
+          if (abortRef.current) return;
+          try {
+            const text = await fetchAiDrugText({ genericName: name, drugClass: className });
+            await saveAiDrugToDatabase({ genericName: name, drugClass: className, text, overwrite: true });
+            saved.push(`${name} (regenerated)`);
+            addLog(`  ✅ Regenerated: ${name}`);
+            setClassLog(className, { saved: [...saved] });
+          } catch (e) {
+            failed.push(name);
+            addLog(`  ❌ Failed to regenerate: ${name} — ${e.message}`);
+            setClassLog(className, { failed: [...failed] });
+          }
+        });
+      }
+
+      addLog(`\n🏁 Done. Saved: ${saved.length} | Failed: ${failed.length}`);
+      setClassLog(className, { status: 'done', saved, failed });
+
+      // Reload so the table reflects new drugs
+      await loadDrugs();
+
+    } catch (e) {
+      addLog(`❌ Error: ${e.message}`);
+      setClassLog(className, { status: 'error' });
+    }
+
+    setRunningClass(null);
+  }
+
+  function stopAi() {
+    abortRef.current = true;
+    setRunningClass(null);
+    if (runningClass) {
+      setClassLog(runningClass, { status: 'stopped' });
+    }
+  }
+
+  // ── Derived filter lists ───────────────────────────────────────────────
   const allClasses = useMemo(() =>
     [...new Set(drugs.map(d => d.drug_class).filter(Boolean))].sort(), [drugs]);
 
@@ -108,10 +296,8 @@ export default function AdminPage() {
     return [...new Set(base.map(d => d.drug_subclass).filter(Boolean))].sort();
   }, [drugs, filterClass]);
 
-  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication]
-    .filter(Boolean).length;
+  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication].filter(Boolean).length;
 
-  // ── Filtered list ─────────────────────────────────────────────────────────
   const filteredDrugs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return drugs.filter(drug => {
@@ -134,33 +320,24 @@ export default function AdminPage() {
     total:      drugs.length,
     classes:    new Set(drugs.map(d => d.drug_class).filter(Boolean)).size,
     controlled: drugs.filter(d => d.prescription_status === 'Controlled').length,
+    incomplete: drugs.filter(isIncomplete).length,
   }), [drugs]);
 
-  const allSelected = filteredDrugs.length > 0 &&
-    filteredDrugs.every(d => selectedIds.has(d.firestoreId));
+  const allSelected = filteredDrugs.length > 0 && filteredDrugs.every(d => selectedIds.has(d.firestoreId));
 
   function clearAllFilters() {
     setSearchQuery(''); setFilterClass(''); setFilterSubclass('');
     setFilterStatus(''); setFilterIndication(''); setSelectedIds(new Set());
   }
 
-  // ── Selection ─────────────────────────────────────────────────────────────
   function toggleSelectAll() {
-    allSelected
-      ? setSelectedIds(new Set())
-      : setSelectedIds(new Set(filteredDrugs.map(d => d.firestoreId)));
+    allSelected ? setSelectedIds(new Set()) : setSelectedIds(new Set(filteredDrugs.map(d => d.firestoreId)));
   }
   function toggleSelect(fid) {
-    setSelectedIds(prev => {
-      const n = new Set(prev);
-      n.has(fid) ? n.delete(fid) : n.add(fid);
-      return n;
-    });
+    setSelectedIds(prev => { const n = new Set(prev); n.has(fid) ? n.delete(fid) : n.add(fid); return n; });
   }
 
-  // ── Delete single ─────────────────────────────────────────────────────────
   function promptDelete(fid) { setDeleteTarget(fid); setConfirmDelete('single'); }
-
   async function confirmSingleDelete() {
     try {
       await deleteDoc(doc(db, 'drugs', deleteTarget));
@@ -170,10 +347,7 @@ export default function AdminPage() {
     } catch (err) { showToast('Delete failed: ' + err.message, 'error'); }
     setConfirmDelete(null); setDeleteTarget(null);
   }
-
-  // ── Delete bulk ───────────────────────────────────────────────────────────
   function promptBulkDelete() { setConfirmDelete('bulk'); }
-
   async function confirmBulkDelete() {
     const ids = [...selectedIds];
     try {
@@ -190,48 +364,33 @@ export default function AdminPage() {
     setConfirmDelete(null);
   }
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
   function openEdit(drug) {
     setEditingDrug(drug);
     const form = {};
     EDITABLE_FIELDS.forEach(f => { form[f.key] = drug[f.key] || ''; });
     setEditForm(form);
   }
-
   async function saveEdit() {
-    if (!editForm.generic_name?.trim()) {
-      showToast('Generic name is required.', 'error'); return;
-    }
+    if (!editForm.generic_name?.trim()) { showToast('Generic name is required.', 'error'); return; }
     setSaving(true);
     try {
       const updates = { ...editForm, last_updated: serverTimestamp() };
       await updateDoc(doc(db, 'drugs', editingDrug.firestoreId), updates);
-      setDrugs(prev => prev.map(d =>
-        d.firestoreId === editingDrug.firestoreId ? { ...d, ...editForm } : d
-      ));
+      setDrugs(prev => prev.map(d => d.firestoreId === editingDrug.firestoreId ? { ...d, ...editForm } : d));
       showToast('Drug saved.');
       setEditingDrug(null);
     } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
     setSaving(false);
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
       {/* Toast */}
       {toast && (
-        <div style={{
-          position:'fixed',top:20,right:20,zIndex:9999,
-          background: toast.type==='error'?'#FEF2F2':toast.type==='info'?'#EFF6FF':'#F0FDF4',
-          border:`1px solid ${toast.type==='error'?'#FECACA':toast.type==='info'?'#BFDBFE':'#BBF7D0'}`,
-          color: toast.type==='error'?'#991B1B':toast.type==='info'?'#1e40af':'#166534',
-          padding:'12px 18px',borderRadius:10,fontWeight:600,fontSize:14,
-          boxShadow:'0 4px 20px rgba(0,0,0,0.12)',display:'flex',alignItems:'center',gap:8,maxWidth:360,
-        }}>
-          {toast.type==='error'?<AlertTriangle className="w-4 h-4 flex-shrink-0"/>:
-           toast.type==='info'?<RefreshCw className="w-4 h-4 flex-shrink-0"/>:'✅'}
-          {toast.msg}
+        <div style={{position:'fixed',top:20,right:20,zIndex:9999,background:toast.type==='error'?'#FEF2F2':toast.type==='info'?'#EFF6FF':'#F0FDF4',border:`1px solid ${toast.type==='error'?'#FECACA':toast.type==='info'?'#BFDBFE':'#BBF7D0'}`,color:toast.type==='error'?'#991B1B':toast.type==='info'?'#1e40af':'#166534',padding:'12px 18px',borderRadius:10,fontWeight:600,fontSize:14,boxShadow:'0 4px 20px rgba(0,0,0,0.12)',display:'flex',alignItems:'center',gap:8,maxWidth:360}}>
+          {toast.type==='error'?<AlertTriangle className="w-4 h-4 flex-shrink-0"/>:toast.type==='info'?<RefreshCw className="w-4 h-4 flex-shrink-0"/>:'✅'}{toast.msg}
         </div>
       )}
 
@@ -242,21 +401,11 @@ export default function AdminPage() {
             <div style={{width:48,height:48,background:'#FEF2F2',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
               <Trash2 className="w-5 h-5 text-red-600"/>
             </div>
-            <h3 style={{fontSize:18,fontWeight:800,marginBottom:8}}>
-              {confirmDelete==='bulk' ? `Delete ${selectedIds.size} drug${selectedIds.size>1?'s':''}?` : 'Delete this drug?'}
-            </h3>
-            <p style={{color:'#64748B',fontSize:14,marginBottom:24}}>
-              This permanently removes the drug{confirmDelete==='bulk'&&selectedIds.size>1?'s':''} from the database.
-            </p>
+            <h3 style={{fontSize:18,fontWeight:800,marginBottom:8}}>{confirmDelete==='bulk'?`Delete ${selectedIds.size} drug${selectedIds.size>1?'s':''}?`:'Delete this drug?'}</h3>
+            <p style={{color:'#64748B',fontSize:14,marginBottom:24}}>This permanently removes the drug{confirmDelete==='bulk'&&selectedIds.size>1?'s':''} from the database.</p>
             <div style={{display:'flex',gap:10}}>
-              <button onClick={confirmDelete==='bulk'?confirmBulkDelete:confirmSingleDelete}
-                style={{flex:1,padding:'11px',background:'#DC2626',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>
-                Yes, Delete
-              </button>
-              <button onClick={()=>{setConfirmDelete(null);setDeleteTarget(null);}}
-                style={{flex:1,padding:'11px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>
-                Cancel
-              </button>
+              <button onClick={confirmDelete==='bulk'?confirmBulkDelete:confirmSingleDelete} style={{flex:1,padding:'11px',background:'#DC2626',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Yes, Delete</button>
+              <button onClick={()=>{setConfirmDelete(null);setDeleteTarget(null);}} style={{flex:1,padding:'11px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancel</button>
             </div>
           </div>
         </div>
@@ -268,47 +417,35 @@ export default function AdminPage() {
           <div style={{background:'#fff',borderRadius:16,padding:'28px 24px',maxWidth:640,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
               <h3 style={{fontSize:18,fontWeight:800}}>Edit: {editingDrug.generic_name}</h3>
-              <button onClick={()=>setEditingDrug(null)} style={{background:'#F1F5F9',border:'none',borderRadius:8,padding:'6px 8px',cursor:'pointer'}}>
-                <X className="w-4 h-4 text-gray-500"/>
-              </button>
+              <button onClick={()=>setEditingDrug(null)} style={{background:'#F1F5F9',border:'none',borderRadius:8,padding:'6px 8px',cursor:'pointer'}}><X className="w-4 h-4 text-gray-500"/></button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
-              {EDITABLE_FIELDS.map(field => (
+              {EDITABLE_FIELDS.map(field=>(
                 <div key={field.key}>
-                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5}}>
-                    {field.label}{field.required&&<span style={{color:'#DC2626'}}> *</span>}
-                  </label>
+                  <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5}}>{field.label}{field.required&&<span style={{color:'#DC2626'}}> *</span>}</label>
                   {field.type==='select'?(
-                    <select value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))}
-                      style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',background:'#fff'}}>
-                      <option value="">Select...</option>
-                      {field.options.map(o=><option key={o} value={o}>{o}</option>)}
+                    <select value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',background:'#fff'}}>
+                      <option value="">Select...</option>{field.options.map(o=><option key={o} value={o}>{o}</option>)}
                     </select>
                   ):field.type==='textarea'?(
-                    <textarea value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))}
-                      rows={3} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',resize:'vertical',boxSizing:'border-box'}}/>
+                    <textarea value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} rows={3} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',resize:'vertical',boxSizing:'border-box'}}/>
                   ):(
-                    <input type="text" value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))}
-                      style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+                    <input type="text" value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
                   )}
                 </div>
               ))}
             </div>
             <div style={{display:'flex',gap:10,marginTop:24}}>
-              <button onClick={saveEdit} disabled={saving}
-                style={{flex:1,padding:'12px',background:saving?'#94A3B8':'linear-gradient(135deg,#1e40af,#1e3a8a)',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:'12px',background:saving?'#94A3B8':'linear-gradient(135deg,#1e40af,#1e3a8a)',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
                 <Save className="w-4 h-4"/>{saving?'Saving…':'Save Changes'}
               </button>
-              <button onClick={()=>setEditingDrug(null)}
-                style={{flex:1,padding:'12px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>
-                Cancel
-              </button>
+              <button onClick={()=>setEditingDrug(null)} style={{flex:1,padding:'12px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-primary-100 rounded-xl"><Shield className="w-6 h-6 text-primary-700"/></div>
@@ -318,8 +455,7 @@ export default function AdminPage() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={loadDrugs}
-            className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors">
+          <button onClick={loadDrugs} className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors">
             <RefreshCw className="w-4 h-4"/> Refresh
           </button>
           <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
@@ -329,201 +465,294 @@ export default function AdminPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
           {label:'Total Drugs',  value:stats.total,      icon:Database,      bg:'bg-primary-50',color:'text-drug-text',  ic:'text-primary-600'},
           {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600'  },
           {label:'Controlled',   value:stats.controlled, icon:AlertTriangle, bg:'bg-red-50',   color:'text-red-700',    ic:'text-red-600'   },
+          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500' },
         ].map(s=>(
-          <div key={s.label} className="bg-white border border-drug-border rounded-xl p-6">
+          <div key={s.label} className="bg-white border border-drug-border rounded-xl p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-drug-muted">{s.label}</p>
-                <p className={`text-3xl font-bold ${s.color}`}>
-                  {loading ? '—' : s.value}
-                </p>
+                <p className="text-xs text-drug-muted">{s.label}</p>
+                <p className={`text-2xl font-bold ${s.color}`}>{loading?'—':s.value}</p>
               </div>
-              <div className={`p-3 ${s.bg} rounded-lg`}>
-                <s.icon className={`w-6 h-6 ${s.ic}`}/>
-              </div>
+              <div className={`p-2.5 ${s.bg} rounded-lg`}><s.icon className={`w-5 h-5 ${s.ic}`}/></div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Search + Filter Bar */}
-      <div className="bg-white border border-drug-border rounded-xl p-4 mb-4 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-            <input type="text" value={searchQuery}
-              onChange={e=>{setSearchQuery(e.target.value);setSelectedIds(new Set());}}
-              placeholder="Search name, class, subclass, indication..."
-              className="w-full pl-10 pr-4 py-2.5 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 text-sm"/>
-          </div>
-          <button onClick={()=>setShowFilters(v=>!v)} style={{
-            display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,
-            border:showFilters?'1.5px solid #1e40af':'1.5px solid #E2E8F0',
-            background:showFilters?'#EFF6FF':'#fff',
-            color:showFilters?'#1e40af':'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',
-          }}>
-            <Filter className="w-4 h-4"/>Filters
-            {activeFilterCount>0&&(
-              <span style={{background:'#1e40af',color:'#fff',borderRadius:'50%',width:18,height:18,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900}}>
-                {activeFilterCount}
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 border-b border-drug-border">
+        {[
+          {id:'drugs',  label:'Drug List',     icon:Database},
+          {id:'ai',     label:'AI Generate',   icon:Sparkles},
+        ].map(tab=>(
+          <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+              activeTab===tab.id
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-drug-muted hover:text-drug-text'
+            }`}>
+            <tab.icon className="w-4 h-4"/>{tab.label}
+            {tab.id==='ai' && stats.incomplete>0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full">
+                {stats.incomplete}
               </span>
             )}
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters?'rotate-180':''}`}/>
           </button>
-          {selectedIds.size>0&&(
-            <button onClick={promptBulkDelete} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
-              <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
-            </button>
-          )}
-        </div>
+        ))}
+      </div>
 
-        {showFilters&&(
-          <div className="pt-3 border-t border-drug-border space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Drug Class</label>
-                <select value={filterClass} onChange={e=>{setFilterClass(e.target.value);setFilterSubclass('');setSelectedIds(new Set());}}
-                  className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
-                  <option value="">All Classes</option>
-                  {allClasses.map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
+      {/* ═══════════════════════ DRUG LIST TAB ════════════════════════════ */}
+      {activeTab === 'drugs' && (
+        <>
+          {/* Search + Filter Bar */}
+          <div className="bg-white border border-drug-border rounded-xl p-4 mb-4 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+                <input type="text" value={searchQuery} onChange={e=>{setSearchQuery(e.target.value);setSelectedIds(new Set());}}
+                  placeholder="Search name, class, subclass, indication..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 text-sm"/>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Drug Subclass</label>
-                <select value={filterSubclass} onChange={e=>{setFilterSubclass(e.target.value);setSelectedIds(new Set());}}
-                  className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
-                  <option value="">All Subclasses</option>
-                  {allSubclasses.map(sc=><option key={sc} value={sc}>{sc}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Rx Status</label>
-                <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setSelectedIds(new Set());}}
-                  className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
-                  <option value="">All Statuses</option>
-                  {ALL_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Indication</label>
-                <input type="text" value={filterIndication}
-                  onChange={e=>{setFilterIndication(e.target.value);setSelectedIds(new Set());}}
-                  placeholder="e.g. hypertension"
-                  className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"/>
-              </div>
-            </div>
-            {activeFilterCount>0&&(
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>
-                  Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>
-                  Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>
-                  Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                {filterIndication&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>
-                  Indication: {filterIndication}<button onClick={()=>setFilterIndication('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                <button onClick={clearAllFilters} style={{padding:'3px 10px',background:'none',border:'1px solid #E2E8F0',borderRadius:20,fontSize:12,fontWeight:700,color:'#64748B',cursor:'pointer'}}>
-                  Clear all
+              <button onClick={()=>setShowFilters(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:showFilters?'1.5px solid #1e40af':'1.5px solid #E2E8F0',background:showFilters?'#EFF6FF':'#fff',color:showFilters?'#1e40af':'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                <Filter className="w-4 h-4"/>Filters
+                {activeFilterCount>0&&<span style={{background:'#1e40af',color:'#fff',borderRadius:'50%',width:18,height:18,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900}}>{activeFilterCount}</span>}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters?'rotate-180':''}`}/>
+              </button>
+              {selectedIds.size>0&&(
+                <button onClick={promptBulkDelete} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
                 </button>
+              )}
+            </div>
+            {showFilters&&(
+              <div className="pt-3 border-t border-drug-border space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Drug Class</label>
+                    <select value={filterClass} onChange={e=>{setFilterClass(e.target.value);setFilterSubclass('');setSelectedIds(new Set());}} className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                      <option value="">All Classes</option>{allClasses.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Drug Subclass</label>
+                    <select value={filterSubclass} onChange={e=>{setFilterSubclass(e.target.value);setSelectedIds(new Set());}} className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                      <option value="">All Subclasses</option>{allSubclasses.map(sc=><option key={sc} value={sc}>{sc}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Rx Status</label>
+                    <select value={filterStatus} onChange={e=>{setFilterStatus(e.target.value);setSelectedIds(new Set());}} className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300">
+                      <option value="">All Statuses</option>{ALL_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-drug-muted uppercase tracking-wide mb-1.5">Indication</label>
+                    <input type="text" value={filterIndication} onChange={e=>{setFilterIndication(e.target.value);setSelectedIds(new Set());}} placeholder="e.g. hypertension" className="w-full px-3 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"/>
+                  </div>
+                </div>
+                {activeFilterCount>0&&(
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterIndication&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Indication: {filterIndication}<button onClick={()=>setFilterIndication('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    <button onClick={clearAllFilters} style={{padding:'3px 10px',background:'none',border:'1px solid #E2E8F0',borderRadius:20,fontSize:12,fontWeight:700,color:'#64748B',cursor:'pointer'}}>Clear all</button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="text-xs text-drug-muted pt-1">
+              {loading?'Loading…':seeding?'Seeding database…':filteredDrugs.length===drugs.length?`${drugs.length} drugs`:`${filteredDrugs.length} of ${drugs.length} drugs matching filters`}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-drug-border">
+                    <th className="px-4 py-3 w-10"><button onClick={toggleSelectAll} className="flex items-center justify-center">{allSelected?<CheckSquare className="w-4 h-4 text-primary-600"/>:<Square className="w-4 h-4 text-gray-400"/>}</button></th>
+                    <th className="text-left px-4 py-3 font-semibold text-drug-muted">Drug Name</th>
+                    <th className="text-left px-4 py-3 font-semibold text-drug-muted hidden sm:table-cell">Class</th>
+                    <th className="text-left px-4 py-3 font-semibold text-drug-muted hidden md:table-cell">Subclass</th>
+                    <th className="text-left px-4 py-3 font-semibold text-drug-muted">Status</th>
+                    <th className="text-right px-4 py-3 font-semibold text-drug-muted">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading||seeding?(
+                    <tr><td colSpan="6" className="text-center py-12">
+                      <RefreshCw className="w-8 h-8 text-primary-300 mx-auto mb-3 animate-spin"/>
+                      <p className="text-drug-muted">{seeding?'Seeding 280 drugs…':'Loading…'}</p>
+                    </td></tr>
+                  ):filteredDrugs.length===0?(
+                    <tr><td colSpan="6" className="text-center py-12">
+                      <Search className="w-10 h-10 text-gray-200 mx-auto mb-3"/>
+                      <p className="text-drug-muted font-medium">No drugs match</p>
+                      <button onClick={clearAllFilters} className="mt-3 text-primary-600 text-sm font-semibold hover:underline">Clear filters</button>
+                    </td></tr>
+                  ):filteredDrugs.map(drug=>(
+                    <tr key={drug.firestoreId} className={`border-b border-drug-border hover:bg-gray-50 transition-colors ${selectedIds.has(drug.firestoreId)?'bg-blue-50':isIncomplete(drug)?'bg-amber-50/40':''}`}>
+                      <td className="px-4 py-3"><button onClick={()=>toggleSelect(drug.firestoreId)} className="flex items-center justify-center">{selectedIds.has(drug.firestoreId)?<CheckSquare className="w-4 h-4 text-primary-600"/>:<Square className="w-4 h-4 text-gray-300"/>}</button></td>
+                      <td className="px-4 py-3">
+                        <Link to={`/drug/${drug.id}`} className="font-semibold text-primary-700 hover:underline">{drug.generic_name}</Link>
+                        {isIncomplete(drug)&&<span className="ml-2 text-xs text-amber-600 font-bold">⚠ incomplete</span>}
+                        <div className="sm:hidden text-xs text-drug-muted mt-0.5">{drug.drug_class}</div>
+                      </td>
+                      <td className="px-4 py-3 text-drug-muted hidden sm:table-cell">{drug.drug_class}</td>
+                      <td className="px-4 py-3 text-drug-muted hidden md:table-cell text-xs">{drug.drug_subclass||'—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-bold px-2 py-1 rounded ${drug.prescription_status==='OTC'?'bg-green-100 text-green-700':drug.prescription_status==='Controlled'?'bg-red-100 text-red-700':'bg-blue-100 text-blue-700'}`}>
+                          {drug.prescription_status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={()=>openEdit(drug)} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit"><Edit className="w-4 h-4"/></button>
+                          <button onClick={()=>promptDelete(drug.firestoreId)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4"/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filteredDrugs.length>0&&(
+              <div className="px-4 py-3 border-t border-drug-border bg-gray-50 flex items-center justify-between text-sm text-drug-muted">
+                <span>{selectedIds.size>0?`${selectedIds.size} of ${filteredDrugs.length} selected`:`${filteredDrugs.length} drug${filteredDrugs.length!==1?'s':''}`}</span>
+                {selectedIds.size>0&&<button onClick={()=>setSelectedIds(new Set())} className="text-primary-600 font-medium hover:underline">Clear selection</button>}
               </div>
             )}
           </div>
-        )}
+        </>
+      )}
 
-        <div className="text-xs text-drug-muted pt-1">
-          {loading ? 'Loading…' : seeding ? 'Seeding database…' :
-            filteredDrugs.length===drugs.length
-              ? `${drugs.length} drugs`
-              : `${filteredDrugs.length} of ${drugs.length} drugs matching filters`}
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-drug-border">
-                <th className="px-4 py-3 w-10">
-                  <button onClick={toggleSelectAll} className="flex items-center justify-center">
-                    {allSelected?<CheckSquare className="w-4 h-4 text-primary-600"/>:<Square className="w-4 h-4 text-gray-400"/>}
-                  </button>
-                </th>
-                <th className="text-left px-4 py-3 font-semibold text-drug-muted">Drug Name</th>
-                <th className="text-left px-4 py-3 font-semibold text-drug-muted hidden sm:table-cell">Class</th>
-                <th className="text-left px-4 py-3 font-semibold text-drug-muted hidden md:table-cell">Subclass</th>
-                <th className="text-left px-4 py-3 font-semibold text-drug-muted">Rx Status</th>
-                <th className="text-right px-4 py-3 font-semibold text-drug-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading||seeding ? (
-                <tr><td colSpan="6" className="text-center py-12">
-                  <RefreshCw className="w-8 h-8 text-primary-300 mx-auto mb-3 animate-spin"/>
-                  <p className="text-drug-muted">{seeding?'Seeding 280 drugs to database…':'Loading…'}</p>
-                </td></tr>
-              ) : filteredDrugs.length===0 ? (
-                <tr><td colSpan="6" className="text-center py-12">
-                  <Search className="w-10 h-10 text-gray-200 mx-auto mb-3"/>
-                  <p className="text-drug-muted font-medium">No drugs match your filters</p>
-                  <button onClick={clearAllFilters} className="mt-3 text-primary-600 text-sm font-semibold hover:underline">Clear all filters</button>
-                </td></tr>
-              ) : filteredDrugs.map(drug=>(
-                <tr key={drug.firestoreId}
-                  className={`border-b border-drug-border hover:bg-gray-50 transition-colors ${selectedIds.has(drug.firestoreId)?'bg-blue-50':''}`}>
-                  <td className="px-4 py-3">
-                    <button onClick={()=>toggleSelect(drug.firestoreId)} className="flex items-center justify-center">
-                      {selectedIds.has(drug.firestoreId)?<CheckSquare className="w-4 h-4 text-primary-600"/>:<Square className="w-4 h-4 text-gray-300"/>}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link to={`/drug/${drug.id}`} className="font-semibold text-primary-700 hover:underline">{drug.generic_name}</Link>
-                    <div className="sm:hidden text-xs text-drug-muted mt-0.5">
-                      <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_class}</Link>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-drug-muted hidden sm:table-cell">
-                    <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_class}</Link>
-                  </td>
-                  <td className="px-4 py-3 text-drug-muted hidden md:table-cell text-xs">
-                    {drug.drug_subclass
-                      ? <Link to={`/drug/${drug.id}`} className="hover:underline hover:text-primary-600">{drug.drug_subclass}</Link>
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2 py-1 rounded ${
-                      drug.prescription_status==='OTC'?'bg-green-100 text-green-700':
-                      drug.prescription_status==='Controlled'?'bg-red-100 text-red-700':'bg-blue-100 text-blue-700'}`}>
-                      {drug.prescription_status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={()=>openEdit(drug)} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit">
-                        <Edit className="w-4 h-4"/>
-                      </button>
-                      <button onClick={()=>promptDelete(drug.firestoreId)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                        <Trash2 className="w-4 h-4"/>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filteredDrugs.length>0&&(
-          <div className="px-4 py-3 border-t border-drug-border bg-gray-50 flex items-center justify-between text-sm text-drug-muted">
-            <span>{selectedIds.size>0?`${selectedIds.size} of ${filteredDrugs.length} selected`:`${filteredDrugs.length} drug${filteredDrugs.length!==1?'s':''}`}</span>
-            {selectedIds.size>0&&<button onClick={()=>setSelectedIds(new Set())} className="text-primary-600 font-medium hover:underline">Clear selection</button>}
+      {/* ═══════════════════════ AI GENERATE TAB ══════════════════════════ */}
+      {activeTab === 'ai' && (
+        <div className="space-y-4">
+          {/* Intro banner */}
+          <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <Sparkles className="w-6 h-6 text-primary-600 flex-shrink-0 mt-0.5"/>
+              <div>
+                <h2 className="font-bold text-primary-900 mb-1">AI Drug Generator</h2>
+                <p className="text-sm text-primary-700 leading-relaxed">
+                  For each drug class, the AI will: <strong>(1)</strong> find drugs in the class not yet in your database and generate their full profiles, <strong>(2)</strong> detect existing drugs with incomplete data and regenerate them. Saves run {PARALLEL_SAVES} at a time for speed.
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Zap className="w-3.5 h-3.5 text-amber-500"/>
+                  <span className="text-xs font-semibold text-amber-700">{PARALLEL_SAVES} parallel saves — Pro tier speed</span>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Stop button */}
+          {runningClass && (
+            <button onClick={stopAi} className="w-full py-3 bg-red-50 border border-red-200 text-red-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors">
+              <X className="w-4 h-4"/> Stop AI ({runningClass})
+            </button>
+          )}
+
+          {/* Class list */}
+          {loading ? (
+            <div className="text-center py-16"><RefreshCw className="w-8 h-8 text-primary-300 mx-auto animate-spin mb-3"/><p className="text-drug-muted">Loading drug classes…</p></div>
+          ) : (
+            <div className="space-y-2">
+              {aiClassList.map(({ className, count, incomplete }) => {
+                const state = classAiState[className] || {};
+                const isRunning = runningClass === className;
+                const isDone = state.status === 'done';
+                const isError = state.status === 'error';
+                const isStopped = state.status === 'stopped';
+                const isExpanded = expandedClass === className;
+
+                return (
+                  <div key={className} className={`bg-white border rounded-xl overflow-hidden transition-all ${isRunning?'border-primary-400 shadow-md':isDone?'border-green-300':isError?'border-red-300':'border-drug-border'}`}>
+                    {/* Class row header */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Expand/collapse */}
+                      <button onClick={()=>setExpandedClass(isExpanded?null:className)} className="p-1 text-drug-muted hover:text-drug-text">
+                        <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded?'rotate-90':''}`}/>
+                      </button>
+
+                      {/* Class name + badges */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-drug-text">{className}</span>
+                          <span className="text-xs text-drug-muted">{count} drug{count!==1?'s':''}</span>
+                          {incomplete>0&&<span className="text-xs font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">⚠ {incomplete} incomplete</span>}
+                          {isDone&&<span className="text-xs font-bold px-2 py-0.5 bg-green-100 text-green-700 rounded-full">✅ Done</span>}
+                          {isError&&<span className="text-xs font-bold px-2 py-0.5 bg-red-100 text-red-700 rounded-full">❌ Error</span>}
+                          {isStopped&&<span className="text-xs font-bold px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">⏹ Stopped</span>}
+                          {isRunning&&<span className="text-xs font-bold px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin"/>Running…</span>}
+                        </div>
+                        {/* Progress summary */}
+                        {(state.saved?.length>0||state.failed?.length>0)&&(
+                          <div className="text-xs text-drug-muted mt-0.5">
+                            {state.saved?.length>0&&<span className="text-green-600 font-semibold mr-3">✅ {state.saved.length} saved</span>}
+                            {state.failed?.length>0&&<span className="text-red-600 font-semibold">❌ {state.failed.length} failed</span>}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Generate button */}
+                      <button
+                        onClick={()=>runAiForClass(className)}
+                        disabled={!!runningClass}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                          isRunning ? 'bg-primary-100 text-primary-600 cursor-not-allowed'
+                          : runningClass ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : isDone ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                          : 'bg-primary-600 text-white hover:bg-primary-700'
+                        }`}
+                      >
+                        {isRunning
+                          ? <><RefreshCw className="w-3 h-3 animate-spin"/>Running</>
+                          : isDone
+                          ? <><RefreshCw className="w-3 h-3"/>Re-run</>
+                          : <><Sparkles className="w-3 h-3"/>Generate</>}
+                      </button>
+                    </div>
+
+                    {/* Expanded log */}
+                    {isExpanded && state.log && (
+                      <div className="border-t border-drug-border bg-gray-950 px-4 py-3 max-h-72 overflow-y-auto">
+                        <div className="font-mono text-xs leading-relaxed space-y-0.5">
+                          {state.log.map((line, i) => (
+                            <div key={i} className={
+                              line.includes('✅')?'text-green-400':
+                              line.includes('❌')?'text-red-400':
+                              line.includes('⚠')||line.includes('🔧')?'text-amber-400':
+                              line.includes('⚡')||line.includes('🆕')?'text-blue-400':
+                              line.includes('🏁')?'text-purple-400':
+                              'text-gray-300'
+                            }>{line}</div>
+                          ))}
+                          {isRunning&&<div className="text-primary-400 animate-pulse">▌</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expanded: what was found before running */}
+                    {isExpanded && !state.log && (
+                      <div className="border-t border-drug-border px-4 py-3 text-sm text-drug-muted">
+                        Press <strong>Generate</strong> to scan this class, find missing drugs, and fix incomplete entries.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
