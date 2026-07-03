@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
-  Sparkles, RefreshCw,
+  Sparkles, RefreshCw, Save,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -142,14 +142,19 @@ const TABS = [
 
 /* ── AI Insights Tab ─────────────────────────────────────────────────────── */
 function AiInsightsTab({ drug }) {
-  const [state, setState] = useState('idle'); // idle | loading | streaming | done | error
-  const [text, setText]   = useState('');
-  const [error, setError] = useState('');
+  const { isAdmin }    = useAuth();
+  // If already saved to Firestore, show immediately — no need to regenerate
+  const [state, setState]       = useState(drug.ai_insights ? 'done' : 'idle');
+  const [text, setText]         = useState(drug.ai_insights || '');
+  const [error, setError]       = useState('');
+  const [saveState, setSaveState] = useState(drug.ai_insights ? 'saved' : 'idle');
+  // idle | saving | saved | error
 
   const fetchInsights = async () => {
     setState('loading');
     setError('');
     setText('');
+    setSaveState('idle');
     try {
       const knownData = [
         drug.overview && `Overview: ${drug.overview}`,
@@ -180,8 +185,8 @@ function AiInsightsTab({ drug }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           genericName: drug.generic_name,
-          brandNames: drug.brand_names || '',
-          drugClass: drug.drug_class || '',
+          brandNames:  drug.brand_names || '',
+          drugClass:   drug.drug_class  || '',
           knownData,
         }),
       });
@@ -193,7 +198,7 @@ function AiInsightsTab({ drug }) {
       }
 
       setState('streaming');
-      const reader = res.body.getReader();
+      const reader  = res.body.getReader();
       const decoder = new TextDecoder();
       let full = '';
       while (true) {
@@ -206,6 +211,20 @@ function AiInsightsTab({ drug }) {
     } catch (e) {
       setError(e.message || 'Failed to load AI insights.');
       setState('error');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    setSaveState('saving');
+    try {
+      await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+        ai_insights:  text,
+        last_updated: serverTimestamp(),
+      });
+      setSaveState('saved');
+    } catch (e) {
+      setSaveState('error');
     }
   };
 
@@ -252,29 +271,64 @@ function AiInsightsTab({ drug }) {
     );
   }
 
-  // streaming or done — render text as it arrives
+  // streaming or done
   return (
     <div className="section-card p-6">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary-500" />
           <h2 className="text-lg font-bold text-drug-text">AI Clinical Insights</h2>
           {state === 'streaming' && (
             <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
           )}
+          {saveState === 'saved' && (
+            <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+              ✓ Saved
+            </span>
+          )}
         </div>
+
         {state === 'done' && (
-          <button
-            onClick={fetchInsights}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Save button — updates Firestore so it loads instantly next visit */}
+            {isAdmin && saveState !== 'saved' && (
+              <button
+                onClick={handleSave}
+                disabled={saveState === 'saving'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  background: saveState === 'error' ? '#FEF2F2' : '#1e40af',
+                  color: saveState === 'error' ? '#DC2626' : '#fff',
+                  border: saveState === 'error' ? '1px solid #FECACA' : 'none',
+                  cursor: saveState === 'saving' ? 'not-allowed' : 'pointer',
+                  opacity: saveState === 'saving' ? 0.7 : 1,
+                }}
+              >
+                {saveState === 'saving' ? (
+                  <><RefreshCw style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} /> Saving…</>
+                ) : saveState === 'error' ? (
+                  <>⚠ Save failed — Retry</>
+                ) : (
+                  <><Save style={{ width: 13, height: 13 }} /> Save to Database</>
+                )}
+              </button>
+            )}
+
+            <button
+              onClick={fetchInsights}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+            </button>
+          </div>
         )}
       </div>
+
       {text
         ? renderAiText(text)
         : <p className="text-sm text-drug-muted">Starting…</p>}
+
       {state === 'done' && (
         <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
           AI-generated content is a reference aid, not a substitute for the current product monograph or clinical
