@@ -545,15 +545,22 @@ function AiClassFallback({ className, existingDrugs }) {
 
       {items.length > 0 && (() => {
         const newCount = items.filter(item => !existingByName.has(normalizeDrugName(item.name))).length;
-        const existingCount = items.length - newCount;
+        const existingItems = items.filter(item => existingByName.has(normalizeDrugName(item.name)));
+        const incompleteCount = existingItems.filter(item => !isDrugComplete(existingByName.get(normalizeDrugName(item.name)))).length;
+        const completeCount = existingItems.length - incompleteCount;
         return (
           <div className="flex items-center gap-3 mb-3 text-xs font-semibold flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
               <Sparkles className="w-3 h-3" /> {newCount} new
             </span>
-            {existingCount > 0 && (
+            {completeCount > 0 && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-                <CheckCircle className="w-3 h-3" /> {existingCount} already in database
+                <CheckCircle className="w-3 h-3" /> {completeCount} already in database
+              </span>
+            )}
+            {incompleteCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                <AlertTriangle className="w-3 h-3" /> {incompleteCount} in database but incomplete
               </span>
             )}
           </div>
@@ -564,6 +571,7 @@ function AiClassFallback({ className, existingDrugs }) {
         <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
           {items.map((item, i) => {
             const existing = existingByName.get(normalizeDrugName(item.name));
+            const existingIncomplete = existing && !isDrugComplete(existing);
             return (
               <Link
                 key={`${item.name}-${i}`}
@@ -574,14 +582,22 @@ function AiClassFallback({ className, existingDrugs }) {
                   i !== items.length - 1 ? 'border-b border-drug-border' : ''
                 }`}
               >
-                <div className={`p-2 rounded-lg flex-shrink-0 ${existing ? 'bg-green-50' : 'bg-primary-50'}`}>
-                  <Pill className={`w-5 h-5 ${existing ? 'text-green-600' : 'text-primary-600'}`} />
+                <div className={`p-2 rounded-lg flex-shrink-0 ${
+                  existingIncomplete ? 'bg-amber-50' : existing ? 'bg-green-50' : 'bg-primary-50'
+                }`}>
+                  <Pill className={`w-5 h-5 ${
+                    existingIncomplete ? 'text-amber-600' : existing ? 'text-green-600' : 'text-primary-600'
+                  }`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold truncate">{item.name}</h3>
                   <p className="text-sm text-primary-600 truncate">{item.subclass || className}</p>
                 </div>
-                {existing ? (
+                {existingIncomplete ? (
+                  <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-amber-100 text-amber-700 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Needs Info
+                  </span>
+                ) : existing ? (
                   <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-green-100 text-green-700 flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" /> In Database
                   </span>
