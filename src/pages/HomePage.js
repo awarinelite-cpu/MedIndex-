@@ -5,6 +5,7 @@ import {
   Stethoscope, ChevronRight, Grid3X3
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { quickSearch } from '../utils/searchDrugs';
 
 const CATEGORIES = [
   { name: 'Cardiovascular',  icon: Heart,       color: 'text-red-500',     bg: 'bg-red-50'     },
@@ -25,15 +26,10 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
-  // Live search across all 280 drugs — instant, no network
+  // Live search — relevance ranked, searches name + ALL indication fields + class + overview
   const searchResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    return ALL_DRUGS.filter(d =>
-      d.generic_name?.toLowerCase().includes(q) ||
-      d.drug_class?.toLowerCase().includes(q) ||
-      d.indications?.toLowerCase().includes(q)
-    ).slice(0, 8);
+    if (!searchQuery.trim()) return [];
+    return quickSearch(ALL_DRUGS, searchQuery, 8);
   }, [ALL_DRUGS, searchQuery]);
 
   const handleSearch = (e) => {
@@ -90,9 +86,13 @@ export default function HomePage() {
                                border-gray-50 last:border-0 transition-colors"
                   >
                     <Pill className="w-4 h-4 text-primary-500 flex-shrink-0" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-semibold text-gray-900 truncate">{drug.generic_name}</div>
-                      <div className="text-xs text-gray-500 truncate">{drug.drug_class}</div>
+                      {drug._matchType === 'indication' && drug._matchSnippet ? (
+                        <div className="text-xs text-teal-600 truncate">✓ {drug._matchSnippet}</div>
+                      ) : (
+                        <div className="text-xs text-gray-500 truncate">{drug.drug_class}</div>
+                      )}
                     </div>
                     <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${
                       drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :

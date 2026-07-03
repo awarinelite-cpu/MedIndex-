@@ -5,7 +5,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
-import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
+import { searchDrugs } from '../utils/searchDrugs';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -415,20 +415,24 @@ export default function BrowsePage() {
   }, [searchQuery, filterClass, filterStatus, viewMode]);
 
   const filteredDrugs = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     const fc = filterClass.trim().toLowerCase();
-    return ALL_DRUGS.filter(drug => {
-      const matchesSearch = !q ||
-        drug.generic_name?.toLowerCase().includes(q) ||
-        drug.drug_class?.toLowerCase().includes(q) ||
-        drug.indications?.toLowerCase().includes(q) ||
-        drug.overview?.toLowerCase().includes(q);
+
+    // First apply class + status filters
+    let pool = ALL_DRUGS.filter(drug => {
       const matchesClass  = !fc ||
         drug.drug_class?.toLowerCase() === fc ||
         drug.drug_subclass?.toLowerCase() === fc;
       const matchesStatus = !filterStatus || drug.prescription_status === filterStatus;
-      return matchesSearch && matchesClass && matchesStatus;
+      return matchesClass && matchesStatus;
     });
+
+    // Then apply relevance-ranked search (searches name, ALL indication fields,
+    // class, and overview — both AI and legacy CSV schemas)
+    if (searchQuery.trim()) {
+      pool = searchDrugs(pool, searchQuery);
+    }
+
+    return pool;
   }, [ALL_DRUGS, searchQuery, filterClass, filterStatus]);
 
   return (
@@ -459,7 +463,7 @@ export default function BrowsePage() {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search drugs by name, class, or indication..."
+            placeholder="Search by name, condition, indication, drug class…"
             className="flex-1 px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
           />
           <select
@@ -515,7 +519,20 @@ export default function BrowsePage() {
               </div>
               <h3 className="text-lg font-bold group-hover:text-primary-700 transition-colors">{drug.generic_name}</h3>
               <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
-              <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
+
+              {/* Show WHY this drug appeared when searching by indication */}
+              {drug._matchType === 'indication' && drug._matchSnippet ? (
+                <div className="mt-2">
+                  <span className="inline-block text-xs font-bold px-2 py-0.5 bg-teal-50 text-teal-700 rounded mb-1">
+                    ✓ Indicated for
+                  </span>
+                  <p className="text-sm text-drug-muted line-clamp-2 italic">"{drug._matchSnippet}"</p>
+                </div>
+              ) : (
+                <p className="text-sm text-drug-muted mt-2 line-clamp-2">
+                  {drug.indications || drug.primary_indications}
+                </p>
+              )}
             </Link>
           ))}
         </div>
@@ -531,7 +548,11 @@ export default function BrowsePage() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold truncate">{drug.generic_name}</h3>
-                <p className="text-sm text-primary-600 truncate">{drug.drug_class}</p>
+                {drug._matchType === 'indication' && drug._matchSnippet ? (
+                  <p className="text-sm text-teal-600 truncate">✓ {drug._matchSnippet}</p>
+                ) : (
+                  <p className="text-sm text-primary-600 truncate">{drug.drug_class}</p>
+                )}
               </div>
               <span className={`text-xs font-bold px-2 py-1 rounded flex-shrink-0 ${
                 drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
