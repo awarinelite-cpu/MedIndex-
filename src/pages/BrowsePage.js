@@ -246,10 +246,21 @@ function AiSearchFallback({ searchQuery }) {
 }
 
 /* ── AI fallback for sparse class/subclass results ───────────────────────── */
+function normalizeDrugName(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 function AiClassFallback({ className, existingDrugs }) {
   const { isAdmin } = useAuth();
   const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
   const incompleteExisting = useMemo(() => existingDrugs.filter(d => !isDrugComplete(d)), [existingDrugs]);
+  const existingByName = useMemo(() => {
+    const map = new Map();
+    existingDrugs.forEach(d => {
+      if (d.generic_name) map.set(normalizeDrugName(d.generic_name), d);
+    });
+    return map;
+  }, [existingDrugs]);
 
   const cacheKey = `ai_class_${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
@@ -271,9 +282,15 @@ function AiClassFallback({ className, existingDrugs }) {
     let saved = 0, skipped = 0;
     const errors = [];
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
+    // Anything the AI suggested that turns out to match an existing drug by
+    // name doesn't need an AI call at all here — fixing existing entries is
+    // handled separately by "Complete Missing Info" above.
+    const newItems = items.filter(item => !existingByName.has(normalizeDrugName(item.name)));
+    skipped += items.length - newItems.length;
+
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      setBulkProgress({ current: i + 1, total: newItems.length, currentName: item.name });
       const drugClassForItem = item.subclass || className;
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
@@ -466,7 +483,7 @@ function AiClassFallback({ className, existingDrugs }) {
           <h2 className="text-lg font-bold text-drug-text truncate">AI: More in "{queriedFor}"</h2>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          {isAdmin && items.length > 0 && bulkState !== 'running' && (
+          {isAdmin && items.some(item => !existingByName.has(normalizeDrugName(item.name))) && bulkState !== 'running' && (
             <button
               onClick={() => saveAllToDatabase(items)}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg"
@@ -526,29 +543,57 @@ function AiClassFallback({ className, existingDrugs }) {
         </div>
       )}
 
+      {items.length > 0 && (() => {
+        const newCount = items.filter(item => !existingByName.has(normalizeDrugName(item.name))).length;
+        const existingCount = items.length - newCount;
+        return (
+          <div className="flex items-center gap-3 mb-3 text-xs font-semibold flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+              <Sparkles className="w-3 h-3" /> {newCount} new
+            </span>
+            {existingCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+                <CheckCircle className="w-3 h-3" /> {existingCount} already in database
+              </span>
+            )}
+          </div>
+        );
+      })()}
+
       {items.length > 0 ? (
         <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-          {items.map((item, i) => (
-            <Link
-              key={`${item.name}-${i}`}
-              to={`/ai-drug/${encodeURIComponent(item.name)}?class=${encodeURIComponent(item.subclass || className)}`}
-              className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
-                i !== items.length - 1 ? 'border-b border-drug-border' : ''
-              }`}
-            >
-              <div className="p-2 bg-primary-50 rounded-lg flex-shrink-0">
-                <Pill className="w-5 h-5 text-primary-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold truncate">{item.name}</h3>
-                <p className="text-sm text-primary-600 truncate">{item.subclass || className}</p>
-              </div>
-              <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-purple-100 text-purple-700 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> AI
-              </span>
-              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
-            </Link>
-          ))}
+          {items.map((item, i) => {
+            const existing = existingByName.get(normalizeDrugName(item.name));
+            return (
+              <Link
+                key={`${item.name}-${i}`}
+                to={existing
+                  ? `/drug/${existing.id || existing.firestoreId}`
+                  : `/ai-drug/${encodeURIComponent(item.name)}?class=${encodeURIComponent(item.subclass || className)}`}
+                className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
+                  i !== items.length - 1 ? 'border-b border-drug-border' : ''
+                }`}
+              >
+                <div className={`p-2 rounded-lg flex-shrink-0 ${existing ? 'bg-green-50' : 'bg-primary-50'}`}>
+                  <Pill className={`w-5 h-5 ${existing ? 'text-green-600' : 'text-primary-600'}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold truncate">{item.name}</h3>
+                  <p className="text-sm text-primary-600 truncate">{item.subclass || className}</p>
+                </div>
+                {existing ? (
+                  <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-green-100 text-green-700 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> In Database
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-purple-100 text-purple-700 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> AI
+                  </span>
+                )}
+                <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+              </Link>
+            );
+          })}
         </div>
       ) : (
         // Fallback if the response didn't follow the expected bullet format
