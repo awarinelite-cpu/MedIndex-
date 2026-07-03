@@ -50,7 +50,26 @@ export default async function handler(req) {
 
   let prompt;
 
-  if (mode === 'class') {
+  if (mode === 'strength') {
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'genericName is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. For the medication below, state ONLY the formulation strength(s) it usually comes in — the product strength, not the dosing regimen.
+
+Drug: ${genericName}
+${drugClass ? `Drug class: ${drugClass}` : ''}
+
+Reply with nothing but one line per formulation, in the format "Form: strength" — for example:
+Tab: 500mg
+IV: 500mg/100mL
+Susp: 125mg/5mL
+
+List every commonly available formulation/route. Do not add headers, bullets, explanations, or any other text — only the strength lines themselves. If you are not confident of exact figures, give the most commonly cited strength(s) and do not fabricate implausible values.`;
+  } else if (mode === 'class') {
     if (!className || typeof className !== 'string') {
       return new Response(JSON.stringify({ error: 'className is required.' }), {
         status: 400,
@@ -140,7 +159,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : mode === 'strength' ? 150 : 2000 },
           }),
         }
       );

@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 
@@ -58,6 +58,54 @@ export async function fetchAiDrugText({ genericName, drugClass }) {
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
   return full;
+}
+
+// ── Fast, minimal-token strength-only lookup ──────────────────────────────
+// Used when a drug already has all other required fields and only needs
+// its formulation strength filled in — skips the full 20-field generation
+// and only writes the single 'strength' field, so it's much faster/cheaper
+// than a full regenerate + save.
+export async function fetchStrengthText({ genericName, drugClass }) {
+  const res = await fetch('/api/drug-ai-details', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'strength', genericName, drugClass: drugClass || undefined }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+  full = full.trim();
+  if (!full) throw new Error('AI returned an empty response.');
+  return full;
+}
+
+// A drug only needs the fast strength-only path if every other required
+// field is already complete and strength itself is still missing.
+export function needsStrengthOnly(data) {
+  return isDrugComplete(data) && !(data.strength && String(data.strength).trim());
+}
+
+// Writes only the strength field (+ last_updated) — no confirmation needed
+// since this never overwrites existing populated data, only fills a gap.
+export async function saveStrengthOnly({ docId, strengthText }) {
+  await updateDoc(doc(db, 'drugs', docId), {
+    strength:     strengthText,
+    last_updated: serverTimestamp(),
+  });
+  return { status: 'saved', id: docId };
 }
 
 // ── Generate, validate, and save a drug ──────────────────────────────────

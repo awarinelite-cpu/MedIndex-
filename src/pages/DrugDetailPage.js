@@ -9,6 +9,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+import { needsStrengthOnly } from '../utils/aiDrugSave';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
   serverTimestamp, query, orderBy,
@@ -241,11 +242,24 @@ function AiInsightsTab({ drug }) {
     try {
       const parsedFields = parseAiDrugDetail(text);
 
-      // If any structured field the tabs read from is already populated on
-      // this drug, confirm before overwriting it rather than silently
-      // replacing existing (possibly verified) data.
+      // Fast path: this drug already has every core field filled in and is
+      // only missing strength — skip the confirm step and write just that
+      // one field instead of the full record, so it's quick.
+      if (needsStrengthOnly(drug) && parsedFields.strength) {
+        await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+          strength:     parsedFields.strength,
+          last_updated: serverTimestamp(),
+        });
+        setSaveState('saved');
+        setTimeout(() => window.location.reload(), 900);
+        return;
+      }
+
+      // If any other structured field the tabs read from is already
+      // populated on this drug, confirm before overwriting it rather than
+      // silently replacing existing (possibly verified) data.
       const wouldOverwrite = STRUCTURED_FIELDS.some(
-        f => drug[f] && String(drug[f]).trim() && parsedFields[f]
+        f => f !== 'strength' && drug[f] && String(drug[f]).trim() && parsedFields[f]
       );
 
       if (wouldOverwrite) {

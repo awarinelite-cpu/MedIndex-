@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
-import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -479,8 +479,100 @@ function AiClassFallback({ className, knownDrugNames }) {
   );
 }
 
+/* ── Bulk fast Strength fill for an already-populated class ─────────────── */
+function BulkStrengthUpdate({ drugsMissingStrength, className, onDone }) {
+  const [bulkState, setBulkState]       = useState('idle'); // idle | running | done
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [bulkResults, setBulkResults]   = useState(null); // { updated, errors: [{name, message}] }
+
+  const runBulkUpdate = async () => {
+    setBulkState('running');
+    setBulkResults(null);
+    let updated = 0;
+    const errors = [];
+
+    for (let i = 0; i < drugsMissingStrength.length; i++) {
+      const drug = drugsMissingStrength[i];
+      setBulkProgress({ current: i + 1, total: drugsMissingStrength.length, currentName: drug.generic_name });
+      try {
+        const strengthText = await fetchStrengthText({ genericName: drug.generic_name, drugClass: drug.drug_class });
+        await saveStrengthOnly({ docId: drug.firestoreId || drug.id, strengthText });
+        updated += 1;
+      } catch (e) {
+        errors.push({ name: drug.generic_name, message: e.message || 'Failed to update.' });
+      }
+      // Brief pause between requests to stay gentle on the AI provider's rate limits.
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    setBulkResults({ updated, errors });
+    setBulkState('done');
+    onDone?.();
+  };
+
+  if (bulkState === 'idle') {
+    return (
+      <div className="mt-6 bg-violet-50 border border-violet-200 rounded-xl p-6 text-center">
+        <Sparkles className="w-8 h-8 text-violet-500 mx-auto mb-3" />
+        <p className="text-sm text-drug-text mb-4">
+          {drugsMissingStrength.length} drug{drugsMissingStrength.length === 1 ? '' : 's'} in "{className}"
+          {drugsMissingStrength.length === 1 ? ' is' : ' are'} otherwise complete but missing Strength.
+          Fill {drugsMissingStrength.length === 1 ? 'it' : 'them'} in with a fast, strength-only AI lookup?
+        </p>
+        <button
+          onClick={runBulkUpdate}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-xl font-semibold text-sm hover:bg-violet-700 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" /> Fill in Strength for {drugsMissingStrength.length} drug{drugsMissingStrength.length === 1 ? '' : 's'}
+        </button>
+      </div>
+    );
+  }
+
+  if (bulkState === 'running') {
+    return (
+      <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <RefreshCw className="w-5 h-5 text-violet-500 animate-spin" />
+          <h3 className="font-bold text-drug-text">
+            Updating strength — {bulkProgress.current}/{bulkProgress.total}
+          </h3>
+        </div>
+        <p className="text-sm text-drug-muted mb-3">Currently: {bulkProgress.currentName}</p>
+        <div className="w-full bg-gray-100 rounded-full h-2">
+          <div
+            className="bg-violet-500 h-2 rounded-full transition-all"
+            style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // done
+  return (
+    <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle className="w-5 h-5 text-green-600" />
+        <h3 className="font-bold text-drug-text">Strength update complete</h3>
+      </div>
+      <p className="text-sm text-drug-muted mb-2">
+        {bulkResults.updated} of {drugsMissingStrength.length} drug{drugsMissingStrength.length === 1 ? '' : 's'} updated.
+        {bulkResults.errors.length > 0 && ` ${bulkResults.errors.length} failed.`}
+      </p>
+      {bulkResults.errors.length > 0 && (
+        <ul className="text-xs text-red-600 space-y-1 mt-2">
+          {bulkResults.errors.map((e, i) => <li key={i}>{e.name}: {e.message}</li>)}
+        </ul>
+      )}
+      <p className="text-xs text-drug-muted mt-3">Refresh the page to see the updated Strength badges.</p>
+    </div>
+  );
+}
+
 export default function BrowsePage() {
-  const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
+  const { isAdmin } = useAuth();
   const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
 
   const { condition }             = useParams();
@@ -689,6 +781,19 @@ export default function BrowsePage() {
           knownDrugNames={filteredDrugs.map(d => d.generic_name).filter(Boolean)}
         />
       )}
+
+      {/* Bulk fast Strength fill — admin only, for classes that are otherwise complete */}
+      {isAdmin && filterClass.trim() && (() => {
+        const missingStrength = filteredDrugs.filter(needsStrengthOnly);
+        return missingStrength.length > 0 ? (
+          <BulkStrengthUpdate
+            key={filterClass}
+            drugsMissingStrength={missingStrength}
+            className={filterClass}
+            onDone={invalidateCache}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }
