@@ -10,17 +10,20 @@ import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
+  const { isAdmin } = useAuth();
   const cacheKey = `ai_search_${searchQuery.trim().toLowerCase()}`;
 
-  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
-  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
-  const [error, setError] = useState('');
+  const [state, setState]         = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [text, setText]           = useState(() => sessionStorage.getItem(cacheKey) || '');
+  const [error, setError]         = useState('');
   const [queriedFor, setQueriedFor] = useState(searchQuery);
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
 
   const runLookup = async () => {
     setState('loading');
     setError('');
     setText('');
+    setSaveState('idle');
     setQueriedFor(searchQuery);
     try {
       const res = await fetch('/api/drug-ai-details', {
@@ -45,12 +48,36 @@ function AiSearchFallback({ searchQuery }) {
         full += decoder.decode(value, { stream: true });
         setText(full);
       }
-      // Cache result so Back navigation restores it instantly
       sessionStorage.setItem(cacheKey, full);
       setState('done');
     } catch (e) {
       setError(e.message || 'Failed to load AI lookup.');
       setState('error');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    setSaveState('saving');
+    try {
+      const result = await saveAiDrugToDatabase({
+        genericName: queriedFor.trim(),
+        drugClass:   '',
+        text,
+        overwrite:   false,
+      });
+      if (result.status === 'incomplete') {
+        // Some fields missing but save the best we have anyway
+        await saveAiDrugToDatabase({
+          genericName: queriedFor.trim(),
+          drugClass:   '',
+          text,
+          overwrite:   true,
+        });
+      }
+      setSaveState('saved');
+    } catch (e) {
+      setSaveState('error');
     }
   };
 
@@ -98,29 +125,63 @@ function AiSearchFallback({ searchQuery }) {
     );
   }
 
-  // streaming or done — render text as it arrives
+  // streaming or done
   return (
     <div className="mt-6 bg-white border border-drug-border rounded-xl p-6">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-primary-500" />
           <h2 className="text-lg font-bold text-drug-text">AI Lookup: {queriedFor}</h2>
           {state === 'streaming' && (
             <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
           )}
+          {saveState === 'saved' && (
+            <span className="text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+              ✓ Saved to database
+            </span>
+          )}
         </div>
+
         {state === 'done' && (
-          <button
-            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Save to Database — admin only */}
+            {isAdmin && saveState !== 'saved' && (
+              <button
+                onClick={handleSave}
+                disabled={saveState === 'saving'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  background: saveState === 'error' ? '#FEF2F2' : '#1e40af',
+                  color: saveState === 'error' ? '#DC2626' : '#fff',
+                  border: saveState === 'error' ? '1px solid #FECACA' : 'none',
+                  cursor: saveState === 'saving' ? 'not-allowed' : 'pointer',
+                  opacity: saveState === 'saving' ? 0.7 : 1,
+                }}
+              >
+                {saveState === 'saving' ? (
+                  <><RefreshCw style={{ width: 13, height: 13 }} /> Saving…</>
+                ) : saveState === 'error' ? (
+                  <>⚠ Failed — Retry</>
+                ) : (
+                  <><Save style={{ width: 13, height: 13 }} /> Save to Database</>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+            </button>
+          </div>
         )}
       </div>
+
       {text
         ? renderAiText(text)
         : <p className="text-sm text-drug-muted">Starting…</p>}
+
       {state === 'done' && (
         <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
           This drug is not yet in the verified database — the above is AI-generated on demand and not a
