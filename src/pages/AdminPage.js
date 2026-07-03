@@ -252,10 +252,12 @@ export default function AdminPage() {
                 stillIncomplete.push(name);
                 log(`  ⚠ Incomplete (${missing.map(g => g.label).join(', ')}) — will regenerate: ${name}`);
               } else {
-                // Final round — give up, never save
-                failed.push(name);
-                log(`  ❌ Not saved after ${MAX_ROUNDS} rounds: ${name} (missing: ${missing.map(g => g.label).join(', ')})`);
-                patchClassState(className, { incomplete: [...failed] });
+                // Final round — save the best version we have anyway.
+                // Duplicates/gaps will be handled later via the admin tools.
+                await saveParsedDrug({ genericName: name, drugClass: className, parsed });
+                saved.push(name);
+                log(`  💾 Saved with gaps after ${MAX_ROUNDS} rounds: ${name} (missing: ${missing.map(g => g.label).join(', ')})`);
+                patchClassState(className, { saved: [...saved] });
               }
             }
           } catch (e) {

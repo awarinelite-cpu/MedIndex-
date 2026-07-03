@@ -141,7 +141,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed }) {
     last_updated: serverTimestamp(),
   }, { merge: false });
 
-  return { status: 'saved', id: docId };
+  return { status: 'saved', id: docId, missingGroups: [] };
 }
 
 // ── Backwards-compatibility export ────────────────────────────────────────
@@ -154,12 +154,9 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
   const docId     = slugifyDrugName(genericName);
   const ref       = doc(db, 'drugs', docId);
 
-  // Force save for AI searches - always replace/overwrite as per user request
-  // Duplicate handling will be done in admin later
-  if (missing.length > 0) {
-    return { status: 'incomplete', id: docId, missingGroups: missing };
-  }
-
+  // ALWAYS save AI search results — even if some fields are incomplete, and
+  // even if a drug with this name already exists (it gets replaced).
+  // Duplicate cleanup will be handled later via an admin duplicate detector.
   const existing = await getDoc(ref);
   await setDoc(ref, {
     ...parsed,
@@ -176,5 +173,6 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
     last_updated: serverTimestamp(),
   }, { merge: false });
 
-  return { status: 'saved', id: docId };
+  // Always 'saved'. missingGroups is informational only — never blocks saving.
+  return { status: 'saved', id: docId, missingGroups: missing };
 }
