@@ -29,6 +29,7 @@ const EDITABLE_FIELDS = [
   { key: 'prescription_status',   label: 'Prescription Status',   type: 'select',   required: true,
     options: ['OTC', 'Prescription', 'Controlled'] },
   { key: 'overview',              label: 'Overview',              type: 'textarea', required: false },
+  { key: 'strength',              label: 'Strength (formulation)', type: 'textarea', required: false },
   { key: 'indications',           label: 'Indications',           type: 'textarea', required: false },
   { key: 'adult_dose',            label: 'Adult Dose',            type: 'textarea', required: false },
   { key: 'pharmacology',          label: 'Mechanism / Pharmacology', type: 'textarea', required: false },

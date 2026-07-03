@@ -94,6 +94,7 @@ ${knownData ? `\nExisting reference data already shown to the nurse (do not simp
 Structure your response with these sections, using clear markdown headers (##):
 - Overview (concise summary of what the drug is and its place in therapy)
 - Drug Class & Subclass
+- Strength (the formulation strength(s) each dosage form usually comes in — e.g. "Tab: 500mg", "IV: 500mg/100mL", "Susp: 125mg/5mL" — list each route/form on its own line if there's more than one; this is about product strength, not the dosing regimen)
 - Indications (primary approved uses)
 - Therapeutic Note (clinically useful context: place in therapy, comparison to alternatives, key caveats)
 - Mechanism of Action & Pharmacology

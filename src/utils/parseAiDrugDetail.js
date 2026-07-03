@@ -7,6 +7,7 @@
 const HEADER_FIELD_MAP = [
   [/^overview$/,                                   'overview'],
   [/^indications$/,                                'indications'],
+  [/^strength$/,                                    'strength'],
   [/^therapeutic note$/,                           'therapeutic_note'],
   [/^(mechanism of action( ?& ?| and )pharmacology|pharmacology)$/, 'pharmacology'],
   [/^pharmacokinetics$/,                            '__pharmacokinetics'], // merged into pharmacology

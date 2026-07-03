@@ -166,7 +166,7 @@ export default function UploadPage() {
       // Default template if no file uploaded yet
       const defaultHeaders = [
         'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
-        'overview','indications','therapeutic_note',
+        'overview','strength','indications','therapeutic_note',
         'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
         'pharmacology','advice_to_patients','contraindications','precautions',
         'pregnancy_lactation','interaction','adverse_effect','nursing_action',

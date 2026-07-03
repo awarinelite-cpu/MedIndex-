@@ -154,7 +154,7 @@ function AiInsightsTab({ drug }) {
 
   // Fields the Overview/Dosage/Safety/etc. tabs actually read from.
   const STRUCTURED_FIELDS = [
-    'overview', 'indications', 'therapeutic_note', 'pharmacology',
+    'overview', 'strength', 'indications', 'therapeutic_note', 'pharmacology',
     'adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations',
     'contraindications', 'precautions', 'pregnancy_lactation', 'interaction',
     'adverse_effect', 'advice_to_patients', 'nursing_action', 'pharmacovigilance',
@@ -177,6 +177,7 @@ function AiInsightsTab({ drug }) {
     try {
       const knownData = [
         drug.overview && `Overview: ${drug.overview}`,
+        drug.strength && `Strength: ${drug.strength}`,
         drug.indications && `Indications: ${drug.indications}`,
         drug.therapeutic_note && `Therapeutic note: ${drug.therapeutic_note}`,
         drug.adult_dose && `Adult dose: ${drug.adult_dose}`,
@@ -636,22 +637,36 @@ export default function DrugDetailPage() {
           )}
         </p>
 
-        {/* Route of Administration badges — shown on header */}
-        {detectedRoutes.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            <span className="text-xs text-drug-muted font-semibold uppercase tracking-wide self-center">Routes:</span>
-            {detectedRoutes.map(r => {
-              const meta = ROUTE_META[r];
-              return (
-                <span
-                  key={r}
-                  style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.color}30` }}
-                  className="text-xs font-bold px-3 py-1 rounded-full"
-                >
-                  {meta.label}
-                </span>
-              );
-            })}
+        {/* Route of Administration + Strength badges — shown on header */}
+        {(detectedRoutes.length > 0 || drug.strength) && (
+          <div className="flex flex-wrap gap-2 mt-3 items-center">
+            {detectedRoutes.length > 0 && (
+              <>
+                <span className="text-xs text-drug-muted font-semibold uppercase tracking-wide self-center">Routes:</span>
+                {detectedRoutes.map(r => {
+                  const meta = ROUTE_META[r];
+                  return (
+                    <span
+                      key={r}
+                      style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.color}30` }}
+                      className="text-xs font-bold px-3 py-1 rounded-full"
+                    >
+                      {meta.label}
+                    </span>
+                  );
+                })}
+              </>
+            )}
+            {drug.strength && drug.strength.split('\n').filter(Boolean).map((line, i) => (
+              <span
+                key={i}
+                style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #6D28D930' }}
+                className="text-xs font-bold px-3 py-1 rounded-full"
+                title="Strength / formulation"
+              >
+                {line.trim()}
+              </span>
+            ))}
           </div>
         )}
 
@@ -688,6 +703,13 @@ export default function DrugDetailPage() {
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3">Overview</h2>
                 <p className="text-drug-text leading-relaxed">{drug.overview}</p>
+              </div>
+            )}
+
+            {drug.strength && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Strength</h2>
+                {renderCSV(drug.strength)}
               </div>
             )}
 
