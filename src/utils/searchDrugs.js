@@ -16,7 +16,7 @@ const OVERVIEW_FIELDS   = ['overview', 'pharmacology', 'mechanism', 'adverse_eff
 function tokeniseIndications(text) {
   if (!text) return [];
   return text
-    .split(/[,;\n•\-\*\(\)\/]+/)
+    .split(/[,;\n•\-*/()]+/)
     .map(s => s.trim().replace(/^\d+\.\s*/, ''))
     .filter(s => s.length > 2 && s.length < 120);
 }
