@@ -61,17 +61,20 @@ export async function fetchAiDrugText({ genericName, drugClass }) {
 }
 
 // ── Generate, validate, and save a drug ──────────────────────────────────
-// The drug is ONLY written to Firestore if ALL required field groups are
-// present and non-trivial (>= MIN_LENGTH chars). If the first generation is
-// incomplete, one automatic retry is attempted. Returns:
-//   { status: 'saved' | 'skipped' | 'incomplete' | 'failed', id, missingGroups? }
+// Complete drugs are saved to Firestore immediately.
+// Incomplete drugs are regenerated up to MAX_RETRIES times until complete,
+// then saved. A drug is NEVER written with missing or trivially-short fields.
+// Returns: { status: 'saved' | 'skipped' | 'incomplete' | 'failed', id, missingGroups? }
+
+const MAX_RETRIES = 3;
+
 export async function generateAndSaveIfComplete({
   genericName,
   drugClass,
   overwrite = false,
-  onProgress,        // optional (msg: string) => void callback for live logs
+  onProgress,
 }) {
-  const log = (msg) => { if (onProgress) onProgress(msg); };
+  const log   = (msg) => { if (onProgress) onProgress(msg); };
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
 
@@ -84,58 +87,65 @@ export async function generateAndSaveIfComplete({
     }
   }
 
-  // ── Attempt 1 ────────────────────────────────────────────────────────────
   log(`  🤖 Generating: ${genericName}…`);
-  let parsed;
-  try {
-    const text1 = await fetchAiDrugText({ genericName, drugClass });
-    parsed = parseAiDrugDetail(text1);
-  } catch (e) {
-    return { status: 'failed', id: docId, error: e.message };
-  }
 
-  let missing = getMissingGroups(parsed);
+  let parsed   = null;
+  let missing  = REQUIRED_FIELD_GROUPS; // all missing until proven otherwise
+  let attempt  = 0;
 
-  // ── Retry if incomplete ───────────────────────────────────────────────────
-  if (missing.length > 0) {
-    log(`  ⚠ Incomplete (${missing.map(g => g.label).join(', ')}) — retrying…`);
+  // ── Generate → validate → retry loop ─────────────────────────────────────
+  // Complete drugs are saved immediately on first success.
+  // Incomplete drugs are regenerated up to MAX_RETRIES times.
+  while (attempt < MAX_RETRIES && missing.length > 0) {
+    attempt++;
+    if (attempt > 1) {
+      log(`  🔁 Retry ${attempt - 1}/${MAX_RETRIES - 1} — regenerating: ${genericName} (missing: ${missing.map(g => g.label).join(', ')})…`);
+    }
+
     try {
-      const text2 = await fetchAiDrugText({ genericName, drugClass });
-      const parsed2 = parseAiDrugDetail(text2);
-      const missing2 = getMissingGroups(parsed2);
-      if (missing2.length < missing.length) {
-        // Retry was better — use it
-        parsed  = parsed2;
-        missing = missing2;
+      const text  = await fetchAiDrugText({ genericName, drugClass });
+      const draft = parseAiDrugDetail(text);
+      const stillMissing = getMissingGroups(draft);
+
+      if (stillMissing.length < missing.length || attempt === 1) {
+        // Better result — keep it
+        parsed  = draft;
+        missing = stillMissing;
       }
-    } catch {
-      // Retry failed — continue with original attempt
+
+      // ── Complete on this attempt — save immediately ─────────────────────
+      if (missing.length === 0) {
+        const existing   = await getDoc(ref);
+        const finalClass = drugClass || parsed.drug_class || 'Unknown';
+
+        await setDoc(ref, {
+          ...parsed,
+          generic_name:        genericName,
+          drug_class:          finalClass,
+          drug_subclass:       parsed.drug_subclass       || null,
+          prescription_status: parsed.prescription_status || 'Prescription',
+          nafdac_no:           null,
+          source:              'AI Generated',
+          status:              'Active',
+          created_at:  existing.exists()
+            ? (existing.data().created_at || serverTimestamp())
+            : serverTimestamp(),
+          last_updated: serverTimestamp(),
+        }, { merge: false });
+
+        log(`  ✅ Saved (complete after ${attempt} attempt${attempt > 1 ? 's' : ''}): ${genericName}`);
+        return { status: 'saved', id: docId };
+      }
+    } catch (e) {
+      if (attempt >= MAX_RETRIES) {
+        log(`  ❌ Failed: ${genericName} — ${e.message}`);
+        return { status: 'failed', id: docId, error: e.message };
+      }
+      log(`  ⚠ Attempt ${attempt} errored — retrying: ${e.message}`);
     }
   }
 
-  // ── Still incomplete after retry — do NOT save ────────────────────────────
-  if (missing.length > 0) {
-    log(`  ❌ Still incomplete after retry — NOT saved: ${genericName} (missing: ${missing.map(g => g.label).join(', ')})`);
-    return { status: 'incomplete', id: docId, missingGroups: missing };
-  }
-
-  // ── All fields complete — save to Firestore ───────────────────────────────
-  const existing = await getDoc(ref);
-  const finalClass = drugClass || parsed.drug_class || 'Unknown';
-
-  await setDoc(ref, {
-    ...parsed,
-    generic_name:        genericName,
-    drug_class:          finalClass,
-    drug_subclass:       parsed.drug_subclass   || null,
-    prescription_status: parsed.prescription_status || 'Prescription',
-    nafdac_no:           null,
-    source:              'AI Generated',
-    status:              'Active',
-    created_at:  existing.exists() ? (existing.data().created_at || serverTimestamp()) : serverTimestamp(),
-    last_updated: serverTimestamp(),
-  }, { merge: false });
-
-  log(`  ✅ Saved (complete): ${genericName}`);
-  return { status: 'saved', id: docId };
+  // ── Exhausted all retries, still incomplete — do NOT save ─────────────────
+  log(`  ❌ Could not complete after ${MAX_RETRIES} attempts — NOT saved: ${genericName} (still missing: ${missing.map(g => g.label).join(', ')})`);
+  return { status: 'incomplete', id: docId, missingGroups: missing };
 }
