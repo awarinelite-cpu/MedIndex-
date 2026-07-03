@@ -2,18 +2,17 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
-  writeBatch, serverTimestamp, setDoc,
+  writeBatch, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
-  Sparkles, CheckCircle, ChevronRight, Zap,
+  Sparkles, ChevronRight, Zap,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
-import { fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
-import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
 
 // ── Required fields — a drug is "incomplete" if ANY of these is blank ──────
 const REQUIRED_FIELDS = [
