@@ -147,20 +147,15 @@ export async function saveParsedDrug({ genericName, drugClass, parsed }) {
 // ── Backwards-compatibility export ────────────────────────────────────────
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
-export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = false }) {
+export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
   const parsed    = parseAiDrugDetail(text);
   const missing   = getMissingGroups(parsed);
   const finalClass = drugClass || parsed.drug_class || 'Unknown';
   const docId     = slugifyDrugName(genericName);
   const ref       = doc(db, 'drugs', docId);
 
-  if (!overwrite) {
-    const existing = await getDoc(ref);
-    if (existing.exists() && isDrugComplete(existing.data())) {
-      return { status: 'skipped', id: docId };
-    }
-  }
-
+  // Force save for AI searches - always replace/overwrite as per user request
+  // Duplicate handling will be done in admin later
   if (missing.length > 0) {
     return { status: 'incomplete', id: docId, missingGroups: missing };
   }
