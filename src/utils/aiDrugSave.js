@@ -149,3 +149,43 @@ export async function generateAndSaveIfComplete({
   log(`  ❌ Could not complete after ${MAX_RETRIES} attempts — NOT saved: ${genericName} (still missing: ${missing.map(g => g.label).join(', ')})`);
   return { status: 'incomplete', id: docId, missingGroups: missing };
 }
+
+// ── Backwards-compatibility export ────────────────────────────────────────
+// AiDrugPage and BrowsePage call this directly with pre-fetched text.
+// We parse and validate here — only save if complete.
+export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = false }) {
+  const parsed    = parseAiDrugDetail(text);
+  const missing   = getMissingGroups(parsed);
+  const finalClass = drugClass || parsed.drug_class || 'Unknown';
+  const docId     = slugifyDrugName(genericName);
+  const ref       = doc(db, 'drugs', docId);
+
+  if (!overwrite) {
+    const existing = await getDoc(ref);
+    if (existing.exists() && isDrugComplete(existing.data())) {
+      return { status: 'skipped', id: docId };
+    }
+  }
+
+  if (missing.length > 0) {
+    return { status: 'incomplete', id: docId, missingGroups: missing };
+  }
+
+  const existing = await getDoc(ref);
+  await setDoc(ref, {
+    ...parsed,
+    generic_name:        genericName,
+    drug_class:          finalClass,
+    drug_subclass:       parsed.drug_subclass       || null,
+    prescription_status: parsed.prescription_status || 'Prescription',
+    nafdac_no:           null,
+    source:              'AI Generated',
+    status:              'Active',
+    created_at:  existing.exists()
+      ? (existing.data().created_at || serverTimestamp())
+      : serverTimestamp(),
+    last_updated: serverTimestamp(),
+  }, { merge: false });
+
+  return { status: 'saved', id: docId };
+}
