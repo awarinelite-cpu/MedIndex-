@@ -17,7 +17,8 @@ function AiSearchFallback({ searchQuery }) {
   const [text, setText]           = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError]         = useState('');
   const [queriedFor, setQueriedFor] = useState(searchQuery);
-  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | confirm | saved | error
+  const [saveError, setSaveError] = useState('');
 
   const runLookup = async () => {
     setState('loading');
@@ -59,13 +60,24 @@ function AiSearchFallback({ searchQuery }) {
   const handleSave = async () => {
     if (!text.trim()) return;
     setSaveState('saving');
+    setSaveError('');
     try {
+      // First attempt without overwrite: this only actually saves if the drug
+      // doesn't yet exist (or exists but is incomplete). If it already exists
+      // and is complete, it comes back 'skipped' — we must not report that as
+      // a success, and must ask before overwriting existing information.
       const result = await saveAiDrugToDatabase({
         genericName: queriedFor.trim(),
         drugClass:   '',
         text,
         overwrite:   false,
       });
+
+      if (result.status === 'skipped') {
+        setSaveState('confirm');
+        return;
+      }
+
       if (result.status === 'incomplete') {
         // Some fields missing but save the best we have anyway
         await saveAiDrugToDatabase({
@@ -77,6 +89,24 @@ function AiSearchFallback({ searchQuery }) {
       }
       setSaveState('saved');
     } catch (e) {
+      setSaveError(e.message || 'Failed to save this drug.');
+      setSaveState('error');
+    }
+  };
+
+  const confirmOverwrite = async () => {
+    setSaveState('saving');
+    setSaveError('');
+    try {
+      await saveAiDrugToDatabase({
+        genericName: queriedFor.trim(),
+        drugClass:   '',
+        text,
+        overwrite:   true,
+      });
+      setSaveState('saved');
+    } catch (e) {
+      setSaveError(e.message || 'Failed to update this drug.');
       setSaveState('error');
     }
   };
@@ -145,7 +175,7 @@ function AiSearchFallback({ searchQuery }) {
         {state === 'done' && (
           <div className="flex items-center gap-2">
             {/* Save to Database — admin only */}
-            {isAdmin && saveState !== 'saved' && (
+            {isAdmin && saveState !== 'saved' && saveState !== 'confirm' && (
               <button
                 onClick={handleSave}
                 disabled={saveState === 'saving'}
@@ -162,7 +192,7 @@ function AiSearchFallback({ searchQuery }) {
                 {saveState === 'saving' ? (
                   <><RefreshCw style={{ width: 13, height: 13 }} /> Saving…</>
                 ) : saveState === 'error' ? (
-                  <>⚠ Failed — Retry</>
+                  <>⚠ {saveError || 'Failed'} — Retry</>
                 ) : (
                   <><Save style={{ width: 13, height: 13 }} /> Save to Database</>
                 )}
@@ -177,6 +207,29 @@ function AiSearchFallback({ searchQuery }) {
           </div>
         )}
       </div>
+
+      {saveState === 'confirm' && (
+        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <p className="text-sm text-amber-800 flex-1">
+            "{queriedFor}" is already saved in the database. This new AI search result has different
+            information — update the saved entry with it?
+          </p>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={confirmOverwrite}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700"
+            >
+              <CheckCircle className="w-3.5 h-3.5" /> Update entry
+            </button>
+            <button
+              onClick={() => setSaveState('idle')}
+              className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-bold hover:bg-amber-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {text
         ? renderAiText(text)
