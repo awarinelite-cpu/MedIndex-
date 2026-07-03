@@ -8,6 +8,7 @@ import {
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
+import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
   serverTimestamp, query, orderBy,
@@ -148,7 +149,25 @@ function AiInsightsTab({ drug }) {
   const [text, setText]         = useState(drug.ai_insights || '');
   const [error, setError]       = useState('');
   const [saveState, setSaveState] = useState(drug.ai_insights ? 'saved' : 'idle');
-  // idle | saving | saved | error
+  // idle | saving | confirm | saved | error
+  const [saveError, setSaveError] = useState('');
+
+  // Fields the Overview/Dosage/Safety/etc. tabs actually read from.
+  const STRUCTURED_FIELDS = [
+    'overview', 'indications', 'therapeutic_note', 'pharmacology',
+    'adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations',
+    'contraindications', 'precautions', 'pregnancy_lactation', 'interaction',
+    'adverse_effect', 'advice_to_patients', 'nursing_action', 'pharmacovigilance',
+    'product_description', 'storage_recommendations', 'pack_size_price',
+  ];
+
+  const writeToFirestore = async (parsedFields) => {
+    await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+      ...parsedFields,
+      ai_insights:  text,
+      last_updated: serverTimestamp(),
+    });
+  };
 
   const fetchInsights = async () => {
     setState('loading');
@@ -217,13 +236,41 @@ function AiInsightsTab({ drug }) {
   const handleSave = async () => {
     if (!text.trim()) return;
     setSaveState('saving');
+    setSaveError('');
     try {
-      await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
-        ai_insights:  text,
-        last_updated: serverTimestamp(),
-      });
+      const parsedFields = parseAiDrugDetail(text);
+
+      // If any structured field the tabs read from is already populated on
+      // this drug, confirm before overwriting it rather than silently
+      // replacing existing (possibly verified) data.
+      const wouldOverwrite = STRUCTURED_FIELDS.some(
+        f => drug[f] && String(drug[f]).trim() && parsedFields[f]
+      );
+
+      if (wouldOverwrite) {
+        setSaveState('confirm');
+        return;
+      }
+
+      await writeToFirestore(parsedFields);
       setSaveState('saved');
+      setTimeout(() => window.location.reload(), 900);
     } catch (e) {
+      setSaveError(e.message || 'Failed to save this drug.');
+      setSaveState('error');
+    }
+  };
+
+  const confirmOverwrite = async () => {
+    setSaveState('saving');
+    setSaveError('');
+    try {
+      const parsedFields = parseAiDrugDetail(text);
+      await writeToFirestore(parsedFields);
+      setSaveState('saved');
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) {
+      setSaveError(e.message || 'Failed to update this drug.');
       setSaveState('error');
     }
   };
@@ -283,7 +330,7 @@ function AiInsightsTab({ drug }) {
           )}
           {saveState === 'saved' && (
             <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-              ✓ Saved
+              ✓ Saved — refreshing…
             </span>
           )}
         </div>
@@ -291,7 +338,7 @@ function AiInsightsTab({ drug }) {
         {state === 'done' && (
           <div className="flex items-center gap-2">
             {/* Save button — updates Firestore so it loads instantly next visit */}
-            {isAdmin && saveState !== 'saved' && (
+            {isAdmin && saveState !== 'saved' && saveState !== 'confirm' && (
               <button
                 onClick={handleSave}
                 disabled={saveState === 'saving'}
@@ -308,7 +355,7 @@ function AiInsightsTab({ drug }) {
                 {saveState === 'saving' ? (
                   <><RefreshCw style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} /> Saving…</>
                 ) : saveState === 'error' ? (
-                  <>⚠ Save failed — Retry</>
+                  <>⚠ {saveError || 'Save failed'} — Retry</>
                 ) : (
                   <><Save style={{ width: 13, height: 13 }} /> Save to Database</>
                 )}
@@ -324,6 +371,29 @@ function AiInsightsTab({ drug }) {
           </div>
         )}
       </div>
+
+      {saveState === 'confirm' && (
+        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <p className="text-sm text-amber-800 flex-1">
+            This drug already has saved information in Overview, Dosage, or Safety. Update it with this
+            new AI-generated version?
+          </p>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={confirmOverwrite}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700"
+            >
+              <Check className="w-3.5 h-3.5" /> Update entry
+            </button>
+            <button
+              onClick={() => setSaveState('idle')}
+              className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-bold hover:bg-amber-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {text
         ? renderAiText(text)
