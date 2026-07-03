@@ -576,6 +576,7 @@ export default function DrugDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { drugs } = useDrugs();
+  const { isAdmin } = useAuth();
   const drug = useMemo(() => drugs.find(d => d.id === id) || null, [drugs, id]);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -684,7 +685,7 @@ export default function DrugDetailPage() {
           </div>
         )}
 
-        {drug.source && (
+        {drug.source && isAdmin && (
           <p className="text-xs text-drug-muted mt-2 uppercase tracking-wide">Source: {drug.source}</p>
         )}
       </div>
@@ -1053,12 +1054,14 @@ export default function DrugDetailPage() {
 
       </div>
 
-      {/* Footer disclaimer */}
-      <div className="mt-10 pt-6 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
-        <strong>Disclaimer:</strong> This information is for educational and clinical reference purposes only.
-        Always verify drug information against current product monographs and consult appropriate clinical resources
-        before prescribing or administering medications.
-      </div>
+      {/* Footer disclaimer — admin only */}
+      {isAdmin && (
+        <div className="mt-10 pt-6 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
+          <strong>Disclaimer:</strong> This information is for educational and clinical reference purposes only.
+          Always verify drug information against current product monographs and consult appropriate clinical resources
+          before prescribing or administering medications.
+        </div>
+      )}
     </div>
   );
 }
