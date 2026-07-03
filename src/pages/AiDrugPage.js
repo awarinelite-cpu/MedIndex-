@@ -78,24 +78,9 @@ export default function AiDrugPage() {
     setSaveState('saving');
     setSaveError('');
     try {
+      // Now always saves/overwrites per updated utils
+      await saveAiDrugToDatabase({ genericName, drugClass, text });
       const docId = slugifyDrugName(genericName);
-      let overwrite = false;
-
-      // Pre-check for an existing entry so we can confirm before overwriting
-      // (saveAiDrugToDatabase itself would just silently skip instead).
-      const firstAttempt = await saveAiDrugToDatabase({ genericName, drugClass, text });
-      if (firstAttempt.status === 'skipped') {
-        const ok = window.confirm(
-          `"${genericName}" already exists in the database. Overwrite it with this AI-generated version?`
-        );
-        if (!ok) {
-          setSaveState('idle');
-          return;
-        }
-        overwrite = true;
-        await saveAiDrugToDatabase({ genericName, drugClass, text, overwrite });
-      }
-
       setSavedId(docId);
       setSaveState('saved');
     } catch (e) {
