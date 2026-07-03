@@ -12,7 +12,7 @@ import {
   Sparkles, ChevronRight, Zap, PlayCircle,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
-import { generateDrugOnce, saveParsedDrug, slugifyDrugName, isDrugComplete, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, slugifyDrugName, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)

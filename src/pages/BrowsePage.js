@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
+import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
