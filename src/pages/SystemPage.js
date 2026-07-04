@@ -18,7 +18,9 @@ export default function SystemPage() {
   const { systemId } = useParams();
   const navigate = useNavigate();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode,     setViewMode]     = useState('list');
+  const [classFilter,  setClassFilter]  = useState('');
+  const [nameSearch,   setNameSearch]   = useState('');
 
   const system = getSystemById(systemId);
 
@@ -29,8 +31,7 @@ export default function SystemPage() {
     );
   }, [ALL_DRUGS, system]);
 
-  // Group by drug_class for a scannable subsection layout — a system like
-  // Cardiovascular otherwise dumps 80 drugs into one flat list.
+  // Group by drug_class
   const grouped = useMemo(() => {
     const map = new Map();
     for (const drug of drugs) {
@@ -40,6 +41,24 @@ export default function SystemPage() {
     }
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [drugs]);
+
+  const allClasses = useMemo(() => grouped.map(([cls]) => cls), [grouped]);
+
+  // Apply filters
+  const filteredGrouped = useMemo(() => {
+    return grouped
+      .filter(([cls]) => !classFilter || cls === classFilter)
+      .map(([cls, classDrugs]) => [
+        cls,
+        nameSearch.trim()
+          ? classDrugs.filter(d =>
+              d.generic_name?.toLowerCase().includes(nameSearch.toLowerCase()) ||
+              d.drug_subclass?.toLowerCase().includes(nameSearch.toLowerCase())
+            )
+          : classDrugs,
+      ])
+      .filter(([, classDrugs]) => classDrugs.length > 0);
+  }, [grouped, classFilter, nameSearch]);
 
   if (!system) {
     return (
@@ -75,7 +94,31 @@ export default function SystemPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-6 mb-4">
+      <div className="flex items-center gap-2 mt-6 mb-4 flex-wrap">
+        {/* Name search */}
+        <div className="relative flex-1 min-w-48">
+          <input
+            type="text"
+            value={nameSearch}
+            onChange={e => setNameSearch(e.target.value)}
+            placeholder="Search within this system…"
+            className="w-full pl-4 pr-4 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+          />
+        </div>
+
+        {/* Class filter dropdown */}
+        <select
+          value={classFilter}
+          onChange={e => setClassFilter(e.target.value)}
+          className="py-2 px-3 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
+        >
+          <option value="">All Drug Classes ({allClasses.length})</option>
+          {allClasses.map(cls => (
+            <option key={cls} value={cls}>{cls}</option>
+          ))}
+        </select>
+
+        {/* View toggle */}
         <button onClick={() => setViewMode('list')}
                 className={`p-2 rounded ${viewMode === 'list' ? 'bg-primary-100 text-primary-700' : 'text-drug-muted'}`}>
           <List className="w-5 h-5" />
@@ -86,6 +129,23 @@ export default function SystemPage() {
         </button>
       </div>
 
+      {/* Active filter summary */}
+      {(classFilter || nameSearch) && (
+        <div className="flex items-center gap-3 mb-4 text-sm text-drug-muted">
+          <span>
+            Showing <strong className="text-drug-text">
+              {filteredGrouped.reduce((n, [, d]) => n + d.length, 0)}
+            </strong> of {drugs.length} drugs
+          </span>
+          <button
+            onClick={() => { setClassFilter(''); setNameSearch(''); }}
+            className="text-red-500 font-semibold hover:text-red-700"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-16 text-drug-muted">Loading…</div>
       ) : drugs.length === 0 ? (
@@ -95,7 +155,7 @@ export default function SystemPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {grouped.map(([className, classDrugs]) => (
+          {filteredGrouped.map(([className, classDrugs]) => (
             <div key={className}>
               <Link
                 to={`/browse?class=${encodeURIComponent(className)}`}

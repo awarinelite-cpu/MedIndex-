@@ -2,40 +2,32 @@ import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Search, Pill, Heart, Activity, Brain, Bone,
-  Stethoscope, ChevronRight, Grid3X3, LayoutGrid
+  Stethoscope, ChevronRight,
+  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
+  Shield, Baby, Eye, Apple, Zap,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { quickSearch } from '../utils/searchDrugs';
-import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
+import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
+import { getSystemCounts } from '../utils/systemMatch';
 
-const SYSTEM_ICONS = { Heart, Activity, Brain, Bone, Stethoscope };
+const SYSTEM_ICONS = {
+  Heart, Activity, Brain, Bone, Stethoscope,
+  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
+  Shield, Baby, Eye, Apple, Zap,
+};
 
-// The five pinned system tiles, in order, sourced from the single canonical
-// systems list — plus two special (non-system) tiles: the existing
-// full-class browse, and the new index of every remaining system.
-const PINNED_CARDS = PINNED_SYSTEM_IDS
-  .map(id => ANATOMICAL_SYSTEMS.find(s => s.id === id))
-  .filter(Boolean)
-  .map(s => ({
-    name: s.name,
-    icon: SYSTEM_ICONS[s.icon] || Pill,
-    color: s.color,
-    bg: s.bg,
-    to: `/system/${s.id}`,
-  }));
+// All 15 anatomical systems shown as cards
+// No hidden "More Systems" tile — every system has its own card
 
-const CATEGORIES = [
-  ...PINNED_CARDS,
-  { name: 'All Categories', icon: Grid3X3,    color: 'text-primary-600', bg: 'bg-primary-50', to: '/browse' },
-  { name: 'More Systems',   icon: LayoutGrid, color: 'text-slate-600',   bg: 'bg-slate-50',   to: '/systems' },
-];
 
 export default function HomePage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
-  const TOTAL      = ALL_DRUGS.length;
+  const TOTAL       = ALL_DRUGS.length;
   const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
   const RX_COUNT    = useMemo(() => new Set(ALL_DRUGS.map(d => d.prescription_status).filter(Boolean)).size, [ALL_DRUGS]);
   const FEATURED    = ALL_DRUGS.slice(0, 6);
+  const systemCounts = useMemo(() => getSystemCounts(ALL_DRUGS, ANATOMICAL_SYSTEMS), [ALL_DRUGS]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -147,23 +139,35 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Categories */}
+      {/* Body Systems */}
       <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-2xl font-bold mb-6">Browse by Category</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
-          {CATEGORIES.map(cat => (
-            <Link
-              key={cat.name}
-              to={cat.to}
-              className="flex flex-col items-center gap-3 p-6 rounded-xl border border-drug-border
-                         hover:border-primary-300 hover:shadow-md transition-all bg-white"
-            >
-              <div className={`p-3 rounded-lg ${cat.bg}`}>
-                <cat.icon className={`w-6 h-6 ${cat.color}`} />
-              </div>
-              <span className="text-sm font-semibold text-center">{cat.name}</span>
-            </Link>
-          ))}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">Browse by Body System</h2>
+          <Link to="/browse" className="flex items-center gap-1 text-primary-600 font-semibold hover:text-primary-700 text-sm">
+            All Classes <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {ANATOMICAL_SYSTEMS.map(system => {
+            const Icon  = SYSTEM_ICONS[system.icon] || Pill;
+            const count = systemCounts[system.id] || 0;
+            return (
+              <Link
+                key={system.id}
+                to={`/system/${system.id}`}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-drug-border
+                           hover:border-primary-300 hover:shadow-md transition-all bg-white text-center group"
+              >
+                <div className={`p-3 rounded-lg ${system.bg} group-hover:scale-110 transition-transform`}>
+                  <Icon className={`w-6 h-6 ${system.color}`} />
+                </div>
+                <span className="text-sm font-semibold leading-tight">{system.name}</span>
+                <span className="text-xs text-drug-muted">
+                  {loading ? '…' : `${count} drug${count === 1 ? '' : 's'}`}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
