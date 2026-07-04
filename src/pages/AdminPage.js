@@ -41,7 +41,7 @@ const EDITABLE_FIELDS = [
 ];
 
 const ALL_STATUSES = ['OTC', 'Prescription', 'Controlled'];
-const PARALLEL_SAVES = 4;
+const PARALLEL_SAVES = 8; // paid Gemini tier
 
 async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
   const results = [];

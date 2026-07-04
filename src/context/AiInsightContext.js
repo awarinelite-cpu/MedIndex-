@@ -12,7 +12,7 @@ function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
 }
 
-const CONCURRENCY = 4;
+const CONCURRENCY = 8; // paid Gemini tier — safe to run 8 in parallel
 async function parallelMap(items, fn, concurrency = CONCURRENCY) {
   const queue = [...items];
   const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
@@ -121,48 +121,108 @@ export function useAiInsight() {
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
   const { running, progress, currentName, summary, stopGlobalFix, dismissSummary } = useContext(AiInsightContext);
+  const [startTime] = React.useState(() => Date.now());
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
 
   if (!running && !summary) return null;
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
 
+  // ETA calculation
+  let etaLabel = '';
+  if (running && progress.done > 0) {
+    const elapsed = (now - startTime) / 1000;
+    const rate    = progress.done / elapsed; // drugs per second
+    const remaining = progress.total - progress.done;
+    const etaSecs = rate > 0 ? Math.round(remaining / rate) : null;
+    if (etaSecs !== null) {
+      etaLabel = etaSecs < 60
+        ? `~${etaSecs}s left`
+        : `~${Math.ceil(etaSecs / 60)}m left`;
+    }
+  }
+
   return (
-    <div className="fixed bottom-5 right-5 z-[9999] w-72 bg-gray-900 text-white rounded-2xl p-4 shadow-2xl">
+    <div style={{
+      position: 'fixed', bottom: 20, right: 16, zIndex: 9999,
+      width: 300, background: '#0F172A', color: '#fff',
+      borderRadius: 20, padding: '16px 18px',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+      border: '1px solid rgba(255,255,255,0.08)',
+    }}>
       {running ? (
         <>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            <span className="font-bold text-sm">AI Insight running…</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontWeight: 700, fontSize: 13 }}>AI Insight running…</span>
+            </div>
+            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{pct}%</span>
           </div>
-          <div className="text-xs text-gray-400 mb-2 truncate">
-            {progress.done}/{progress.total} drugs{currentName ? ` · ${currentName}` : ''}
+
+          {/* Progress bar */}
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg, #F59E0B, #FBBF24)', borderRadius: 3, width: `${pct}%`, transition: 'width 0.5s ease' }} />
           </div>
-          <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mb-3">
-            <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+
+          {/* Stats row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#94A3B8' }}>
+              {progress.done} / {progress.total} drugs
+            </span>
+            {etaLabel && <span style={{ fontSize: 11, color: '#F59E0B', fontWeight: 600 }}>{etaLabel}</span>}
           </div>
+
+          {/* Current drug */}
+          {currentName && (
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              ⚡ {currentName}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+            Running in background — you can navigate freely
+          </div>
+
           <button
             onClick={stopGlobalFix}
-            className="text-xs font-semibold border border-gray-600 text-gray-300 rounded-lg px-3 py-1 hover:bg-gray-800 transition-colors"
+            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
           >
-            Stop
+            ⏹ Stop
           </button>
         </>
       ) : summary && (
         <>
-          <div className="font-bold text-sm mb-1">
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
             {summary.stopped ? '⏹ AI Insight stopped' : '✅ AI Insight complete'}
           </div>
-          <div className="text-xs text-gray-400 mb-3">
-            {summary.succeeded} completed
-            {summary.stillIncomplete ? `, ${summary.stillIncomplete} still incomplete` : ''}
-            {summary.failed ? `, ${summary.failed} failed` : ''}
+          <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+            ✓ {summary.succeeded} drugs completed
           </div>
-          <button
-            onClick={dismissSummary}
-            className="text-xs font-semibold border border-gray-600 text-gray-300 rounded-lg px-3 py-1 hover:bg-gray-800 transition-colors"
-          >
-            Dismiss
-          </button>
+          {summary.stillIncomplete > 0 && (
+            <div style={{ fontSize: 12, color: '#F59E0B', marginBottom: 4 }}>
+              ⚠ {summary.stillIncomplete} still incomplete
+            </div>
+          )}
+          {summary.failed > 0 && (
+            <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
+              ✗ {summary.failed} failed
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={dismissSummary}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              Dismiss
+            </button>
+          </div>
         </>
       )}
     </div>
