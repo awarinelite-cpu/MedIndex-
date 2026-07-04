@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { AiInsightProvider } from './context/AiInsightContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
@@ -19,6 +20,7 @@ import CalculatorsPage from './pages/CalculatorsPage';
 function App() {
   return (
     <AuthProvider>
+      <AiInsightProvider>
       <Routes>
 {/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
@@ -82,6 +84,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
+      </AiInsightProvider>
     </AuthProvider>
   );
 }

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
+import { useAiInsight } from '../context/AiInsightContext';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -54,6 +55,10 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
+  const {
+    running: globalFixRunning, progress: globalFixProgress,
+    startGlobalFix, stopGlobalFix,
+  } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
   // ── Drug list state ────────────────────────────────────────────────────
@@ -100,6 +105,14 @@ export default function AdminPage() {
   }, []); // eslint-disable-line
 
   useEffect(() => { loadDrugs(); }, [loadDrugs]);
+
+  // Refresh the table once the background General AI Insight run finishes,
+  // since it writes to Firestore independently of this page's local state.
+  const prevGlobalFixRunningRef = useRef(false);
+  useEffect(() => {
+    if (prevGlobalFixRunningRef.current && !globalFixRunning) loadDrugs();
+    prevGlobalFixRunningRef.current = globalFixRunning;
+  }, [globalFixRunning, loadDrugs]);
 
   // Build AI class list whenever drugs change
   useEffect(() => {
@@ -364,7 +377,7 @@ export default function AdminPage() {
   // save the best version so progress is never lost even if a field or two
   // still can't be filled.
   async function fixOneDrugWithAI(drug) {
-    if (fixingIds.has(drug.firestoreId) || bulkFixRunning) return;
+    if (fixingIds.has(drug.firestoreId) || bulkFixRunning || globalFixRunning) return;
     setFixingIds(prev => new Set(prev).add(drug.firestoreId));
     try {
       let { parsed, complete, missing } = await generateDrugOnce({
@@ -391,7 +404,7 @@ export default function AdminPage() {
 
   // ── AI Insight: bulk-fix every incomplete drug currently in view ──────────
   async function bulkFixWithAI(drugsToFix) {
-    if (bulkFixRunning || drugsToFix.length === 0) return;
+    if (bulkFixRunning || globalFixRunning || drugsToFix.length === 0) return;
     bulkFixAbortRef.current = false;
     setBulkFixRunning(true);
     setBulkFixProgress({ done: 0, total: drugsToFix.length });
@@ -550,13 +563,34 @@ export default function AdminPage() {
             <p className="text-drug-muted text-sm">Manage the drug database</p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button onClick={loadDrugs} className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors">
             <RefreshCw className="w-4 h-4"/> Refresh
           </button>
           <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
             <Upload className="w-4 h-4"/> Bulk Upload
           </Link>
+          {globalFixRunning ? (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-lg border-1.5 border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold" style={{border:'1.5px solid #FDE68A'}}>
+              <RefreshCw className="w-4 h-4 animate-spin"/>
+              General AI Insight — {globalFixProgress.done}/{globalFixProgress.total}
+              <button onClick={stopGlobalFix} className="underline hover:no-underline">Stop</button>
+            </div>
+          ) : (
+            <button
+              onClick={()=>{
+                const incomplete = drugs.filter(isIncomplete);
+                if (incomplete.length === 0) { showToast('Nothing to fix — every drug is already complete.'); return; }
+                startGlobalFix(incomplete);
+                showToast(`General AI Insight started — fixing ${incomplete.length} drugs silently in the background. Feel free to navigate away.`, 'info');
+              }}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+              style={{background:'linear-gradient(135deg,#F59E0B,#B45309)'}}
+            >
+              <Sparkles className="w-4 h-4"/> General AI Insight{stats.incomplete>0?` (${stats.incomplete})`:''}
+            </button>
+          )}
         </div>
       </div>
 
@@ -632,12 +666,12 @@ export default function AdminPage() {
                   <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
                 </button>
               )}
-              {!bulkFixRunning && selectedIncomplete.length>0 && (
+              {!bulkFixRunning && !globalFixRunning && selectedIncomplete.length>0 && (
                 <button onClick={()=>bulkFixWithAI(selectedIncomplete)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Sparkles className="w-4 h-4"/>AI Insight: fix {selectedIncomplete.length} selected
                 </button>
               )}
-              {!bulkFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
+              {!bulkFixRunning && !globalFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
                 <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
                 </button>
@@ -742,9 +776,9 @@ export default function AdminPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           {isIncomplete(drug) && (
-                            <button onClick={()=>fixOneDrugWithAI(drug)} disabled={fixingIds.has(drug.firestoreId)||bulkFixRunning}
+                            <button onClick={()=>fixOneDrugWithAI(drug)} disabled={fixingIds.has(drug.firestoreId)||bulkFixRunning||globalFixRunning}
                               className={`p-2 rounded-lg transition-colors ${fixingIds.has(drug.firestoreId)?'text-amber-400 cursor-wait':'text-amber-600 hover:bg-amber-50'}`}
-                              title="AI Insight: fix missing fields">
+                              title={globalFixRunning ? 'General AI Insight is already running' : 'AI Insight: fix missing fields'}>
                               {fixingIds.has(drug.firestoreId) ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
                             </button>
                           )}
