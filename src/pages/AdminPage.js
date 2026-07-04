@@ -57,7 +57,7 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 export default function AdminPage() {
   const {
     running: globalFixRunning, progress: globalFixProgress,
-    startGlobalFix, stopGlobalFix,
+    startGlobalFix, stopGlobalFix, subscribeFix,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
@@ -113,6 +113,19 @@ export default function AdminPage() {
     if (prevGlobalFixRunningRef.current && !globalFixRunning) loadDrugs();
     prevGlobalFixRunningRef.current = globalFixRunning;
   }, [globalFixRunning, loadDrugs]);
+
+  // Live sync: as the background General AI Insight run fixes each drug,
+  // patch it straight into local state so the Incomplete count, table rows,
+  // and "⚠ incomplete" badges update immediately — not just when the whole
+  // run finishes.
+  useEffect(() => {
+    return subscribeFix((patch) => {
+      if (!patch.parsed) return; // failed drugs: nothing to merge
+      setDrugs(prev => prev.map(d => d.firestoreId === patch.firestoreId
+        ? { ...d, ...patch.parsed, generic_name: patch.generic_name, drug_class: patch.drug_class || patch.parsed.drug_class }
+        : d));
+    });
+  }, [subscribeFix]);
 
   // Build AI class list whenever drugs change
   useEffect(() => {

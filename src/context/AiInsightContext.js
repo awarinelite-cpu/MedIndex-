@@ -32,6 +32,15 @@ export function AiInsightProvider({ children }) {
   const [currentName, setCurrentName] = useState(null);
   const [summary,     setSummary]     = useState(null); // set once a run finishes/stops
   const abortRef = useRef(false);
+  const listenersRef = useRef(new Set());
+
+  // Lets any currently-mounted page (e.g. AdminPage) hear about each drug as
+  // it's fixed, so its own local state/counters stay in sync live instead of
+  // only refreshing once the whole background run finishes.
+  const subscribeFix = useCallback((cb) => {
+    listenersRef.current.add(cb);
+    return () => listenersRef.current.delete(cb);
+  }, []);
 
   // drugsArg: optional pre-fetched incomplete drug list (e.g. from AdminPage's
   // already-loaded state). If omitted, fetches fresh from Firestore so this
@@ -67,8 +76,16 @@ export function AiInsightProvider({ children }) {
         }
         await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
         complete ? succeeded++ : stillIncomplete++;
+        listenersRef.current.forEach(cb => cb({
+          firestoreId: drug.firestoreId, generic_name: drug.generic_name,
+          drug_class: drug.drug_class, parsed, complete,
+        }));
       } catch (e) {
         failed++;
+        listenersRef.current.forEach(cb => cb({
+          firestoreId: drug.firestoreId, generic_name: drug.generic_name,
+          drug_class: drug.drug_class, error: e.message,
+        }));
       } finally {
         done++;
         setProgress({ done, total: list.length });
@@ -87,7 +104,7 @@ export function AiInsightProvider({ children }) {
   return (
     <AiInsightContext.Provider value={{
       running, progress, currentName, summary,
-      startGlobalFix, stopGlobalFix, dismissSummary,
+      startGlobalFix, stopGlobalFix, dismissSummary, subscribeFix,
     }}>
       {children}
       <GlobalAiInsightWidget />
