@@ -66,6 +66,10 @@ export default function AdminPage() {
   const [filterStatus,     setFilterStatus]     = useState('');
   const [filterIndication, setFilterIndication] = useState('');
   const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false);
+  const [fixingIds,        setFixingIds]        = useState(new Set());
+  const [bulkFixRunning,   setBulkFixRunning]    = useState(false);
+  const [bulkFixProgress,  setBulkFixProgress]   = useState({ done: 0, total: 0 });
+  const bulkFixAbortRef = useRef(false);
   const [showFilters,      setShowFilters]      = useState(false);
   const [selectedIds,      setSelectedIds]      = useState(new Set());
   const [editingDrug,      setEditingDrug]      = useState(null);
@@ -335,6 +339,11 @@ export default function AdminPage() {
   }), [drugs]);
 
   const allSelected = filteredDrugs.length > 0 && filteredDrugs.every(d => selectedIds.has(d.firestoreId));
+  const incompleteInView = useMemo(() => filteredDrugs.filter(isIncomplete), [filteredDrugs]);
+  const selectedIncomplete = useMemo(
+    () => filteredDrugs.filter(d => selectedIds.has(d.firestoreId) && isIncomplete(d)),
+    [filteredDrugs, selectedIds]
+  );
 
   function clearAllFilters() {
     setSearchQuery(''); setFilterClass(''); setFilterSubclass('');
@@ -348,6 +357,83 @@ export default function AdminPage() {
   }
   function promptDelete(fid)  { setDeleteTarget(fid); setConfirmDelete('single'); }
   function promptBulkDelete() { setConfirmDelete('bulk'); }
+
+  // ── AI Insight: fix an incomplete drug's missing fields ───────────────────
+  // Reuses the same generateDrugOnce/saveParsedDrug pipeline as the AI
+  // Generate tab: generate once, retry once more if still incomplete, then
+  // save the best version so progress is never lost even if a field or two
+  // still can't be filled.
+  async function fixOneDrugWithAI(drug) {
+    if (fixingIds.has(drug.firestoreId) || bulkFixRunning) return;
+    setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+    try {
+      let { parsed, complete, missing } = await generateDrugOnce({
+        genericName: drug.generic_name, drugClass: drug.drug_class,
+      });
+      if (!complete) {
+        const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
+        if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
+      }
+      await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
+      setDrugs(prev => prev.map(d => d.firestoreId === drug.firestoreId
+        ? { ...d, ...parsed, generic_name: drug.generic_name, drug_class: drug.drug_class || parsed.drug_class }
+        : d));
+      showToast(
+        complete ? `✅ AI completed: ${drug.generic_name}` : `⚠ Improved but still missing ${missing.map(g => g.label).join(', ')}: ${drug.generic_name}`,
+        complete ? 'success' : 'info'
+      );
+    } catch (e) {
+      showToast(`AI fix failed for ${drug.generic_name}: ${e.message}`, 'error');
+    } finally {
+      setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
+    }
+  }
+
+  // ── AI Insight: bulk-fix every incomplete drug currently in view ──────────
+  async function bulkFixWithAI(drugsToFix) {
+    if (bulkFixRunning || drugsToFix.length === 0) return;
+    bulkFixAbortRef.current = false;
+    setBulkFixRunning(true);
+    setBulkFixProgress({ done: 0, total: drugsToFix.length });
+
+    let done = 0, succeeded = 0, stillIncomplete = 0, failed = 0;
+
+    await parallelMap(drugsToFix, async (drug) => {
+      if (bulkFixAbortRef.current) return;
+      setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+      try {
+        let { parsed, complete, missing } = await generateDrugOnce({
+          genericName: drug.generic_name, drugClass: drug.drug_class,
+        });
+        if (!complete) {
+          const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
+          if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
+        }
+        await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
+        setDrugs(prev => prev.map(d => d.firestoreId === drug.firestoreId
+          ? { ...d, ...parsed, generic_name: drug.generic_name, drug_class: drug.drug_class || parsed.drug_class }
+          : d));
+        complete ? succeeded++ : stillIncomplete++;
+      } catch (e) {
+        failed++;
+      } finally {
+        setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
+        done++;
+        setBulkFixProgress({ done, total: drugsToFix.length });
+      }
+    });
+
+    setBulkFixRunning(false);
+    setSelectedIds(new Set());
+    showToast(
+      bulkFixAbortRef.current
+        ? `Stopped — ${succeeded} completed, ${stillIncomplete} still incomplete before stopping.`
+        : `AI Insight done — ${succeeded} completed${stillIncomplete ? `, ${stillIncomplete} still incomplete` : ''}${failed ? `, ${failed} failed` : ''}.`,
+      failed ? 'error' : stillIncomplete ? 'info' : 'success'
+    );
+  }
+
+  function stopBulkFix() { bulkFixAbortRef.current = true; }
 
   async function confirmSingleDelete() {
     try {
@@ -546,7 +632,29 @@ export default function AdminPage() {
                   <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
                 </button>
               )}
+              {!bulkFixRunning && selectedIncomplete.length>0 && (
+                <button onClick={()=>bulkFixWithAI(selectedIncomplete)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Sparkles className="w-4 h-4"/>AI Insight: fix {selectedIncomplete.length} selected
+                </button>
+              )}
+              {!bulkFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
+                <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
+                </button>
+              )}
+              {bulkFixRunning && (
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+                  <RefreshCw className="w-4 h-4 animate-spin"/>
+                  Fixing {bulkFixProgress.done} of {bulkFixProgress.total}…
+                  <button onClick={stopBulkFix} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
+                </div>
+              )}
             </div>
+            {bulkFixRunning && (
+              <div style={{height:6,background:'#FEF3C7',borderRadius:999,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${bulkFixProgress.total?Math.round((bulkFixProgress.done/bulkFixProgress.total)*100):0}%`,background:'#F59E0B',transition:'width 0.2s'}}/>
+              </div>
+            )}
             {showFilters&&(
               <div className="pt-3 border-t border-drug-border space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -633,6 +741,13 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          {isIncomplete(drug) && (
+                            <button onClick={()=>fixOneDrugWithAI(drug)} disabled={fixingIds.has(drug.firestoreId)||bulkFixRunning}
+                              className={`p-2 rounded-lg transition-colors ${fixingIds.has(drug.firestoreId)?'text-amber-400 cursor-wait':'text-amber-600 hover:bg-amber-50'}`}
+                              title="AI Insight: fix missing fields">
+                              {fixingIds.has(drug.firestoreId) ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
+                            </button>
+                          )}
                           <button onClick={()=>openEdit(drug)} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit"><Edit className="w-4 h-4"/></button>
                           <button onClick={()=>promptDelete(drug.firestoreId)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4"/></button>
                         </div>
