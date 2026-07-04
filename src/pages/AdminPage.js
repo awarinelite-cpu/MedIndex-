@@ -65,6 +65,7 @@ export default function AdminPage() {
   const [filterSubclass,   setFilterSubclass]   = useState('');
   const [filterStatus,     setFilterStatus]     = useState('');
   const [filterIndication, setFilterIndication] = useState('');
+  const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false);
   const [showFilters,      setShowFilters]      = useState(false);
   const [selectedIds,      setSelectedIds]      = useState(new Set());
   const [editingDrug,      setEditingDrug]      = useState(null);
@@ -303,7 +304,7 @@ export default function AdminPage() {
     return [...new Set(base.map(d => d.drug_subclass).filter(Boolean))].sort();
   }, [drugs, filterClass]);
 
-  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication].filter(Boolean).length;
+  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication].filter(Boolean).length + (filterIncompleteOnly ? 1 : 0);
 
   const filteredDrugs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -321,9 +322,10 @@ export default function AdminPage() {
       const matchInd      = !filterIndication ||
         drug.indications?.toLowerCase().includes(filterIndication.toLowerCase()) ||
         drug.primary_indications?.toLowerCase().includes(filterIndication.toLowerCase());
-      return matchSearch && matchClass && matchSubclass && matchStatus && matchInd;
+      const matchIncomplete = !filterIncompleteOnly || isIncomplete(drug);
+      return matchSearch && matchClass && matchSubclass && matchStatus && matchInd && matchIncomplete;
     });
-  }, [drugs, searchQuery, filterClass, filterSubclass, filterStatus, filterIndication]);
+  }, [drugs, searchQuery, filterClass, filterSubclass, filterStatus, filterIndication, filterIncompleteOnly]);
 
   const stats = useMemo(() => ({
     total:      drugs.length,
@@ -336,7 +338,7 @@ export default function AdminPage() {
 
   function clearAllFilters() {
     setSearchQuery(''); setFilterClass(''); setFilterSubclass('');
-    setFilterStatus(''); setFilterIndication(''); setSelectedIds(new Set());
+    setFilterStatus(''); setFilterIndication(''); setFilterIncompleteOnly(false); setSelectedIds(new Set());
   }
   function toggleSelectAll() {
     allSelected ? setSelectedIds(new Set()) : setSelectedIds(new Set(filteredDrugs.map(d => d.firestoreId)));
@@ -478,13 +480,21 @@ export default function AdminPage() {
           {label:'Total Drugs',  value:stats.total,      icon:Database,      bg:'bg-primary-50',color:'text-drug-text',  ic:'text-primary-600'},
           {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600'  },
           {label:'Controlled',   value:stats.controlled, icon:AlertTriangle, bg:'bg-red-50',   color:'text-red-700',    ic:'text-red-600'   },
-          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500' },
+          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500',
+            onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());} },
         ].map(s=>(
-          <div key={s.label} className="bg-white border border-drug-border rounded-xl p-5">
+          <div key={s.label} onClick={s.onClick} role={s.onClick?'button':undefined} tabIndex={s.onClick?0:undefined}
+            onKeyDown={s.onClick?(e=>{if(e.key==='Enter')s.onClick();}):undefined}
+            className={`bg-white border rounded-xl p-5 transition-all ${
+              s.onClick
+                ? `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${filterIncompleteOnly && s.label==='Incomplete' ? 'border-amber-400 ring-2 ring-amber-200' : 'border-drug-border hover:border-amber-300'}`
+                : 'border-drug-border'
+            }`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-drug-muted">{s.label}</p>
                 <p className={`text-2xl font-bold ${s.color}`}>{loading?'—':s.value}</p>
+                {s.onClick && <p className="text-[11px] text-amber-600 font-semibold mt-0.5">Tap to view →</p>}
               </div>
               <div className={`p-2.5 ${s.bg} rounded-lg`}><s.icon className={`w-5 h-5 ${s.ic}`}/></div>
             </div>
@@ -565,6 +575,7 @@ export default function AdminPage() {
                 </div>
                 {activeFilterCount>0&&(
                   <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {filterIncompleteOnly&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#FFFBEB',color:'#B45309',borderRadius:20,fontSize:12,fontWeight:700}}>⚠ Incomplete only<button onClick={()=>setFilterIncompleteOnly(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',padding:0}}>×</button></span>}
                     {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
                     {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
                     {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
