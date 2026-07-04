@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, LogOut, User } from 'lucide-react';
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
@@ -87,6 +87,7 @@ export default function Layout({ children }) {
     { to: '/',       label: 'Home',      icon: Home         },
     { to: '/browse', label: 'Browse',    icon: Grid3X3      },
     { to: '/labs',   label: 'Lab Ref',   icon: FlaskConical },
+    { to: '/calculators', label: 'Calculators', icon: Calculator },
   ];
   const isActive = (path) => location.pathname === path;
 
