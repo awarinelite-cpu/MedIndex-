@@ -15,6 +15,7 @@ import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
 import LabReferencePage from './pages/LabReferencePage';
+import CalculatorsPage from './pages/CalculatorsPage';
 function App() {
   return (
     <AuthProvider>
@@ -57,6 +58,11 @@ function App() {
         <Route path="/lists/:listId" element={
           <ProtectedUserRoute>
             <Layout><DrugListDetailPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/calculators" element={
+          <ProtectedUserRoute>
+            <Layout><CalculatorsPage /></Layout>
           </ProtectedUserRoute>
         } />
 
