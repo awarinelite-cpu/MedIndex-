@@ -17,6 +17,8 @@ import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
 import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
+import SystemPage from './pages/SystemPage';
+import AllSystemsPage from './pages/AllSystemsPage';
 function App() {
   return (
     <AuthProvider>
@@ -60,6 +62,16 @@ function App() {
         <Route path="/lists/:listId" element={
           <ProtectedUserRoute>
             <Layout><DrugListDetailPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/systems" element={
+          <ProtectedUserRoute>
+            <Layout><AllSystemsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/system/:systemId" element={
+          <ProtectedUserRoute>
+            <Layout><SystemPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/calculators" element={
