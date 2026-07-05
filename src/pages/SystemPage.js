@@ -12,7 +12,9 @@ import { getSystemById } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
-import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete } from '../utils/aiDrugSave';
+import { parseAiConditionList } from '../utils/parseAiConditionList';
+import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
+import { useCustomConditions, addCustomConditions, slugifyConditionLabel } from '../hooks/useCustomConditions';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -363,15 +365,176 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 }
 
 /* ── Main page ───────────────────────────────────────────────────────────── */
+/* ── AI expansion for a whole system: suggest new condition categories ──── */
+function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
+  const { isAdmin } = useAuth();
+
+  const cacheKey = `ai_system_conditions_${systemId}`;
+  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
+  const [error, setError] = useState('');
+  const [addedIds, setAddedIds] = useState(new Set());
+  const [addingId, setAddingId] = useState(null);
+  const [addAllState, setAddAllState] = useState('idle'); // idle | running | done
+
+  if (!isAdmin) return null; // only admins can curate condition taxonomy
+
+  const runLookup = async () => {
+    setState('loading');
+    setError('');
+    setText('');
+    try {
+      const full = await fetchSystemConditionsList({ systemName, existingLabels });
+      setText(full);
+      sessionStorage.setItem(cacheKey, full);
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI suggestions.');
+      setState('error');
+    }
+  };
+
+  const items = state === 'done' ? parseAiConditionList(text) : [];
+
+  const addOne = async (item) => {
+    const id = slugifyConditionLabel(item.label);
+    setAddingId(id);
+    try {
+      await addCustomConditions(systemId, [{ id, label: item.label, icon: item.icon, keywords: item.keywords }]);
+      setAddedIds(prev => new Set(prev).add(id));
+    } catch (e) {
+      setError(e.message || 'Failed to add this condition.');
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  const addAll = async () => {
+    setAddAllState('running');
+    const toAdd = items
+      .filter(item => !addedIds.has(slugifyConditionLabel(item.label)))
+      .map(item => ({ id: slugifyConditionLabel(item.label), label: item.label, icon: item.icon, keywords: item.keywords }));
+    try {
+      await addCustomConditions(systemId, toAdd);
+      setAddedIds(prev => new Set([...prev, ...toAdd.map(c => c.id)]));
+      setAddAllState('done');
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) {
+      setError(e.message || 'Failed to add conditions.');
+      setAddAllState('idle');
+    }
+  };
+
+  return (
+    <div className="mt-6 bg-white border border-drug-border rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-5 py-4 bg-violet-50">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
+          <span className="font-bold text-drug-text truncate">AI: More conditions for {systemName}</span>
+        </div>
+        {state === 'idle' && (
+          <button
+            onClick={runLookup}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg flex-shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Find more conditions
+          </button>
+        )}
+        {state === 'done' && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {items.length > 0 && addAllState !== 'running' && (
+              <button
+                onClick={addAll}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-lg"
+              >
+                <Save className="w-3 h-3" /> Add All
+              </button>
+            )}
+            <button
+              onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-800"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+            </button>
+          </div>
+        )}
+      </div>
+
+      {state === 'loading' && (
+        <div className="p-6 text-center">
+          <RefreshCw className="w-6 h-6 text-violet-400 mx-auto mb-2 animate-spin" />
+          <p className="text-sm text-drug-muted">Gathering condition categories for {systemName}…</p>
+        </div>
+      )}
+
+      {state === 'error' && (
+        <div className="p-5 text-center">
+          <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      {state === 'done' && (
+        addAllState === 'done' ? (
+          <div className="p-5 text-center text-sm text-green-700 bg-green-50">
+            ✓ Added — refreshing to show the new condition cards…
+          </div>
+        ) : items.length === 0 ? (
+          <p className="p-5 text-sm text-drug-muted">{text}</p>
+        ) : (
+          <div>
+            {error && <p className="px-5 pt-3 text-sm text-red-600">{error}</p>}
+            {items.map((item, i) => {
+              const id = slugifyConditionLabel(item.label);
+              const added = addedIds.has(id);
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 px-5 py-3 ${i !== items.length - 1 ? 'border-b border-drug-border' : ''}`}
+                >
+                  <span className="text-xl flex-shrink-0">{item.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm">{item.label}</div>
+                    <div className="text-xs text-drug-muted truncate">{item.keywords.slice(0, 4).join(', ')}…</div>
+                  </div>
+                  {added ? (
+                    <span className="text-xs font-bold text-green-600 flex-shrink-0">✓ Added</span>
+                  ) : (
+                    <button
+                      onClick={() => addOne(item)}
+                      disabled={addingId === id}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50 flex-shrink-0"
+                    >
+                      {addingId === id ? 'Adding…' : '+ Add'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { customConditionsBySystem } = useCustomConditions();
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
 
   const system = getSystemById(systemId);
+
+  // AI-suggested, admin-approved conditions for this system (from Firestore),
+  // merged with the static systemConditions.js list.
+  const extraConditions = useMemo(
+    () => customConditionsBySystem[systemId] || [],
+    [customConditionsBySystem, systemId]
+  );
 
   // All drugs in this system
   const drugs = useMemo(() => {
@@ -383,8 +546,8 @@ export default function SystemPage() {
 
   // Group by condition
   const conditionGroups = useMemo(
-    () => groupDrugsByCondition(drugs, systemId),
-    [drugs, systemId]
+    () => groupDrugsByCondition(drugs, systemId, extraConditions),
+    [drugs, systemId, extraConditions]
   );
 
   // All drug classes across this system (for dropdown)
@@ -492,26 +655,36 @@ export default function SystemPage() {
       {/* Content */}
       {loading ? (
         <div className="text-center py-16 text-drug-muted">Loading…</div>
-      ) : drugs.length === 0 ? (
-        <div className="bg-white border border-drug-border rounded-xl p-10 text-center">
-          <Icon className={`w-10 h-10 mx-auto mb-3 ${system.color}`} />
-          <p className="text-drug-muted">No medications matched to {system.name} yet.</p>
-        </div>
       ) : (
-        <div className="space-y-4">
-          {[...conditionGroups.values()].map((entry, idx) => (
-            <ConditionSection
-              key={entry.condition.id}
-              condition={entry.condition}
-              drugs={entry.drugs}
-              viewMode={viewMode}
-              classFilter={classFilter}
-              nameSearch={nameSearch}
-              defaultOpen={idx === 0}
-              systemName={system.name}
-            />
-          ))}
-        </div>
+        <>
+          {drugs.length === 0 ? (
+            <div className="bg-white border border-drug-border rounded-xl p-10 text-center">
+              <Icon className={`w-10 h-10 mx-auto mb-3 ${system.color}`} />
+              <p className="text-drug-muted">No medications matched to {system.name} yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {[...conditionGroups.values()].map((entry, idx) => (
+                <ConditionSection
+                  key={entry.condition.id}
+                  condition={entry.condition}
+                  drugs={entry.drugs}
+                  viewMode={viewMode}
+                  classFilter={classFilter}
+                  nameSearch={nameSearch}
+                  defaultOpen={idx === 0}
+                  systemName={system.name}
+                />
+              ))}
+            </div>
+          )}
+
+          <AiSystemConditionsFallback
+            systemId={systemId}
+            systemName={system.name}
+            existingLabels={[...conditionGroups.values()].map(e => e.condition.label)}
+          />
+        </>
       )}
 
       <div className="mt-10 pt-6 border-t border-drug-border text-xs text-drug-muted leading-relaxed">

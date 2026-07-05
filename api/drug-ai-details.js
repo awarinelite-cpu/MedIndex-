@@ -123,6 +123,28 @@ For each medication, use a bullet point starting with the **generic name in bold
 Aim for a reasonably thorough list (roughly 10-25 medications across the relevant classes) so the nurse gets real coverage of how this condition is managed, not just one or two examples. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
 
 This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
+  } else if (mode === 'system_conditions') {
+    const { systemName: sysName, existingLabels } = body || {};
+    if (!sysName || typeof sysName !== 'string') {
+      return new Response(JSON.stringify({ error: 'systemName is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const knownList = Array.isArray(existingLabels) && existingLabels.length
+      ? `\nConditions already covered for this system (do not repeat these or close synonyms of them):\n${existingLabels.join(', ')}\n`
+      : '';
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The app organizes medications by body system, and within each system, by the specific clinical conditions treated there. The nurse is looking at the "${sysName}" system and wants more condition categories added to it beyond what's already there.
+${knownList}
+Suggest additional clinically distinct conditions commonly managed within the "${sysName}" system that are NOT already covered. For each one, output exactly this 3-line block, with a blank line between blocks:
+
+### <Condition Label>
+Icon: <single relevant emoji>
+Keywords: <6-10 comma-separated lowercase keyword phrases that would appear in a drug's indications/overview text if that drug treats this condition — think of terms a clinical reference would actually use, e.g. for "Migraine" you might use: migraine, triptan, cluster headache, preventive migraine>
+
+Suggest around 5-10 additional conditions if the system reasonably supports that many being clinically distinct; suggest fewer if the system is narrow. Do not invent an implausible condition just to hit a number, and do not duplicate or closely overlap with the conditions already covered above. Output nothing except the blocks themselves — no preamble or closing text.`;
   } else if (mode === 'class') {
     if (!className || typeof className !== 'string') {
       return new Response(JSON.stringify({ error: 'className is required.' }), {
@@ -213,7 +235,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: (mode === 'class' || mode === 'condition') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
           }),
         }
       );

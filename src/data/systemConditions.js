@@ -653,9 +653,10 @@ export function getDrugConditions(drug, systemId) {
  * Returns: Map<conditionId, { condition, drugs[] }>
  * A drug can appear in multiple conditions.
  */
-export function groupDrugsByCondition(drugs, systemId) {
-  const conditions = SYSTEM_CONDITIONS[systemId];
-  if (!conditions) return new Map();
+export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
+  const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
+  const conditions = [...baseConditions, ...extraConditions];
+  if (conditions.length === 0) return new Map();
 
   const grouped = new Map();
   const uncategorised = [];
@@ -665,7 +666,22 @@ export function groupDrugsByCondition(drugs, systemId) {
   }
 
   for (const drug of drugs) {
-    const matched = getDrugConditions(drug, systemId);
+    const haystack = [
+      drug.indications,
+      drug.primary_indications,
+      drug.overview,
+      drug.drug_class,
+      drug.drug_subclass,
+      drug.generic_name,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const matched = conditions.filter(cond =>
+      cond.keywords.some(kw => haystack.includes(kw.toLowerCase()))
+    );
+
     if (matched.length === 0) {
       uncategorised.push(drug);
     } else {

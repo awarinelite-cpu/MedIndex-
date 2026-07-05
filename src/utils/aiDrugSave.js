@@ -137,6 +137,33 @@ export async function fetchConditionDrugList({ conditionLabel, systemName, known
   return full;
 }
 
+// ── Fetch AI-suggested additional conditions for a body system ─────────────
+export async function fetchSystemConditionsList({ systemName, existingLabels }) {
+  const res = await fetch('/api/drug-ai-details', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'system_conditions', systemName, existingLabels }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+  if (!full.trim()) throw new Error('AI returned an empty response.');
+  return full;
+}
+
 // ── Generate, validate, and save a drug ──────────────────────────────────
 // generateDrugOnce: generates AI text for one drug and returns parsed result
 // with completeness status. Does NOT save to Firestore.
