@@ -14,7 +14,7 @@ import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditio
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
-import { useCustomConditions, addCustomConditions, slugifyConditionLabel } from '../hooks/useCustomConditions';
+import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -384,6 +384,10 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
   const [addedIds, setAddedIds] = useState(new Set());
   const [addingId, setAddingId] = useState(null);
   const [addAllState, setAddAllState] = useState('idle'); // idle | running | done
+  const existingLabelSet = useMemo(
+    () => new Set(existingLabels.map(normalizeConditionLabel)),
+    [existingLabels]
+  );
 
   if (!isAdmin) return null; // only admins can curate condition taxonomy
 
@@ -406,6 +410,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
 
   const addOne = async (item) => {
     const id = slugifyConditionLabel(item.label);
+    if (existingLabelSet.has(normalizeConditionLabel(item.label))) return; // already exists — no-op
     setAddingId(id);
     setError('');
     try {
@@ -422,8 +427,15 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
     setAddAllState('running');
     setError('');
     const toAdd = items
-      .filter(item => !addedIds.has(slugifyConditionLabel(item.label)))
+      .filter(item => {
+        const id = slugifyConditionLabel(item.label);
+        return !addedIds.has(id) && !existingLabelSet.has(normalizeConditionLabel(item.label));
+      })
       .map(item => ({ id: slugifyConditionLabel(item.label), label: item.label, icon: item.icon, keywords: item.keywords }));
+    if (toAdd.length === 0) {
+      setAddAllState('idle');
+      return;
+    }
     try {
       await addCustomConditions(systemId, toAdd);
       setAddedIds(prev => new Set([...prev, ...toAdd.map(c => c.id)]));
@@ -452,7 +464,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
         )}
         {state === 'done' && (
           <div className="flex items-center gap-2 flex-shrink-0">
-            {items.length > 0 && addAllState !== 'running' && (
+            {items.some(item => !addedIds.has(slugifyConditionLabel(item.label)) && !existingLabelSet.has(normalizeConditionLabel(item.label))) && addAllState !== 'running' && (
               <button
                 onClick={addAll}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-lg"
@@ -511,6 +523,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
             {items.map((item, i) => {
               const id = slugifyConditionLabel(item.label);
               const added = addedIds.has(id);
+              const isDuplicate = existingLabelSet.has(normalizeConditionLabel(item.label));
               return (
                 <div
                   key={i}
@@ -523,6 +536,8 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
                   </div>
                   {added ? (
                     <span className="text-xs font-bold text-green-600 flex-shrink-0">✓ Added</span>
+                  ) : isDuplicate ? (
+                    <span className="text-xs font-semibold text-drug-muted flex-shrink-0">Already exists</span>
                   ) : (
                     <button
                       onClick={() => addOne(item)}

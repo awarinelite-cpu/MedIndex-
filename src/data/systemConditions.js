@@ -656,8 +656,23 @@ export function getDrugConditions(drug, systemId, extraConditions = []) {
  */
 export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
   const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
-  const conditions = [...baseConditions, ...extraConditions];
-  if (conditions.length === 0) return new Map();
+  const rawConditions = [...baseConditions, ...extraConditions];
+  if (rawConditions.length === 0) return new Map();
+
+  // Defensively dedupe the condition list itself — by id first, then by
+  // normalized label — so that any duplicate condition already present in
+  // stored data (e.g. from before duplicate-prevention was added) collapses
+  // to a single card instead of rendering twice or double-counting drugs.
+  const seenIds = new Set();
+  const seenLabels = new Set();
+  const conditions = [];
+  for (const cond of rawConditions) {
+    const normLabel = (cond.label || '').toLowerCase().trim().replace(/[.,;:!?'"()/\\-]/g, '').replace(/\s+/g, ' ');
+    if (seenIds.has(cond.id) || seenLabels.has(normLabel)) continue;
+    seenIds.add(cond.id);
+    seenLabels.add(normLabel);
+    conditions.push(cond);
+  }
 
   const grouped = new Map();
   const uncategorised = [];
@@ -687,7 +702,13 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
       uncategorised.push(drug);
     } else {
       for (const cond of matched) {
-        grouped.get(cond.id).drugs.push(drug);
+        const entry = grouped.get(cond.id);
+        // Guard against the same drug appearing twice under one condition
+        // (e.g. duplicate drug documents, or a drug matched by more than
+        // one now-deduped condition alias collapsing onto the same id).
+        if (!entry.drugs.some(d => d.id === drug.id)) {
+          entry.drugs.push(drug);
+        }
       }
     }
   }
