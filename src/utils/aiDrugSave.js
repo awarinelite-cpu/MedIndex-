@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, ensureAuth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 
 // Same deterministic-ID convention used by UploadPage.js's CSV import.
@@ -101,6 +101,7 @@ export function needsStrengthOnly(data) {
 // Writes only the strength field (+ last_updated) — no confirmation needed
 // since this never overwrites existing populated data, only fills a gap.
 export async function saveStrengthOnly({ docId, strengthText }) {
+  await ensureAuth();
   await updateDoc(doc(db, 'drugs', docId), {
     strength:     strengthText,
     last_updated: serverTimestamp(),
@@ -177,6 +178,7 @@ export async function generateDrugOnce({ genericName, drugClass }) {
 // saveParsedDrug: patches ONLY missing fields into the existing Firestore doc.
 // Existing populated fields are NEVER overwritten — this is a surgical patch.
 export async function saveParsedDrug({ genericName, drugClass, parsed, existingDrug = null }) {
+  await ensureAuth();
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
 
@@ -246,6 +248,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
+  await ensureAuth();
   const parsed    = parseAiDrugDetail(text);
   const missing   = getMissingGroups(parsed);
   const finalClass = drugClass || parsed.drug_class || 'Unknown';
