@@ -8,16 +8,6 @@ let cache = null;
 let cacheTime = 0;
 const CACHE_MS = 5 * 60 * 1000;
 
-// Wait for Firebase Auth to fully restore session before checking currentUser
-async function getAuthUser() {
-  // authStateReady() resolves once the initial auth state is known
-  await auth.authStateReady();
-  if (!auth.currentUser) {
-    throw new Error('You must be signed in as admin to save. Please sign in and try again.');
-  }
-  return auth.currentUser;
-}
-
 export function invalidateCustomConditionsCache() {
   cache = null;
 }
