@@ -2,20 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Drugs: public read, authenticated non-anonymous write only
+    // Drugs: public read, admin write only
     match /drugs/{drugId} {
       allow read: if true;
       allow write: if request.auth != null
                    && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    // Admins: only read your own record
+    // App config (system conditions, settings): admin write only
+    match /app_config/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Admin records: read own record only, no writes
     match /admins/{email} {
       allow read: if request.auth != null && request.auth.token.email == email;
       allow write: if false;
     }
 
-    // Everything else: authenticated non-anonymous users only
+    // All other collections: authenticated non-anonymous users only
     match /{document=**} {
       allow read, write: if request.auth != null
                          && request.auth.token.firebase.sign_in_provider != 'anonymous';

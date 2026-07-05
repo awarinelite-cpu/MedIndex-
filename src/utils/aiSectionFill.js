@@ -6,8 +6,14 @@
 // ──────────────────────────────────────────────────────────────────────────
 
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
+
+function requireAdminAuth() {
+  if (!auth.currentUser) {
+    throw new Error('You must be signed in as an admin to save drug information.');
+  }
+}
 
 // For each tab: the drug-record fields it displays, and the exact ## headers
 // to request from the AI (these MUST match parseAiDrugDetail's header map).
@@ -90,6 +96,7 @@ export async function fetchAiSectionText({ genericName, drugClass, tabId }) {
 // onto the drug record (merge — never touches other tabs' data). Returns the
 // fields that were saved so the UI can update immediately.
 export async function fillTabWithAi({ drug, tabId }) {
+  requireAdminAuth();
   const cfg = TAB_SECTIONS[tabId];
   if (!cfg) throw new Error(`Unknown tab: ${tabId}`);
 

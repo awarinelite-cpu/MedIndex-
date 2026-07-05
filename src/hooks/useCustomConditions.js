@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 
 // A single doc holds every system's custom (AI-suggested, admin-approved)
 // conditions, keyed by systemId — cheap to read, and avoids needing a whole
@@ -10,6 +10,12 @@ const DOC_REF_PATH = ['app_config', 'system_conditions_extra'];
 let cache = null;
 let cacheTime = 0;
 const CACHE_MS = 5 * 60 * 1000;
+
+function requireAdminAuth() {
+  if (!auth.currentUser) {
+    throw new Error('You must be signed in as an admin to save conditions.');
+  }
+}
 
 export function invalidateCustomConditionsCache() {
   cache = null;
@@ -53,6 +59,7 @@ export function slugifyConditionLabel(label) {
 // Adds one or more new conditions to a system's extras, skipping any whose
 // id already exists there (idempotent — safe to call again with overlap).
 export async function addCustomConditions(systemId, newConditions) {
+  requireAdminAuth();
   const ref  = doc(db, ...DOC_REF_PATH);
   const snap = await getDoc(ref);
   const current = snap.exists() ? (snap.data().systems || {}) : {};
