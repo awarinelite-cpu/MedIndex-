@@ -279,23 +279,26 @@ function AiClassFallback({ className, existingDrugs }) {
   const saveAllToDatabase = async (items) => {
     setBulkState('running');
     setBulkResults(null);
-    let saved = 0, skipped = 0;
+    let saved = 0, incomplete = 0;
     const errors = [];
 
-    // Anything the AI suggested that turns out to match an existing drug by
-    // name doesn't need an AI call at all here — fixing existing entries is
-    // handled separately by "Complete Missing Info" above.
-    const newItems = items.filter(item => !existingByName.has(normalizeDrugName(item.name)));
-    skipped += items.length - newItems.length;
-
-    for (let i = 0; i < newItems.length; i++) {
-      const item = newItems[i];
-      setBulkProgress({ current: i + 1, total: newItems.length, currentName: item.name });
+    // Upload every item the AI listed, overwriting whatever's already saved
+    // under that name (if anything) with this fresh data — the local
+    // "existing in this class" check is only used for the badges shown
+    // above, not to silently skip saving here.
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
       const drugClassForItem = item.subclass || className;
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
-        const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: drugClassForItem, text: itemText });
-        if (result.status === 'saved') saved += 1; else skipped += 1;
+        const result = await saveAiDrugToDatabase({
+          genericName: item.name,
+          drugClass: drugClassForItem,
+          text: itemText,
+          overwrite: true,
+        });
+        if (result.status === 'saved') saved += 1; else incomplete += 1;
       } catch (e) {
         errors.push({ name: item.name, message: e.message || 'Failed to save.' });
       }
@@ -303,7 +306,7 @@ function AiClassFallback({ className, existingDrugs }) {
       await new Promise(r => setTimeout(r, 350));
     }
 
-    setBulkResults({ saved, skipped, errors });
+    setBulkResults({ saved, skipped: incomplete, errors });
     setBulkState('done');
   };
 
