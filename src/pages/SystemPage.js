@@ -399,11 +399,12 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
   const addOne = async (item) => {
     const id = slugifyConditionLabel(item.label);
     setAddingId(id);
+    setError('');
     try {
       await addCustomConditions(systemId, [{ id, label: item.label, icon: item.icon, keywords: item.keywords }]);
       setAddedIds(prev => new Set(prev).add(id));
     } catch (e) {
-      setError(e.message || 'Failed to add this condition.');
+      setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
     } finally {
       setAddingId(null);
     }
@@ -411,6 +412,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
 
   const addAll = async () => {
     setAddAllState('running');
+    setError('');
     const toAdd = items
       .filter(item => !addedIds.has(slugifyConditionLabel(item.label)))
       .map(item => ({ id: slugifyConditionLabel(item.label), label: item.label, icon: item.icon, keywords: item.keywords }));
@@ -420,7 +422,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
       setAddAllState('done');
       setTimeout(() => window.location.reload(), 900);
     } catch (e) {
-      setError(e.message || 'Failed to add conditions.');
+      setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
       setAddAllState('idle');
     }
   };
@@ -483,7 +485,21 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
           <p className="p-5 text-sm text-drug-muted">{text}</p>
         ) : (
           <div>
-            {error && <p className="px-5 pt-3 text-sm text-red-600">{error}</p>}
+            {error && (
+              <div style={{
+                margin: '12px 16px',
+                padding: '14px 16px',
+                background: '#FEF2F2',
+                border: '2px solid #EF4444',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#991B1B',
+                lineHeight: 1.5,
+              }}>
+                ⚠️ {error}
+              </div>
+            )}
             {items.map((item, i) => {
               const id = slugifyConditionLabel(item.label);
               const added = addedIds.has(id);
