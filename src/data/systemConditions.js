@@ -699,12 +699,12 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
     });
   }
 
-  // Remove empty BASE conditions — but keep custom (extra) conditions
-  // even with no drugs so admins can confirm they saved successfully.
-  const extraIds = new Set(extraConditions.map(c => c.id));
+  // Keep all conditions — show even if no drugs match yet
+  // (empty base conditions show as placeholder cards; custom conditions
+  //  confirm to admin they saved successfully)
   for (const [id, entry] of grouped) {
-    if (entry.drugs.length === 0 && !extraIds.has(id) && id !== '_other') {
-      grouped.delete(id);
+    if (id === '_other' && entry.drugs.length === 0) {
+      grouped.delete(id); // hide the catch-all only when empty
     }
   }
 

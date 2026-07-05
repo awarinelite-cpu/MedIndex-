@@ -258,7 +258,17 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
-  if (filtered.length === 0) return null;
+  if (filtered.length === 0) return (
+    <div className="bg-white border border-dashed border-drug-border rounded-2xl overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4">
+        <span className="text-xl">{condition.icon}</span>
+        <div>
+          <div className="font-bold text-drug-text">{condition.label}</div>
+          <div className="text-xs text-drug-muted mt-0.5">No drugs matched yet</div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-white border border-drug-border rounded-2xl overflow-hidden shadow-sm">
