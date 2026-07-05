@@ -4,11 +4,15 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
   Pill, ChevronRight, Grid3X3, List, ArrowLeft, ChevronDown, ChevronUp,
+  Sparkles, RefreshCw, Save, AlertTriangle,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from '../context/AuthContext';
 import { getSystemById } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition } from '../data/systemConditions';
+import { parseAiDrugList } from '../utils/parseAiDrugList';
+import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete } from '../utils/aiDrugSave';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -27,8 +31,205 @@ function RxBadge({ status }) {
   );
 }
 
+function normalizeDrugName(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/* ── AI expansion for a clinical condition ───────────────────────────────── */
+function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
+  const { isAdmin } = useAuth();
+  const existingByName = useMemo(() => {
+    const map = new Map();
+    existingDrugs.forEach(d => {
+      if (d.generic_name) map.set(normalizeDrugName(d.generic_name), d);
+    });
+    return map;
+  }, [existingDrugs]);
+  const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
+
+  const cacheKey = `ai_condition_${conditionLabel.trim().toLowerCase()}`;
+  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
+  const [error, setError] = useState('');
+
+  const [bulkState, setBulkState]     = useState('idle'); // idle | running | done
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
+  const [bulkResults, setBulkResults] = useState(null); // { saved, errors: [{name, message}] }
+
+  const runLookup = async () => {
+    setState('loading');
+    setError('');
+    setText('');
+    try {
+      const full = await fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames });
+      setText(full);
+      sessionStorage.setItem(cacheKey, full);
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI lookup.');
+      setState('error');
+    }
+  };
+
+  const items = state === 'done' ? parseAiDrugList(text) : [];
+
+  const saveAllToDatabase = async () => {
+    setBulkState('running');
+    setBulkResults(null);
+    let saved = 0, incomplete = 0;
+    const errors = [];
+
+    // Upload every AI-suggested item, overwriting whatever's already saved
+    // under that name (if anything) with this fresh data.
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
+      const drugClassForItem = item.subclass || undefined;
+      try {
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
+        const result = await saveAiDrugToDatabase({
+          genericName: item.name,
+          drugClass: drugClassForItem,
+          text: itemText,
+          overwrite: true,
+        });
+        if (result.status === 'saved') saved += 1; else incomplete += 1;
+      } catch (e) {
+        errors.push({ name: item.name, message: e.message || 'Failed to save.' });
+      }
+      await new Promise(r => setTimeout(r, 350));
+    }
+
+    setBulkResults({ saved, skipped: incomplete, errors });
+    setBulkState('done');
+  };
+
+  if (state === 'idle') {
+    return (
+      <div className="mt-3 bg-primary-50 border border-primary-200 rounded-xl p-5 text-center">
+        <Sparkles className="w-7 h-7 text-primary-500 mx-auto mb-2" />
+        <p className="text-sm text-drug-text mb-3">
+          Want the AI to find more medications used for "{conditionLabel}"?
+        </p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" /> Find more drugs for "{conditionLabel}"
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'loading') {
+    return (
+      <div className="mt-3 bg-white border border-drug-border rounded-xl p-6 text-center">
+        <RefreshCw className="w-6 h-6 text-primary-400 mx-auto mb-2 animate-spin" />
+        <p className="text-sm text-drug-muted">Gathering medications for "{conditionLabel}"…</p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="mt-3 bg-white border border-drug-border rounded-xl p-5 text-center">
+        <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+        <p className="text-sm text-red-600 mb-3">{error}</p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Try again
+        </button>
+      </div>
+    );
+  }
+
+  // done
+  return (
+    <div className="mt-3 bg-white border border-drug-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 bg-violet-50 border-b border-drug-border">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-4 h-4 text-violet-500 flex-shrink-0" />
+          <span className="text-sm font-bold text-drug-text truncate">AI: More drugs for "{conditionLabel}"</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isAdmin && items.length > 0 && bulkState !== 'running' && (
+            <button
+              onClick={saveAllToDatabase}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-lg"
+            >
+              <Save className="w-3 h-3" /> Save All
+            </button>
+          )}
+          <button
+            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
+            disabled={bulkState === 'running'}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+          </button>
+        </div>
+      </div>
+
+      {bulkState === 'running' && (
+        <div className="p-4 border-b border-drug-border">
+          <p className="text-xs text-drug-muted mb-2">
+            Saving {bulkProgress.current}/{bulkProgress.total} — {bulkProgress.currentName}
+          </p>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div className="bg-primary-500 h-1.5 rounded-full transition-all"
+                 style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      {bulkState === 'done' && bulkResults && (
+        <div className="px-4 py-2 border-b border-drug-border text-xs text-drug-muted">
+          {bulkResults.saved} saved
+          {bulkResults.skipped > 0 && `, ${bulkResults.skipped} incomplete`}
+          {bulkResults.errors.length > 0 && `, ${bulkResults.errors.length} failed`}.
+          Refresh to see them in the list above.
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <p className="p-4 text-sm text-drug-muted">{text}</p>
+      ) : (
+        items.map((item, i) => {
+          const existing = existingByName.get(normalizeDrugName(item.name));
+          const isNew = !existing;
+          return (
+            <Link
+              key={i}
+              to={isNew ? `/browse?q=${encodeURIComponent(item.name)}` : `/drug/${existing.id}`}
+              className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors ${i !== items.length - 1 ? 'border-b border-drug-border' : ''}`}
+            >
+              <div className={`p-1.5 rounded-lg flex-shrink-0 ${isNew ? 'bg-violet-50' : 'bg-primary-50'}`}>
+                <Pill className={`w-4 h-4 ${isNew ? 'text-violet-500' : 'text-primary-600'}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm truncate">{item.name}</div>
+                <div className="text-xs text-drug-muted truncate">{item.subclass || item.note}</div>
+              </div>
+              {isNew ? (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 flex-shrink-0">AI</span>
+              ) : (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${isDrugComplete(existing) ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {isDrugComplete(existing) ? 'In DB' : 'Incomplete'}
+                </span>
+              )}
+              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+            </Link>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /* ── Collapsible condition section ──────────────────────────────────────── */
-function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, defaultOpen }) {
+function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, defaultOpen, systemName }) {
   const [open, setOpen] = useState(defaultOpen);
 
   // Apply filters within this condition
@@ -146,6 +347,15 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
               )}
             </div>
           ))}
+
+          {/* AI expansion — find more drugs for this condition */}
+          <div className="p-4">
+            <AiConditionFallback
+              conditionLabel={condition.label}
+              systemName={systemName}
+              existingDrugs={drugs}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -298,6 +508,7 @@ export default function SystemPage() {
               classFilter={classFilter}
               nameSearch={nameSearch}
               defaultOpen={idx === 0}
+              systemName={system.name}
             />
           ))}
         </div>

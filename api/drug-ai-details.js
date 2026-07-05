@@ -100,6 +100,29 @@ IV: 500mg/100mL
 Susp: 125mg/5mL
 
 List every commonly available formulation/route. Do not add headers, bullets, explanations, or any other text — only the strength lines themselves. If you are not confident of exact figures, give the most commonly cited strength(s) and do not fabricate implausible values.`;
+  } else if (mode === 'condition') {
+    const { conditionLabel, systemName } = body || {};
+    if (!conditionLabel || typeof conditionLabel !== 'string') {
+      return new Response(JSON.stringify({ error: 'conditionLabel is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const knownList = Array.isArray(knownDrugNames) && knownDrugNames.length
+      ? `\nMedications already in the app's database for this condition (do not repeat these — focus on other medications also used for this condition):\n${knownDrugNames.join(', ')}\n`
+      : '';
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is looking at the clinical condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} and wants a broader list of medications used to treat or manage it, beyond what's currently in the app's database.
+${knownList}
+List commonly used medications (generic names) indicated for "${conditionLabel}". Group them by drug class using ## markdown headers (e.g. "## ACE Inhibitors", "## Thiazide Diuretics", "## Beta-Blockers") — a condition is usually treated by several different drug classes, so use as many class headers as are actually relevant.
+
+For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), its role specifically for "${conditionLabel}" (first-line/adjunct/second-line, etc.), and any notable distinguishing feature. Example format:
+- **Lisinopril** — PO; first-line for hypertension and heart failure with reduced ejection fraction; avoid in pregnancy.
+
+Aim for a reasonably thorough list (roughly 10-25 medications across the relevant classes) so the nurse gets real coverage of how this condition is managed, not just one or two examples. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
+
+This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
   } else if (mode === 'class') {
     if (!className || typeof className !== 'string') {
       return new Response(JSON.stringify({ error: 'className is required.' }), {
@@ -190,7 +213,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'class' ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: (mode === 'class' || mode === 'condition') ? 3000 : mode === 'strength' ? 150 : 2000 },
           }),
         }
       );
