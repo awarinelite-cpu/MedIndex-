@@ -17,7 +17,7 @@ function AiSearchFallback({ searchQuery }) {
   const [text, setText]           = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError]         = useState('');
   const [queriedFor, setQueriedFor] = useState(searchQuery);
-  const [saveState, setSaveState] = useState('idle'); // idle | saving | confirm | saved | error
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [saveError, setSaveError] = useState('');
 
   const runLookup = async () => {
@@ -62,51 +62,16 @@ function AiSearchFallback({ searchQuery }) {
     setSaveState('saving');
     setSaveError('');
     try {
-      // First attempt without overwrite: this only actually saves if the drug
-      // doesn't yet exist (or exists but is incomplete). If it already exists
-      // and is complete, it comes back 'skipped' — we must not report that as
-      // a success, and must ask before overwriting existing information.
-      const result = await saveAiDrugToDatabase({
-        genericName: queriedFor.trim(),
-        drugClass:   '',
-        text,
-        overwrite:   false,
-      });
-
-      if (result.status === 'skipped') {
-        setSaveState('confirm');
-        return;
-      }
-
-      if (result.status === 'incomplete') {
-        // Some fields missing but save the best we have anyway
-        await saveAiDrugToDatabase({
-          genericName: queriedFor.trim(),
-          drugClass:   '',
-          text,
-          overwrite:   true,
-        });
-      }
-      setSaveState('saved');
-    } catch (e) {
-      setSaveError(e.message || 'Failed to save this drug.');
-      setSaveState('error');
-    }
-  };
-
-  const confirmOverwrite = async () => {
-    setSaveState('saving');
-    setSaveError('');
-    try {
+      // Always save AI search results — replaces any existing entry with the
+      // same name. Duplicate cleanup will be handled in the admin page later.
       await saveAiDrugToDatabase({
         genericName: queriedFor.trim(),
         drugClass:   '',
         text,
-        overwrite:   true,
       });
       setSaveState('saved');
     } catch (e) {
-      setSaveError(e.message || 'Failed to update this drug.');
+      setSaveError(e.message || 'Failed to save this drug.');
       setSaveState('error');
     }
   };
@@ -175,7 +140,7 @@ function AiSearchFallback({ searchQuery }) {
         {state === 'done' && (
           <div className="flex items-center gap-2">
             {/* Save to Database — admin only */}
-            {isAdmin && saveState !== 'saved' && saveState !== 'confirm' && (
+            {isAdmin && saveState !== 'saved' && (
               <button
                 onClick={handleSave}
                 disabled={saveState === 'saving'}
@@ -208,29 +173,6 @@ function AiSearchFallback({ searchQuery }) {
         )}
       </div>
 
-      {saveState === 'confirm' && (
-        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-          <p className="text-sm text-amber-800 flex-1">
-            "{queriedFor}" is already saved in the database. This new AI search result has different
-            information — update the saved entry with it?
-          </p>
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              onClick={confirmOverwrite}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700"
-            >
-              <CheckCircle className="w-3.5 h-3.5" /> Update entry
-            </button>
-            <button
-              onClick={() => setSaveState('idle')}
-              className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-bold hover:bg-amber-100"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {text
         ? renderAiText(text)
         : <p className="text-sm text-drug-muted">Starting…</p>}
@@ -252,15 +194,19 @@ function normalizeDrugName(name) {
 
 function AiClassFallback({ className, existingDrugs }) {
   const { isAdmin } = useAuth();
-  const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
-  const incompleteExisting = useMemo(() => existingDrugs.filter(d => !isDrugComplete(d)), [existingDrugs]);
+  // IMPORTANT: drugs flagged _seed come from the bundled local seed file and
+  // do NOT exist in Firestore. They must never count as "already in database" —
+  // that was falsely blocking AI saves for drugs that were never actually saved.
+  const dbDrugs = useMemo(() => existingDrugs.filter(d => !d._seed), [existingDrugs]);
+  const knownDrugNames = useMemo(() => dbDrugs.map(d => d.generic_name).filter(Boolean), [dbDrugs]);
+  const incompleteExisting = useMemo(() => dbDrugs.filter(d => !isDrugComplete(d)), [dbDrugs]);
   const existingByName = useMemo(() => {
     const map = new Map();
-    existingDrugs.forEach(d => {
+    dbDrugs.forEach(d => {
       if (d.generic_name) map.set(normalizeDrugName(d.generic_name), d);
     });
     return map;
-  }, [existingDrugs]);
+  }, [dbDrugs]);
 
   const cacheKey = `ai_class_${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
@@ -285,7 +231,9 @@ function AiClassFallback({ className, existingDrugs }) {
     // Upload every item the AI listed, overwriting whatever's already saved
     // under that name (if anything) with this fresh data — the local
     // "existing in this class" check is only used for the badges shown
-    // above, not to silently skip saving here.
+    // above, not to silently skip saving here. overwrite: true is required
+    // below — without it, saveAiDrugToDatabase's own internal existence
+    // check (independent of class) would still silently skip.
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
@@ -310,12 +258,9 @@ function AiClassFallback({ className, existingDrugs }) {
     setBulkState('done');
   };
 
-  // Regenerates ONLY existing drugs in this class that are missing required
-  // fields — never touches drugs that are already complete, and never
-  // creates a new duplicate entry since these already exist in Firestore.
-  // saveAiDrugToDatabase itself refuses to save anything still incomplete
-  // after regeneration, so a drug that fails to come back complete is left
-  // as-is rather than being overwritten with another incomplete version.
+  // Regenerates existing drugs in this class that are missing required
+  // fields. Saves always go through — even if the regenerated version is
+  // still missing some fields, the newest AI result replaces the old entry.
   const fixIncompleteExisting = async () => {
     setFixState('running');
     setFixResults(null);
@@ -332,11 +277,7 @@ function AiClassFallback({ className, existingDrugs }) {
           drugClass: drug.drug_class || className,
           text: itemText,
         });
-        if (result.status === 'saved') {
-          fixed += 1;
-        } else if (result.status === 'incomplete') {
-          errors.push({ name: drug.generic_name, message: 'AI response was still missing required fields — left unchanged.' });
-        }
+        if (result.status === 'saved') fixed += 1;
       } catch (e) {
         errors.push({ name: drug.generic_name, message: e.message || 'Failed to regenerate.' });
       }
@@ -486,7 +427,7 @@ function AiClassFallback({ className, existingDrugs }) {
           <h2 className="text-lg font-bold text-drug-text truncate">AI: More in "{queriedFor}"</h2>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          {isAdmin && items.some(item => !existingByName.has(normalizeDrugName(item.name))) && bulkState !== 'running' && (
+          {isAdmin && items.length > 0 && bulkState !== 'running' && (
             <button
               onClick={() => saveAllToDatabase(items)}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg"

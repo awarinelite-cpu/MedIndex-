@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
+import { useAiInsight } from '../context/AiInsightContext';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -40,7 +41,7 @@ const EDITABLE_FIELDS = [
 ];
 
 const ALL_STATUSES = ['OTC', 'Prescription', 'Controlled'];
-const PARALLEL_SAVES = 4;
+const PARALLEL_SAVES = 8; // paid Gemini tier
 
 async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
   const results = [];
@@ -54,6 +55,10 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
+  const {
+    running: globalFixRunning, progress: globalFixProgress,
+    startGlobalFix, stopGlobalFix, subscribeFix,
+  } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
   // ── Drug list state ────────────────────────────────────────────────────
@@ -65,6 +70,11 @@ export default function AdminPage() {
   const [filterSubclass,   setFilterSubclass]   = useState('');
   const [filterStatus,     setFilterStatus]     = useState('');
   const [filterIndication, setFilterIndication] = useState('');
+  const [filterIncompleteOnly, setFilterIncompleteOnly] = useState(false);
+  const [fixingIds,        setFixingIds]        = useState(new Set());
+  const [bulkFixRunning,   setBulkFixRunning]    = useState(false);
+  const [bulkFixProgress,  setBulkFixProgress]   = useState({ done: 0, total: 0 });
+  const bulkFixAbortRef = useRef(false);
   const [showFilters,      setShowFilters]      = useState(false);
   const [selectedIds,      setSelectedIds]      = useState(new Set());
   const [editingDrug,      setEditingDrug]      = useState(null);
@@ -95,6 +105,27 @@ export default function AdminPage() {
   }, []); // eslint-disable-line
 
   useEffect(() => { loadDrugs(); }, [loadDrugs]);
+
+  // Refresh the table once the background General AI Insight run finishes,
+  // since it writes to Firestore independently of this page's local state.
+  const prevGlobalFixRunningRef = useRef(false);
+  useEffect(() => {
+    if (prevGlobalFixRunningRef.current && !globalFixRunning) loadDrugs();
+    prevGlobalFixRunningRef.current = globalFixRunning;
+  }, [globalFixRunning, loadDrugs]);
+
+  // Live sync: as the background General AI Insight run fixes each drug,
+  // patch it straight into local state so the Incomplete count, table rows,
+  // and "⚠ incomplete" badges update immediately — not just when the whole
+  // run finishes.
+  useEffect(() => {
+    return subscribeFix((patch) => {
+      if (!patch.parsed) return; // failed drugs: nothing to merge
+      setDrugs(prev => prev.map(d => d.firestoreId === patch.firestoreId
+        ? { ...d, ...patch.parsed, generic_name: patch.generic_name, drug_class: patch.drug_class || patch.parsed.drug_class }
+        : d));
+    });
+  }, [subscribeFix]);
 
   // Build AI class list whenever drugs change
   useEffect(() => {
@@ -252,10 +283,12 @@ export default function AdminPage() {
                 stillIncomplete.push(name);
                 log(`  ⚠ Incomplete (${missing.map(g => g.label).join(', ')}) — will regenerate: ${name}`);
               } else {
-                // Final round — give up, never save
-                failed.push(name);
-                log(`  ❌ Not saved after ${MAX_ROUNDS} rounds: ${name} (missing: ${missing.map(g => g.label).join(', ')})`);
-                patchClassState(className, { incomplete: [...failed] });
+                // Final round — save the best version we have anyway.
+                // Duplicates/gaps will be handled later via the admin tools.
+                await saveParsedDrug({ genericName: name, drugClass: className, parsed });
+                saved.push(name);
+                log(`  💾 Saved with gaps after ${MAX_ROUNDS} rounds: ${name} (missing: ${missing.map(g => g.label).join(', ')})`);
+                patchClassState(className, { saved: [...saved] });
               }
             }
           } catch (e) {
@@ -301,7 +334,7 @@ export default function AdminPage() {
     return [...new Set(base.map(d => d.drug_subclass).filter(Boolean))].sort();
   }, [drugs, filterClass]);
 
-  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication].filter(Boolean).length;
+  const activeFilterCount = [filterClass, filterSubclass, filterStatus, filterIndication].filter(Boolean).length + (filterIncompleteOnly ? 1 : 0);
 
   const filteredDrugs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -319,9 +352,10 @@ export default function AdminPage() {
       const matchInd      = !filterIndication ||
         drug.indications?.toLowerCase().includes(filterIndication.toLowerCase()) ||
         drug.primary_indications?.toLowerCase().includes(filterIndication.toLowerCase());
-      return matchSearch && matchClass && matchSubclass && matchStatus && matchInd;
+      const matchIncomplete = !filterIncompleteOnly || isIncomplete(drug);
+      return matchSearch && matchClass && matchSubclass && matchStatus && matchInd && matchIncomplete;
     });
-  }, [drugs, searchQuery, filterClass, filterSubclass, filterStatus, filterIndication]);
+  }, [drugs, searchQuery, filterClass, filterSubclass, filterStatus, filterIndication, filterIncompleteOnly]);
 
   const stats = useMemo(() => ({
     total:      drugs.length,
@@ -331,10 +365,15 @@ export default function AdminPage() {
   }), [drugs]);
 
   const allSelected = filteredDrugs.length > 0 && filteredDrugs.every(d => selectedIds.has(d.firestoreId));
+  const incompleteInView = useMemo(() => filteredDrugs.filter(isIncomplete), [filteredDrugs]);
+  const selectedIncomplete = useMemo(
+    () => filteredDrugs.filter(d => selectedIds.has(d.firestoreId) && isIncomplete(d)),
+    [filteredDrugs, selectedIds]
+  );
 
   function clearAllFilters() {
     setSearchQuery(''); setFilterClass(''); setFilterSubclass('');
-    setFilterStatus(''); setFilterIndication(''); setSelectedIds(new Set());
+    setFilterStatus(''); setFilterIndication(''); setFilterIncompleteOnly(false); setSelectedIds(new Set());
   }
   function toggleSelectAll() {
     allSelected ? setSelectedIds(new Set()) : setSelectedIds(new Set(filteredDrugs.map(d => d.firestoreId)));
@@ -344,6 +383,83 @@ export default function AdminPage() {
   }
   function promptDelete(fid)  { setDeleteTarget(fid); setConfirmDelete('single'); }
   function promptBulkDelete() { setConfirmDelete('bulk'); }
+
+  // ── AI Insight: fix an incomplete drug's missing fields ───────────────────
+  // Reuses the same generateDrugOnce/saveParsedDrug pipeline as the AI
+  // Generate tab: generate once, retry once more if still incomplete, then
+  // save the best version so progress is never lost even if a field or two
+  // still can't be filled.
+  async function fixOneDrugWithAI(drug) {
+    if (fixingIds.has(drug.firestoreId) || bulkFixRunning || globalFixRunning) return;
+    setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+    try {
+      let { parsed, complete, missing } = await generateDrugOnce({
+        genericName: drug.generic_name, drugClass: drug.drug_class,
+      });
+      if (!complete) {
+        const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
+        if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
+      }
+      await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
+      setDrugs(prev => prev.map(d => d.firestoreId === drug.firestoreId
+        ? { ...d, ...parsed, generic_name: drug.generic_name, drug_class: drug.drug_class || parsed.drug_class }
+        : d));
+      showToast(
+        complete ? `✅ AI completed: ${drug.generic_name}` : `⚠ Improved but still missing ${missing.map(g => g.label).join(', ')}: ${drug.generic_name}`,
+        complete ? 'success' : 'info'
+      );
+    } catch (e) {
+      showToast(`AI fix failed for ${drug.generic_name}: ${e.message}`, 'error');
+    } finally {
+      setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
+    }
+  }
+
+  // ── AI Insight: bulk-fix every incomplete drug currently in view ──────────
+  async function bulkFixWithAI(drugsToFix) {
+    if (bulkFixRunning || globalFixRunning || drugsToFix.length === 0) return;
+    bulkFixAbortRef.current = false;
+    setBulkFixRunning(true);
+    setBulkFixProgress({ done: 0, total: drugsToFix.length });
+
+    let done = 0, succeeded = 0, stillIncomplete = 0, failed = 0;
+
+    await parallelMap(drugsToFix, async (drug) => {
+      if (bulkFixAbortRef.current) return;
+      setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+      try {
+        let { parsed, complete, missing } = await generateDrugOnce({
+          genericName: drug.generic_name, drugClass: drug.drug_class,
+        });
+        if (!complete) {
+          const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
+          if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
+        }
+        await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
+        setDrugs(prev => prev.map(d => d.firestoreId === drug.firestoreId
+          ? { ...d, ...parsed, generic_name: drug.generic_name, drug_class: drug.drug_class || parsed.drug_class }
+          : d));
+        complete ? succeeded++ : stillIncomplete++;
+      } catch (e) {
+        failed++;
+      } finally {
+        setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
+        done++;
+        setBulkFixProgress({ done, total: drugsToFix.length });
+      }
+    });
+
+    setBulkFixRunning(false);
+    setSelectedIds(new Set());
+    showToast(
+      bulkFixAbortRef.current
+        ? `Stopped — ${succeeded} completed, ${stillIncomplete} still incomplete before stopping.`
+        : `AI Insight done — ${succeeded} completed${stillIncomplete ? `, ${stillIncomplete} still incomplete` : ''}${failed ? `, ${failed} failed` : ''}.`,
+      failed ? 'error' : stillIncomplete ? 'info' : 'success'
+    );
+  }
+
+  function stopBulkFix() { bulkFixAbortRef.current = true; }
 
   async function confirmSingleDelete() {
     try {
@@ -460,13 +576,34 @@ export default function AdminPage() {
             <p className="text-drug-muted text-sm">Manage the drug database</p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button onClick={loadDrugs} className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors">
             <RefreshCw className="w-4 h-4"/> Refresh
           </button>
           <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
             <Upload className="w-4 h-4"/> Bulk Upload
           </Link>
+          {globalFixRunning ? (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-lg border-1.5 border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold" style={{border:'1.5px solid #FDE68A'}}>
+              <RefreshCw className="w-4 h-4 animate-spin"/>
+              General AI Insight — {globalFixProgress.done}/{globalFixProgress.total}
+              <button onClick={stopGlobalFix} className="underline hover:no-underline">Stop</button>
+            </div>
+          ) : (
+            <button
+              onClick={()=>{
+                const incomplete = drugs.filter(isIncomplete);
+                if (incomplete.length === 0) { showToast('Nothing to fix — every drug is already complete.'); return; }
+                startGlobalFix(incomplete);
+                showToast(`General AI Insight started — fixing ${incomplete.length} drugs silently in the background. Feel free to navigate away.`, 'info');
+              }}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+              style={{background:'linear-gradient(135deg,#F59E0B,#B45309)'}}
+            >
+              <Sparkles className="w-4 h-4"/> General AI Insight{stats.incomplete>0?` (${stats.incomplete})`:''}
+            </button>
+          )}
         </div>
       </div>
 
@@ -476,13 +613,21 @@ export default function AdminPage() {
           {label:'Total Drugs',  value:stats.total,      icon:Database,      bg:'bg-primary-50',color:'text-drug-text',  ic:'text-primary-600'},
           {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600'  },
           {label:'Controlled',   value:stats.controlled, icon:AlertTriangle, bg:'bg-red-50',   color:'text-red-700',    ic:'text-red-600'   },
-          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500' },
+          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500',
+            onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());} },
         ].map(s=>(
-          <div key={s.label} className="bg-white border border-drug-border rounded-xl p-5">
+          <div key={s.label} onClick={s.onClick} role={s.onClick?'button':undefined} tabIndex={s.onClick?0:undefined}
+            onKeyDown={s.onClick?(e=>{if(e.key==='Enter')s.onClick();}):undefined}
+            className={`bg-white border rounded-xl p-5 transition-all ${
+              s.onClick
+                ? `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${filterIncompleteOnly && s.label==='Incomplete' ? 'border-amber-400 ring-2 ring-amber-200' : 'border-drug-border hover:border-amber-300'}`
+                : 'border-drug-border'
+            }`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-drug-muted">{s.label}</p>
                 <p className={`text-2xl font-bold ${s.color}`}>{loading?'—':s.value}</p>
+                {s.onClick && <p className="text-[11px] text-amber-600 font-semibold mt-0.5">Tap to view →</p>}
               </div>
               <div className={`p-2.5 ${s.bg} rounded-lg`}><s.icon className={`w-5 h-5 ${s.ic}`}/></div>
             </div>
@@ -534,7 +679,29 @@ export default function AdminPage() {
                   <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
                 </button>
               )}
+              {!bulkFixRunning && !globalFixRunning && selectedIncomplete.length>0 && (
+                <button onClick={()=>bulkFixWithAI(selectedIncomplete)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Sparkles className="w-4 h-4"/>AI Insight: fix {selectedIncomplete.length} selected
+                </button>
+              )}
+              {!bulkFixRunning && !globalFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
+                <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
+                </button>
+              )}
+              {bulkFixRunning && (
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+                  <RefreshCw className="w-4 h-4 animate-spin"/>
+                  Fixing {bulkFixProgress.done} of {bulkFixProgress.total}…
+                  <button onClick={stopBulkFix} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
+                </div>
+              )}
             </div>
+            {bulkFixRunning && (
+              <div style={{height:6,background:'#FEF3C7',borderRadius:999,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${bulkFixProgress.total?Math.round((bulkFixProgress.done/bulkFixProgress.total)*100):0}%`,background:'#F59E0B',transition:'width 0.2s'}}/>
+              </div>
+            )}
             {showFilters&&(
               <div className="pt-3 border-t border-drug-border space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -563,6 +730,7 @@ export default function AdminPage() {
                 </div>
                 {activeFilterCount>0&&(
                   <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {filterIncompleteOnly&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#FFFBEB',color:'#B45309',borderRadius:20,fontSize:12,fontWeight:700}}>⚠ Incomplete only<button onClick={()=>setFilterIncompleteOnly(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',padding:0}}>×</button></span>}
                     {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
                     {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
                     {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
@@ -620,6 +788,13 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          {isIncomplete(drug) && (
+                            <button onClick={()=>fixOneDrugWithAI(drug)} disabled={fixingIds.has(drug.firestoreId)||bulkFixRunning||globalFixRunning}
+                              className={`p-2 rounded-lg transition-colors ${fixingIds.has(drug.firestoreId)?'text-amber-400 cursor-wait':'text-amber-600 hover:bg-amber-50'}`}
+                              title={globalFixRunning ? 'General AI Insight is already running' : 'AI Insight: fix missing fields'}>
+                              {fixingIds.has(drug.firestoreId) ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Sparkles className="w-4 h-4"/>}
+                            </button>
+                          )}
                           <button onClick={()=>openEdit(drug)} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="Edit"><Edit className="w-4 h-4"/></button>
                           <button onClick={()=>promptDelete(drug.firestoreId)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4"/></button>
                         </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { AiInsightProvider } from './context/AiInsightContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
@@ -15,9 +16,13 @@ import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import UploadPage from './pages/UploadPage';
 import LabReferencePage from './pages/LabReferencePage';
+import CalculatorsPage from './pages/CalculatorsPage';
+import SystemPage from './pages/SystemPage';
+import AllSystemsPage from './pages/AllSystemsPage';
 function App() {
   return (
     <AuthProvider>
+      <AiInsightProvider>
       <Routes>
 {/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
@@ -59,6 +64,21 @@ function App() {
             <Layout><DrugListDetailPage /></Layout>
           </ProtectedUserRoute>
         } />
+        <Route path="/systems" element={
+          <ProtectedUserRoute>
+            <Layout><AllSystemsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/system/:systemId" element={
+          <ProtectedUserRoute>
+            <Layout><SystemPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/calculators" element={
+          <ProtectedUserRoute>
+            <Layout><CalculatorsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
 
         {/* ── Admin-protected routes ────────────────────────────────────── */}
         <Route path="/admin" element={
@@ -76,6 +96,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
+      </AiInsightProvider>
     </AuthProvider>
   );
 }

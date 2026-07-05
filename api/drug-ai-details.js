@@ -46,11 +46,42 @@ export default async function handler(req) {
     mode = 'drug',
     genericName, brandNames, drugClass, knownData, notInDatabase,
     className, knownDrugNames,
+    sectionHeaders, sectionLabel,
   } = body || {};
 
   let prompt;
 
-  if (mode === 'strength') {
+  if (mode === 'section') {
+    // Generates ONLY the requested sections for one drug, using the exact
+    // ## header names the client's parseAiDrugDetail understands, so the
+    // result can be parsed and saved field-by-field into the drug record.
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'genericName is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!Array.isArray(sectionHeaders) || sectionHeaders.length === 0) {
+      return new Response(JSON.stringify({ error: 'sectionHeaders is required for section mode.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const headerList = sectionHeaders.slice(0, 12).map(h => `## ${String(h).slice(0, 60)}`).join('\n');
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The app already has a record for the medication below, but its ${sectionLabel || 'requested'} information is missing. Provide ONLY that information.
+
+Drug: ${genericName}
+${drugClass ? `Drug class: ${drugClass}` : ''}
+
+Write ONLY the following sections, using these exact markdown headers, in this order:
+${headerList}
+
+Do not add any other sections, preamble, or closing text — start directly with the first header. Within each section, bold sub-labels using **double asterisks** (e.g. "**Renal impairment:** ...") and use bullet points (lines starting with "- ") for lists such as contraindications, adverse effects, or interactions. If a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it.
+
+Be precise, clinically accurate, and concise. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
+  } else if (mode === 'strength') {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
         status: 400,

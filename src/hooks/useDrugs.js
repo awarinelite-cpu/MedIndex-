@@ -15,6 +15,10 @@ const SEED_WITH_IDS = SEED_DRUGS.map(d => ({
   id: d.generic_name.replace(/[^a-zA-Z0-9_-]/g, '_'),
   // Map seed field names → app field names
   indications: d.primary_indications || d.indications || '',
+  // Marks this drug as coming from the bundled local seed file, NOT Firestore.
+  // Existence checks (e.g. "already in database" in AI class save) must ignore
+  // seed drugs — they are display-only fallbacks and do not exist in the DB.
+  _seed: true,
 }));
 
 let cachedDrugs = null;

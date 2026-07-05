@@ -2,23 +2,44 @@ import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Search, Pill, Heart, Activity, Brain, Bone,
-  Stethoscope, ChevronRight, Grid3X3
+  Stethoscope, ChevronRight, Grid3X3, LayoutGrid,
+  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
+  Shield, Baby, Eye, Apple, Zap,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { quickSearch } from '../utils/searchDrugs';
+import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
+
+const SYSTEM_ICONS = {
+  Heart, Activity, Brain, Bone, Stethoscope,
+  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
+  Shield, Baby, Eye, Apple, Zap,
+};
+
+// 5 pinned systems + All Categories + More Systems (unchanged layout)
+const PINNED_CARDS = PINNED_SYSTEM_IDS
+  .map(id => ANATOMICAL_SYSTEMS.find(s => s.id === id))
+  .filter(Boolean)
+  .map(s => ({
+    name:  s.name,
+    icon:  SYSTEM_ICONS[s.icon] || Pill,
+    color: s.color,
+    bg:    s.bg,
+    to:    `/system/${s.id}`,
+  }));
 
 const CATEGORIES = [
-  { name: 'Cardiovascular',  icon: Heart,       color: 'text-red-500',     bg: 'bg-red-50'     },
-  { name: 'Endocrine',       icon: Activity,    color: 'text-blue-500',    bg: 'bg-blue-50'    },
-  { name: 'Neurological',    icon: Brain,       color: 'text-purple-500',  bg: 'bg-purple-50'  },
-  { name: 'Musculoskeletal', icon: Bone,        color: 'text-amber-500',   bg: 'bg-amber-50'   },
-  { name: 'Respiratory',     icon: Stethoscope, color: 'text-teal-500',    bg: 'bg-teal-50'    },
-  { name: 'All Categories',  icon: Grid3X3,     color: 'text-primary-600', bg: 'bg-primary-50' },
+  ...PINNED_CARDS,
+  { name: 'All Categories', icon: Grid3X3,    color: 'text-primary-600', bg: 'bg-primary-50', to: '/browse'  },
+  { name: 'More Systems',   icon: LayoutGrid, color: 'text-slate-600',   bg: 'bg-slate-50',   to: '/systems' },
 ];
+
+// All 15 systems shown — no hidden "More Systems" tile
+
 
 export default function HomePage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
-  const TOTAL      = ALL_DRUGS.length;
+  const TOTAL       = ALL_DRUGS.length;
   const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
   const RX_COUNT    = useMemo(() => new Set(ALL_DRUGS.map(d => d.prescription_status).filter(Boolean)).size, [ALL_DRUGS]);
   const FEATURED    = ALL_DRUGS.slice(0, 6);
@@ -136,11 +157,11 @@ export default function HomePage() {
       {/* Categories */}
       <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-2xl font-bold mb-6">Browse by Category</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           {CATEGORIES.map(cat => (
             <Link
               key={cat.name}
-              to={cat.name === 'All Categories' ? '/browse' : `/browse?q=${cat.name.toLowerCase()}`}
+              to={cat.to}
               className="flex flex-col items-center gap-3 p-6 rounded-xl border border-drug-border
                          hover:border-primary-300 hover:shadow-md transition-all bg-white"
             >
