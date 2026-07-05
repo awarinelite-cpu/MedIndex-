@@ -1,6 +1,13 @@
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db, ensureAuth } from '../firebase';
+import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
+
+// ── Guard: throws a clear error if no admin is signed in ─────────────────
+function requireAdminAuth() {
+  if (!auth.currentUser) {
+    throw new Error('You must be signed in as an admin to save drugs.');
+  }
+}
 
 // Same deterministic-ID convention used by UploadPage.js's CSV import.
 export function slugifyDrugName(name) {
@@ -101,7 +108,7 @@ export function needsStrengthOnly(data) {
 // Writes only the strength field (+ last_updated) — no confirmation needed
 // since this never overwrites existing populated data, only fills a gap.
 export async function saveStrengthOnly({ docId, strengthText }) {
-  await ensureAuth();
+  requireAdminAuth();
   await updateDoc(doc(db, 'drugs', docId), {
     strength:     strengthText,
     last_updated: serverTimestamp(),
@@ -178,7 +185,7 @@ export async function generateDrugOnce({ genericName, drugClass }) {
 // saveParsedDrug: patches ONLY missing fields into the existing Firestore doc.
 // Existing populated fields are NEVER overwritten — this is a surgical patch.
 export async function saveParsedDrug({ genericName, drugClass, parsed, existingDrug = null }) {
-  await ensureAuth();
+  requireAdminAuth();
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
 
@@ -248,7 +255,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
-  await ensureAuth();
+  requireAdminAuth();
   const parsed    = parseAiDrugDetail(text);
   const missing   = getMissingGroups(parsed);
   const finalClass = drugClass || parsed.drug_class || 'Unknown';

@@ -3,17 +3,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── Drug reference database ──────────────────────────────────────────
-    // Public read: anyone can browse drugs (no login required)
-    // Write: any authenticated user — including anonymous sign-in.
-    // Anonymous auth is used by the AI save flow so unauthenticated
-    // public users can trigger AI drug saves from the Browse page.
+    // Anyone can read (public reference app).
+    // Only signed-in admin users can write — anonymous auth is NOT allowed.
     match /drugs/{drugId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null && !request.auth.token.firebase.sign_in_provider.matches('anonymous');
     }
 
-    // ── Admin collection ─────────────────────────────────────────────────
-    // Only the document owner (admin user) can read their own admin record.
+    // ── Admin records ────────────────────────────────────────────────────
     match /admins/{email} {
       allow read: if request.auth != null && request.auth.token.email == email;
       allow write: if false;
@@ -21,7 +18,7 @@ service cloud.firestore {
 
     // ── All other collections ─────────────────────────────────────────────
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && !request.auth.token.firebase.sign_in_provider.matches('anonymous');
     }
   }
 }
