@@ -258,20 +258,10 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
-  if (filtered.length === 0) return (
-    <div className="bg-white border border-dashed border-drug-border rounded-2xl overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-4">
-        <span className="text-xl">{condition.icon}</span>
-        <div>
-          <div className="font-bold text-drug-text">{condition.label}</div>
-          <div className="text-xs text-drug-muted mt-0.5">No drugs matched yet</div>
-        </div>
-      </div>
-    </div>
-  );
+  const isEmpty = filtered.length === 0;
 
   return (
-    <div className="bg-white border border-drug-border rounded-2xl overflow-hidden shadow-sm">
+    <div className={`bg-white border rounded-2xl overflow-hidden ${isEmpty ? 'border-dashed border-drug-border' : 'border-drug-border shadow-sm'}`}>
       {/* Header */}
       <button
         onClick={() => setOpen(o => !o)}
@@ -282,7 +272,9 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
           <div className="text-left">
             <div className="font-bold text-drug-text">{condition.label}</div>
             <div className="text-xs text-drug-muted mt-0.5">
-              {filtered.length} drug{filtered.length !== 1 ? 's' : ''} · {byClass.length} class{byClass.length !== 1 ? 'es' : ''}
+              {isEmpty
+                ? 'No drugs saved yet — tap to generate with AI'
+                : `${filtered.length} drug${filtered.length !== 1 ? 's' : ''} · ${byClass.length} class${byClass.length !== 1 ? 'es' : ''}`}
             </div>
           </div>
         </div>
@@ -293,7 +285,12 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 
       {open && (
         <div className="border-t border-drug-border">
-          {byClass.map(([className, classDrugs], ci) => (
+          {isEmpty ? (
+            <p className="px-5 pt-4 text-sm text-drug-muted">
+              No drugs matched this condition yet. Use AI below to find and save some.
+            </p>
+          ) : (
+            byClass.map(([className, classDrugs], ci) => (
             <div key={className}>
               {/* Drug class sub-header */}
               <div className={`flex items-center justify-between px-5 py-2 bg-gray-50 ${ci > 0 ? 'border-t border-drug-border' : ''}`}>
@@ -358,7 +355,8 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
                 </div>
               )}
             </div>
-          ))}
+            ))
+          )}
 
           {/* AI expansion — find more drugs for this condition */}
           <div className="p-4">
