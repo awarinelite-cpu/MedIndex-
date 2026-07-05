@@ -74,7 +74,7 @@ export function AiInsightProvider({ children }) {
           const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
           if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
         }
-        await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed });
+        await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed, existingDrug: drug });
         complete ? succeeded++ : stillIncomplete++;
         listenersRef.current.forEach(cb => cb({
           firestoreId: drug.firestoreId, generic_name: drug.generic_name,

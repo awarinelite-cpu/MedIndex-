@@ -118,30 +118,72 @@ export async function generateDrugOnce({ genericName, drugClass }) {
   return { parsed, missing, complete: missing.length === 0 };
 }
 
-// saveParsedDrug: writes a fully-validated parsed drug to Firestore.
-// Only call this after confirming isDrugComplete(parsed) === true.
-export async function saveParsedDrug({ genericName, drugClass, parsed }) {
-  const docId     = slugifyDrugName(genericName);
-  const ref       = doc(db, 'drugs', docId);
-  const existing  = await getDoc(ref);
-  const finalClass = drugClass || parsed.drug_class || 'Unknown';
+// saveParsedDrug: patches ONLY missing fields into the existing Firestore doc.
+// Existing populated fields are NEVER overwritten — this is a surgical patch.
+export async function saveParsedDrug({ genericName, drugClass, parsed, existingDrug = null }) {
+  const docId = slugifyDrugName(genericName);
+  const ref   = doc(db, 'drugs', docId);
 
-  await setDoc(ref, {
-    ...parsed,
-    generic_name:        genericName,
-    drug_class:          finalClass,
-    drug_subclass:       parsed.drug_subclass       || null,
-    prescription_status: parsed.prescription_status || 'Prescription',
-    nafdac_no:           null,
-    source:              'AI Generated',
-    status:              'Active',
-    created_at:  existing.exists()
-      ? (existing.data().created_at || serverTimestamp())
-      : serverTimestamp(),
-    last_updated: serverTimestamp(),
-  }, { merge: false });
+  // Load existing doc if not passed in
+  const snap     = existingDrug ? null : await getDoc(ref);
+  const existing = existingDrug || (snap?.exists() ? snap.data() : null);
 
-  return { status: 'saved', id: docId, missingGroups: [] };
+  // Build patch of ONLY fields that are missing/empty in the existing doc
+  const patch = {};
+
+  for (const group of REQUIRED_FIELD_GROUPS) {
+    // Skip if existing doc already satisfies this group
+    const alreadyFilled = existing && group.aliases.some(
+      f => existing[f] && String(existing[f]).trim().length >= MIN_LENGTH
+    );
+    if (alreadyFilled) continue;
+
+    // Use the best AI value for this group
+    for (const alias of group.aliases) {
+      if (parsed[alias] && String(parsed[alias]).trim().length >= MIN_LENGTH) {
+        patch[alias] = parsed[alias];
+        break;
+      }
+    }
+  }
+
+  // Optional fields — only patch if currently empty
+  for (const f of ['drug_subclass', 'strength']) {
+    if (!existing?.[f] && parsed[f] && String(parsed[f]).trim().length > 0) {
+      patch[f] = parsed[f];
+    }
+  }
+
+  // drug_class fallback
+  if (!existing?.drug_class && (drugClass || parsed.drug_class)) {
+    patch.drug_class = drugClass || parsed.drug_class;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { status: 'skipped', id: docId, reason: 'nothing new to patch' };
+  }
+
+  patch.last_updated = serverTimestamp();
+
+  if (existing) {
+    // Patch — never touch existing data
+    await updateDoc(ref, patch);
+  } else {
+    // Brand-new drug — full write
+    await setDoc(ref, {
+      generic_name:        genericName,
+      drug_class:          drugClass || parsed.drug_class || 'Unknown',
+      drug_subclass:       parsed.drug_subclass || null,
+      prescription_status: parsed.prescription_status || 'Prescription',
+      source:              'AI Generated',
+      status:              'Active',
+      created_at:          serverTimestamp(),
+      ...parsed,
+      ...patch,
+    });
+  }
+
+  return { status: 'saved', id: docId, patched: Object.keys(patch) };
 }
 
 // ── Backwards-compatibility export ────────────────────────────────────────
