@@ -62,8 +62,9 @@ function DripRateCalculator() {
 
     const mlPerHr = vol / (totalMinutes / 60);
     const dropsPerMin = (vol * dropFactor) / totalMinutes;
+    const dropsPerSec = dropsPerMin / 60;
 
-    return { mlPerHr, dropsPerMin };
+    return { mlPerHr, dropsPerMin, dropsPerSec };
   }, [volume, totalMinutes, dropFactor]);
 
   const reset = () => { setVolume(''); setHours(''); setMinutes(''); setDropFactor(20); };
@@ -140,6 +141,7 @@ function DripRateCalculator() {
           <div className="space-y-4">
             <ResultRow label="Infusion rate" value={fmt(results.mlPerHr)} unit="mL/hr" />
             <ResultRow label="Drip rate" value={fmt(results.dropsPerMin)} unit="gtt/min" highlight />
+            <ResultRow label="Drops per second" value={results.dropsPerSec.toFixed(2)} unit="gtt/sec" />
           </div>
         )}
 
