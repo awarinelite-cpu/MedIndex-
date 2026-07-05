@@ -39,10 +39,12 @@ export function useCustomConditions() {
       try {
         const snap = await getDoc(doc(db, ...DOC_REF_PATH));
         const val  = snap.exists() ? (snap.data().systems || {}) : {};
+        console.log('[useCustomConditions] loaded systems:', Object.keys(val));
         cache = val;
         cacheTime = Date.now();
         if (alive) { setData(val); setLoading(false); }
-      } catch {
+      } catch (err) {
+        console.error('[useCustomConditions] read error:', err.code, err.message);
         if (alive) { setData({}); setLoading(false); }
       }
     }
@@ -60,19 +62,39 @@ export function slugifyConditionLabel(label) {
 // Adds one or more new conditions to a system's extras, skipping any whose
 // id already exists there (idempotent — safe to call again with overlap).
 export async function addCustomConditions(systemId, newConditions) {
-  await getAuthUser(); // waits for auth state to restore, then checks sign-in
-  const ref  = doc(db, ...DOC_REF_PATH);
-  const snap = await getDoc(ref);
-  const current = snap.exists() ? (snap.data().systems || {}) : {};
-  const existingForSystem = current[systemId] || [];
-  const existingIds = new Set(existingForSystem.map(c => c.id));
-  const merged = [...existingForSystem, ...newConditions.filter(c => !existingIds.has(c.id))];
+  // Wait for Firebase Auth session to fully restore
+  await auth.authStateReady();
+  
+  const user = auth.currentUser;
+  console.log('[addCustomConditions] auth.currentUser:', user ? user.email : 'NULL');
+  console.log('[addCustomConditions] systemId:', systemId);
+  console.log('[addCustomConditions] conditions count:', newConditions.length);
 
-  await setDoc(ref, {
-    systems: { ...current, [systemId]: merged },
-    last_updated: serverTimestamp(),
-  }, { merge: true });
+  if (!user) {
+    throw new Error('Not signed in. Please sign in as admin and try again.');
+  }
 
-  invalidateCustomConditionsCache();
-  return merged;
+  const ref = doc(db, ...DOC_REF_PATH);
+  
+  try {
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? (snap.data().systems || {}) : {};
+    const existingForSystem = current[systemId] || [];
+    const existingIds = new Set(existingForSystem.map(c => c.id));
+    const merged = [...existingForSystem, ...newConditions.filter(c => !existingIds.has(c.id))];
+
+    console.log('[addCustomConditions] writing', merged.length, 'conditions to Firestore...');
+    
+    await setDoc(ref, {
+      systems: { ...current, [systemId]: merged },
+      last_updated: serverTimestamp(),
+    }, { merge: true });
+
+    console.log('[addCustomConditions] ✅ saved successfully');
+    invalidateCustomConditionsCache();
+    return merged;
+  } catch (err) {
+    console.error('[addCustomConditions] ❌ Firestore error:', err.code, err.message);
+    throw err;
+  }
 }
