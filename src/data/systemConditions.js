@@ -626,9 +626,10 @@ export const SYSTEM_CONDITIONS = {
  * Given a drug and a system ID, returns the list of condition labels
  * that the drug matches within that system. A drug can match multiple conditions.
  */
-export function getDrugConditions(drug, systemId) {
-  const conditions = SYSTEM_CONDITIONS[systemId];
-  if (!conditions) return [];
+export function getDrugConditions(drug, systemId, extraConditions = []) {
+  const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
+  const conditions = [...baseConditions, ...extraConditions];
+  if (conditions.length === 0) return [];
 
   // Build a single search string from all relevant drug fields
   const haystack = [

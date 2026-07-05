@@ -10,7 +10,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { getSystemById } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
-import { groupDrugsByCondition } from '../data/systemConditions';
+import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
@@ -560,13 +560,24 @@ export default function SystemPage() {
     [customConditionsBySystem, systemId]
   );
 
-  // All drugs in this system
+  // All drugs in this system. A drug qualifies either by its drug_class
+  // matching the system's own class keywords (e.g. NSAID → Musculoskeletal),
+  // OR by matching one of this system's specific conditions by indication
+  // text — even if its class alone wouldn't (e.g. an antibiotic generated
+  // for "Osteomyelitis" under Musculoskeletal). Without this, drugs the AI
+  // correctly generates for a condition could vanish from that condition's
+  // card simply because their drug class isn't one of the system's own.
   const drugs = useMemo(() => {
     if (!system) return [];
-    return getDrugsForSystem(ALL_DRUGS, system).sort((a, b) =>
+    const byClass = getDrugsForSystem(ALL_DRUGS, system);
+    const byClassIds = new Set(byClass.map(d => d.id));
+    const byCondition = ALL_DRUGS.filter(d =>
+      !byClassIds.has(d.id) && getDrugConditions(d, systemId, extraConditions).length > 0
+    );
+    return [...byClass, ...byCondition].sort((a, b) =>
       (a.generic_name || '').localeCompare(b.generic_name || '')
     );
-  }, [ALL_DRUGS, system]);
+  }, [ALL_DRUGS, system, systemId, extraConditions]);
 
   // Group by condition
   const conditionGroups = useMemo(
