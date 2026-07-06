@@ -2,16 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // True only for a signed-in user whose email has a corresponding
-    // admins/{email} doc with role == 'admin' — the SAME check the app's
-    // own AuthContext already uses client-side to decide what UI to show.
-    // This keeps one single source of truth for "who is an admin" instead
-    // of introducing separate custom-claims infrastructure.
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email != null
+    // True only for a signed-in user who has a corresponding admin record
+    // with role == 'admin'. Your admin documents may be keyed EITHER by
+    // email (admins/{email}) OR by the auth UID (admins/{uid}) depending on
+    // how they were created — this checks both so a correctly-provisioned
+    // admin is recognised regardless of the document's ID. This mirrors the
+    // dual lookup the app's own login code already performs.
+    function adminByEmail() {
+      return request.auth.token.email != null
         && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
         && get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.role == 'admin';
+    }
+    function adminByUid() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'admin';
+    }
+    function isAdmin() {
+      return request.auth != null && (adminByEmail() || adminByUid());
     }
 
     // Drugs — public read, ADMIN-ONLY write.
