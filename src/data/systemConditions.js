@@ -714,10 +714,18 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
     } else {
       for (const cond of matched) {
         const entry = grouped.get(cond.id);
-        // Guard against the same drug appearing twice under one condition
-        // (e.g. duplicate drug documents, or a drug matched by more than
-        // one now-deduped condition alias collapsing onto the same id).
-        if (!entry.drugs.some(d => d.id === drug.id)) {
+        // Guard against the same drug appearing twice under one condition.
+        // We treat two entries as the same drug if they share an id OR the
+        // same normalized generic name — the latter catches genuinely
+        // separate Firestore documents for the same drug (e.g. slightly
+        // different spellings/casings saved before dedup existed), which an
+        // id-only check would miss and render as visible duplicates.
+        const drugName = (drug.generic_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const dup = entry.drugs.some(d =>
+          d.id === drug.id ||
+          (drugName && (d.generic_name || '').trim().toLowerCase().replace(/\s+/g, ' ') === drugName)
+        );
+        if (!dup) {
           entry.drugs.push(drug);
         }
       }
