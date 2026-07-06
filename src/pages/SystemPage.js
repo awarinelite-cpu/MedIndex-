@@ -36,20 +36,42 @@ function RxBadge({ status }) {
 }
 
 function normalizeDrugName(name) {
-  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  let n = (name || '').trim().toLowerCase();
+  // Collapse punctuation/spacing differences: "co-trimoxazole" == "cotrimoxazole",
+  // "amoxicillin / clavulanate" == "amoxicillin/clavulanate".
+  n = n.replace(/[\s/.+-]+/g, ' ').trim();
+  // "co trimoxazole" (from "co-trimoxazole") == "cotrimoxazole"
+  n = n.replace(/\bco (\w)/g, 'co$1');
+  // Treat common salt-name variants as equivalent so an existing drug is
+  // recognised even if the AI lists a slightly different salt spelling
+  // (e.g. "clavulanic acid" vs "clavulanate", "sodium"/"hydrochloride" suffixes).
+  n = n
+    .replace(/\bclavulanic acid\b/g, 'clavulanate')
+    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return n;
 }
 
 /* ── AI expansion for a clinical condition ───────────────────────────────── */
 function AiConditionFallback({ conditionId, conditionLabel, systemName, existingDrugs }) {
   const { isAdmin } = useAuth();
+  const { drugs: allDrugs } = useDrugs();
+  // Match AI suggestions against EVERY drug in the database — not just the
+  // drugs already tagged to this condition. Since display is now strictly
+  // tag-based, a not-yet-populated condition has no tagged drugs, so relying
+  // on `existingDrugs` (this condition's list) made every already-saved drug
+  // look brand new and get regenerated. Checking the whole database lets us
+  // recognise them and reuse their existing information instead.
+  const lookupPool = (allDrugs && allDrugs.length) ? allDrugs : existingDrugs;
   const existingByName = useMemo(() => {
     const map = new Map();
-    existingDrugs.forEach(d => {
+    lookupPool.forEach(d => {
       if (d.generic_name) map.set(normalizeDrugName(d.generic_name), d);
     });
     return map;
-  }, [existingDrugs]);
-  const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
+  }, [lookupPool]);
+  const knownDrugNames = useMemo(() => lookupPool.map(d => d.generic_name).filter(Boolean), [lookupPool]);
 
   const cacheKey = `ai_condition_${conditionLabel.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
