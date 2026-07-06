@@ -626,29 +626,43 @@ export const SYSTEM_CONDITIONS = {
  * Given a drug and a system ID, returns the list of condition labels
  * that the drug matches within that system. A drug can match multiple conditions.
  */
+// ── Keyword matching (used ONLY by the one-time backfill, not live display) ─
+// Much stricter than the old loose substring scan:
+//   • Searches ONLY the drug's indication fields — not overview, class,
+//     subclass, or name — since those caused most false matches (e.g. every
+//     drug in a class sweeping into a condition).
+//   • Matches whole words/phrases at word boundaries, so "mi" no longer
+//     matches inside other words and "pain" won't match "painless".
+// This produces a cleaner starting set of tags for the backfill; admins then
+// prune any remaining wrong matches with the remove button. Live display does
+// NOT use this — it is strictly tag-based (see getDrugConditions below).
+function matchesConditionByKeyword(drug, cond) {
+  const text = [drug.indications, drug.primary_indications]
+    .filter(Boolean).join(' ').toLowerCase();
+  if (!text) return false;
+  return cond.keywords.some(kwRaw => {
+    const kw = kwRaw.trim().toLowerCase();
+    if (kw.length < 3) return false; // ignore ultra-short noise keywords
+    // Word-boundary match: keyword must be bounded by non-alphanumerics.
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  });
+}
+
+// Suggest condition ids for a drug within a system, using the strict keyword
+// rule above. Used by the admin backfill to seed condition_tags. Returns an
+// array of condition ids.
+export function suggestConditionTagsForDrug(drug, systemId, extraConditions = []) {
+  const conditions = [...(SYSTEM_CONDITIONS[systemId] || []), ...extraConditions];
+  return conditions.filter(cond => matchesConditionByKeyword(drug, cond)).map(c => c.id);
+}
+
 export function getDrugConditions(drug, systemId, extraConditions = []) {
-  const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
-  const conditions = [...baseConditions, ...extraConditions];
+  const conditions = [...(SYSTEM_CONDITIONS[systemId] || []), ...extraConditions];
   if (conditions.length === 0) return [];
-
-  // Build a single search string from all relevant drug fields
-  const haystack = [
-    drug.indications,
-    drug.primary_indications,
-    drug.overview,
-    drug.drug_class,
-    drug.drug_subclass,
-    drug.generic_name,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
+  // STRICT: a drug belongs to a condition only if explicitly tagged.
   const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
-  return conditions.filter(cond =>
-    tags.includes(cond.id) ||
-    cond.keywords.some(kw => haystack.includes(kw.toLowerCase()))
-  );
+  return conditions.filter(cond => tags.includes(cond.id));
 }
 
 /**
@@ -684,30 +698,13 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
   }
 
   for (const drug of drugs) {
-    const haystack = [
-      drug.indications,
-      drug.primary_indications,
-      drug.overview,
-      drug.drug_class,
-      drug.drug_subclass,
-      drug.generic_name,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-
-    // A drug matches a condition either:
-    //  (1) EXPLICITLY — its stored condition_tags array contains the
-    //      condition id. This is set when an admin saves the drug under a
-    //      condition (including reusing an already-existing drug), so the
-    //      link is durable and doesn't depend on indication wording; or
-    //  (2) IMPLICITLY — its indication/overview/class text contains one of
-    //      the condition's keywords (the original automatic behaviour).
+    // STRICT: a drug belongs to a condition only if its condition_tags
+    // explicitly contains that condition's id. Keyword/text matching is no
+    // longer used for live display — it caused drugs to appear under
+    // conditions they didn't belong to. Tags are seeded once by the admin
+    // backfill and curated with the remove button.
     const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
-    const matched = conditions.filter(cond =>
-      tags.includes(cond.id) ||
-      cond.keywords.some(kw => haystack.includes(kw.toLowerCase()))
-    );
+    const matched = conditions.filter(cond => tags.includes(cond.id));
 
     if (matched.length === 0) {
       uncategorised.push(drug);

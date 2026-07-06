@@ -4,7 +4,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
   Pill, ChevronRight, Grid3X3, List, ArrowLeft, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle,
+  Sparkles, RefreshCw, Save, AlertTriangle, X,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -15,7 +15,7 @@ import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList, slugifyDrugName } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
-import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const ICONS = {
@@ -261,8 +261,32 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, defaultOpen, systemName }) {
+function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, defaultOpen, systemName, onDrugRemoved }) {
   const [open, setOpen] = useState(defaultOpen);
+  const { isAdmin } = useAuth();
+  const [removingId, setRemovingId] = useState(null);
+
+  // Admin: remove a drug from THIS condition by pulling this condition's id
+  // out of the drug's condition_tags. Since display is strictly tag-based,
+  // the drug immediately stops showing here — but is untouched everywhere
+  // else (it stays in the database and under any other conditions it's
+  // tagged for). This is how wrong matches get cleaned up.
+  const removeFromCondition = async (drug, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (removingId) return;
+    setRemovingId(drug.id);
+    try {
+      await updateDoc(doc(db, 'drugs', drug.id), {
+        condition_tags: arrayRemove(condition.id),
+        last_updated:   serverTimestamp(),
+      });
+      if (onDrugRemoved) onDrugRemoved(drug.id, condition.id);
+    } catch (err) {
+      console.error('Failed to remove drug from condition:', err);
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   // Apply filters within this condition
   const filtered = useMemo(() => {
@@ -347,7 +371,19 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
                         <div className="p-1.5 bg-primary-50 rounded-lg">
                           <Pill className="w-4 h-4 text-primary-600" />
                         </div>
-                        <RxBadge status={drug.prescription_status} />
+                        <div className="flex items-center gap-1">
+                          <RxBadge status={drug.prescription_status} />
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => removeFromCondition(drug, e)}
+                              disabled={removingId === drug.id}
+                              title="Remove from this condition"
+                              className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 disabled:opacity-40"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <h3 className="font-bold text-sm group-hover:text-primary-700 transition-colors">
                         {drug.generic_name}
@@ -379,6 +415,16 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
                         </div>
                       </div>
                       <RxBadge status={drug.prescription_status} />
+                      {isAdmin && (
+                        <button
+                          onClick={(e) => removeFromCondition(drug, e)}
+                          disabled={removingId === drug.id}
+                          title="Remove from this condition"
+                          className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 flex-shrink-0 disabled:opacity-40"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                       <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
                     </Link>
                   ))}
@@ -591,8 +637,15 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
 export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
-  const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
+  // Track drug↔condition links the admin just removed, so they disappear
+  // immediately without waiting for a Firestore refetch. Keyed "drugId::condId".
+  const [removedLinks, setRemovedLinks] = useState(() => new Set());
+  const handleDrugRemoved = (drugId, condId) => {
+    setRemovedLinks(prev => new Set(prev).add(`${drugId}::${condId}`));
+    invalidateCache();
+  };
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
@@ -749,12 +802,13 @@ export default function SystemPage() {
                 <ConditionSection
                   key={entry.condition.id}
                   condition={entry.condition}
-                  drugs={entry.drugs}
+                  drugs={entry.drugs.filter(d => !removedLinks.has(`${d.id}::${entry.condition.id}`))}
                   viewMode={viewMode}
                   classFilter={classFilter}
                   nameSearch={nameSearch}
                   defaultOpen={idx === 0}
                   systemName={system.name}
+                  onDrugRemoved={handleDrugRemoved}
                 />
               ))}
             </div>
