@@ -644,7 +644,9 @@ export function getDrugConditions(drug, systemId, extraConditions = []) {
     .join(' ')
     .toLowerCase();
 
+  const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
   return conditions.filter(cond =>
+    tags.includes(cond.id) ||
     cond.keywords.some(kw => haystack.includes(kw.toLowerCase()))
   );
 }
@@ -694,7 +696,16 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
       .join(' ')
       .toLowerCase();
 
+    // A drug matches a condition either:
+    //  (1) EXPLICITLY — its stored condition_tags array contains the
+    //      condition id. This is set when an admin saves the drug under a
+    //      condition (including reusing an already-existing drug), so the
+    //      link is durable and doesn't depend on indication wording; or
+    //  (2) IMPLICITLY — its indication/overview/class text contains one of
+    //      the condition's keywords (the original automatic behaviour).
+    const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
     const matched = conditions.filter(cond =>
+      tags.includes(cond.id) ||
       cond.keywords.some(kw => haystack.includes(kw.toLowerCase()))
     );
 

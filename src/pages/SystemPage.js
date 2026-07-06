@@ -15,7 +15,7 @@ import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList, slugifyDrugName } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const ICONS = {
@@ -40,7 +40,7 @@ function normalizeDrugName(name) {
 }
 
 /* ── AI expansion for a clinical condition ───────────────────────────────── */
-function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
+function AiConditionFallback({ conditionId, conditionLabel, systemName, existingDrugs }) {
   const { isAdmin } = useAuth();
   const existingByName = useMemo(() => {
     const map = new Map();
@@ -80,35 +80,34 @@ function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
   const saveAllToDatabase = async () => {
     setBulkState('running');
     setBulkResults(null);
-    let saved = 0, skipped = 0;
+    let saved = 0, reused = 0;
     const errors = [];
 
     // For each AI-suggested drug:
-    //   - If it ALREADY EXISTS in the system, skip the AI call and use that record
-    //   - If it's NEW, generate full details with AI and save
+    //   - If it ALREADY EXISTS: do NOT regenerate. Just tag its existing
+    //     record with this condition id so it shows here, drawing on the
+    //     information it already has.
+    //   - If it's NEW: generate full details once with AI, save, and tag it.
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
-      
+
       const existing = existingByName.get(normalizeDrugName(item.name));
       if (existing) {
-        // Drug already exists in the system. Don't regenerate its AI text.
-        // Instead, just merge-save its record in Firestore to ensure it's
-        // properly indexed. The condition matching in groupDrugsByCondition
-        // will then automatically link it to this condition if its indications
-        // match the condition's keywords.
+        // Reuse the existing drug as-is — only attach the condition link.
         try {
           await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
-            last_updated: serverTimestamp(),
+            condition_tags: arrayUnion(conditionId),
+            last_updated:   serverTimestamp(),
           });
-          saved += 1;
+          reused += 1;
         } catch (e) {
           errors.push({ name: item.name, message: `Failed to link existing drug: ${e.message}` });
         }
         continue;
       }
 
-      // Drug is new — generate with AI
+      // Drug is new — generate with AI, save, then tag with this condition.
       const drugClassForItem = item.subclass || undefined;
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
@@ -118,14 +117,21 @@ function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
           text: itemText,
           overwrite: true,
         });
-        if (result.status === 'saved') saved += 1;
+        if (result.status === 'saved') {
+          saved += 1;
+          try {
+            await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), {
+              condition_tags: arrayUnion(conditionId),
+            });
+          } catch { /* tag is best-effort; keyword match still applies */ }
+        }
       } catch (e) {
         errors.push({ name: item.name, message: e.message || 'Failed to save.' });
       }
       await new Promise(r => setTimeout(r, 350));
     }
 
-    setBulkResults({ saved, skipped, errors });
+    setBulkResults({ saved, reused, errors });
     setBulkState('done');
   };
 
@@ -211,8 +217,9 @@ function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
 
       {bulkState === 'done' && bulkResults && (
         <div className="px-4 py-2 border-b border-drug-border text-xs text-drug-muted">
-          {bulkResults.saved} saved
-          {bulkResults.skipped > 0 && `, ${bulkResults.skipped} incomplete`}
+          {bulkResults.saved > 0 && `${bulkResults.saved} newly generated`}
+          {bulkResults.saved > 0 && bulkResults.reused > 0 && ', '}
+          {bulkResults.reused > 0 && `${bulkResults.reused} existing drug${bulkResults.reused !== 1 ? 's' : ''} linked (info reused)`}
           {bulkResults.errors.length > 0 && `, ${bulkResults.errors.length} failed`}.
           Refresh to see them in the list above.
         </div>
@@ -384,6 +391,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
           {/* AI expansion — find more drugs for this condition */}
           <div className="p-4">
             <AiConditionFallback
+              conditionId={condition.id}
               conditionLabel={condition.label}
               systemName={systemName}
               existingDrugs={drugs}
