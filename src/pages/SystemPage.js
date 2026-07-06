@@ -13,8 +13,10 @@ import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
-import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
+import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList, slugifyDrugName } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -78,14 +80,35 @@ function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
   const saveAllToDatabase = async () => {
     setBulkState('running');
     setBulkResults(null);
-    let saved = 0, incomplete = 0;
+    let saved = 0, skipped = 0;
     const errors = [];
 
-    // Upload every AI-suggested item, overwriting whatever's already saved
-    // under that name (if anything) with this fresh data.
+    // For each AI-suggested drug:
+    //   - If it ALREADY EXISTS in the system, skip the AI call and use that record
+    //   - If it's NEW, generate full details with AI and save
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
+      
+      const existing = existingByName.get(normalizeDrugName(item.name));
+      if (existing) {
+        // Drug already exists in the system. Don't regenerate its AI text.
+        // Instead, just merge-save its record in Firestore to ensure it's
+        // properly indexed. The condition matching in groupDrugsByCondition
+        // will then automatically link it to this condition if its indications
+        // match the condition's keywords.
+        try {
+          await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
+            last_updated: serverTimestamp(),
+          });
+          saved += 1;
+        } catch (e) {
+          errors.push({ name: item.name, message: `Failed to link existing drug: ${e.message}` });
+        }
+        continue;
+      }
+
+      // Drug is new — generate with AI
       const drugClassForItem = item.subclass || undefined;
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
@@ -95,14 +118,14 @@ function AiConditionFallback({ conditionLabel, systemName, existingDrugs }) {
           text: itemText,
           overwrite: true,
         });
-        if (result.status === 'saved') saved += 1; else incomplete += 1;
+        if (result.status === 'saved') saved += 1;
       } catch (e) {
         errors.push({ name: item.name, message: e.message || 'Failed to save.' });
       }
       await new Promise(r => setTimeout(r, 350));
     }
 
-    setBulkResults({ saved, skipped: incomplete, errors });
+    setBulkResults({ saved, skipped, errors });
     setBulkState('done');
   };
 
