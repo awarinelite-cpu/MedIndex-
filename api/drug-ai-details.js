@@ -109,13 +109,19 @@ List every commonly available formulation/route. Do not add headers, bullets, ex
       });
     }
 
+    // We intentionally DO NOT tell the AI to exclude drugs already in the
+    // database. Existing drugs are still used for this condition and must
+    // appear in the list so they get linked to it — the client reuses their
+    // existing information (no regeneration) rather than generating anew.
+    // We still pass the known names as a hint so the AI prefers the exact
+    // same generic-name spelling, which lets the client match them reliably.
     const knownList = Array.isArray(knownDrugNames) && knownDrugNames.length
-      ? `\nMedications already in the app's database for this condition (do not repeat these — focus on other medications also used for this condition):\n${knownDrugNames.join(', ')}\n`
+      ? `\nSome of these medications may already be in the app's database; include them anyway if they are used for this condition. When a medication matches one of the following, use this exact spelling of its generic name so it can be recognised: ${knownDrugNames.join(', ')}\n`
       : '';
 
-    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is looking at the clinical condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} and wants a broader list of medications used to treat or manage it, beyond what's currently in the app's database.
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is looking at the clinical condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} and wants the full list of medications used to treat or manage it.
 ${knownList}
-List commonly used medications (generic names) indicated for "${conditionLabel}". Group them by drug class using ## markdown headers (e.g. "## ACE Inhibitors", "## Thiazide Diuretics", "## Beta-Blockers") — a condition is usually treated by several different drug classes, so use as many class headers as are actually relevant.
+List the commonly used medications (generic names) indicated for "${conditionLabel}" — the COMPLETE clinical picture, including well-known first-line agents even if they might already be in the database. Group them by drug class using ## markdown headers (e.g. "## ACE Inhibitors", "## Thiazide Diuretics", "## Beta-Blockers") — a condition is usually treated by several different drug classes, so use as many class headers as are actually relevant.
 
 For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), its role specifically for "${conditionLabel}" (first-line/adjunct/second-line, etc.), and any notable distinguishing feature. Example format:
 - **Lisinopril** — PO; first-line for hypertension and heart failure with reduced ejection fraction; avoid in pregnancy.
