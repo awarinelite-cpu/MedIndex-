@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users } from 'lucide-react';
+import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminLayout({ children }) {
@@ -60,6 +60,7 @@ export default function AdminLayout({ children }) {
   const navLinks = [
     { to: '/admin',        label: 'Dashboard',   icon: LayoutDashboard },
     { to: '/admin/upload', label: 'Bulk Upload', icon: Upload          },
+    { to: '/admin/bulk-images', label: 'Bulk Images', icon: ImageIcon  },
     { to: '/admin/users',  label: 'Users',       icon: Users           },
   ];
 

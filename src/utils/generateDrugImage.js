@@ -43,7 +43,7 @@ export async function saveDrugImage({ docId, imageDataUrl }) {
 // Imgur page links (e.g. https://imgur.com/aBcD123) don't render in an
 // <img> tag — only the direct i.imgur.com link does. If an admin pastes the
 // ordinary page link for a single image, convert it automatically.
-function normalizeImageUrl(url) {
+export function normalizeImageUrl(url) {
   const m = url.match(/^https?:\/\/(?:www\.)?imgur\.com\/([a-zA-Z0-9]+)$/);
   if (m) return `https://i.imgur.com/${m[1]}.jpg`;
   return url;
