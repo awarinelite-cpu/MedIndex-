@@ -182,7 +182,7 @@ This is reference material only, not a substitute for the current product monogr
     }
 
     const notInDatabaseNote = notInDatabase
-      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. If "${genericName}" is not a real or recognized medication (e.g. it's a typo, a non-drug term, or you are not confident it exists), say so clearly at the very top of your response instead of inventing information. Only proceed with the full structured breakdown if you are reasonably confident this is a genuine medication.\n`
+      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. "${genericName}" may be entered as a generic name OR a brand/trade name (including branded combination packs, e.g. "Prevpac" = lansoprazole + amoxicillin + clarithromycin triple therapy for H. pylori). If it is a recognized brand name or combination pack, silently resolve it to its actual generic ingredient(s) and proceed with the full breakdown AS THAT COMBINATION — state the resolved generic name(s) in the Overview so the nurse knows what was matched. Only say the medication is not real/recognized (at the very top of your response, instead of inventing information) if you are genuinely not confident it corresponds to any real generic drug, brand name, or combination product — do not decline just because the input looks like a brand name or an unfamiliar spelling.\n`
       : '';
 
     prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
