@@ -39,3 +39,30 @@ export async function saveDrugImage({ docId, imageDataUrl }) {
 
   return downloadUrl;
 }
+
+// Imgur page links (e.g. https://imgur.com/aBcD123) don't render in an
+// <img> tag — only the direct i.imgur.com link does. If an admin pastes the
+// ordinary page link for a single image, convert it automatically.
+function normalizeImageUrl(url) {
+  const m = url.match(/^https?:\/\/(?:www\.)?imgur\.com\/([a-zA-Z0-9]+)$/);
+  if (m) return `https://i.imgur.com/${m[1]}.jpg`;
+  return url;
+}
+
+// Saves an admin-supplied externally-hosted image link (e.g. an Imgur direct
+// image URL) straight onto the drug's Firestore document — no re-upload to
+// Firebase Storage needed since it's already hosted.
+export async function saveDrugImageUrl({ docId, url }) {
+  await getAuthUser();
+  const trimmed = normalizeImageUrl((url || '').trim());
+  if (!/^https?:\/\/.+/i.test(trimmed)) {
+    throw new Error('Please enter a valid image URL starting with http:// or https://');
+  }
+
+  await updateDoc(doc(db, 'drugs', docId), {
+    image_url:    trimmed,
+    last_updated: serverTimestamp(),
+  });
+
+  return trimmed;
+}
