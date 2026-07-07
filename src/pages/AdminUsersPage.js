@@ -19,7 +19,10 @@ async function callUsersApi(method, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    const extra = Array.isArray(data.stack) ? '\n' + data.stack.join('\n') : '';
+    throw new Error((data.error || `Request failed (${res.status})`) + extra);
+  }
   return data;
 }
 
@@ -250,7 +253,7 @@ export default function AdminUsersPage() {
           <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-red-700">
             <p className="font-semibold mb-1">Couldn't load users</p>
-            <p>{error}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{error}</p>
           </div>
         </div>
       )}

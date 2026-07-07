@@ -8,18 +8,43 @@
 // `admins` Firestore collection before anything else runs.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { adminAuth, requireAdmin } from '../_lib/firebaseAdmin.js';
+// ── /api/admin/users ──────────────────────────────────────────────────────
+// Node.js serverless function (needs firebase-admin, so no `edge` runtime).
+// GET  → list every Firebase Auth user (email, name, status, sign-in info)
+// POST → { action: 'disable' | 'enable' | 'delete', uid } on one user
+//
+// Every request must carry the calling admin's Firebase ID token as
+// `Authorization: Bearer <token>` — verified server-side against the
+// `admins` Firestore collection before anything else runs.
+//
+// NOTE: the Admin SDK module is imported dynamically (inside the handler,
+// inside a try/catch) rather than with a top-level `import`. A top-level
+// import that fails (bad/missing service account, bundling issue, etc.)
+// crashes the whole function before any of our own error handling can run,
+// which shows up to the caller as a bare, message-less 500. Loading it
+// dynamically turns that same failure into a normal caught rejection, so
+// the real error message always makes it back to the client.
+// ──────────────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  let caller;
   try {
-    caller = await requireAdmin(req);
-  } catch (e) {
-    res.status(e.status || 401).json({ error: e.message });
-    return;
-  }
+    let firebaseAdmin;
+    try {
+      firebaseAdmin = await import('../_lib/firebaseAdmin.js');
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to load the Admin SDK module: ' + (e?.message || String(e)) });
+      return;
+    }
+    const { adminAuth, requireAdmin } = firebaseAdmin;
 
-  try {
+    let caller;
+    try {
+      caller = await requireAdmin(req);
+    } catch (e) {
+      res.status(e.status || 401).json({ error: e.message });
+      return;
+    }
+
     if (req.method === 'GET') {
       const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken : undefined;
       const result = await adminAuth().listUsers(1000, pageToken);
@@ -59,6 +84,8 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ error: 'Method not allowed' });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'Server error.' });
+    // Last-resort net: whatever broke, always return real JSON with the
+    // actual message rather than letting the platform return a bare 500.
+    res.status(500).json({ error: e?.message || 'Unknown server error.', stack: e?.stack?.split('\n').slice(0, 3) });
   }
 }
