@@ -667,6 +667,6 @@ export function isEssentialDrug(drug) {
   const firstPart = normalized.split(' ')[0];
   return NEML_8TH_EDITION_NAMES.some(n => {
     const nn = normalizeName(n);
-    return nn === normalized || nn.split(' ')[0] === firstPart && firstPart.length > 3 && nn.startsWith(firstPart);
+    return nn === normalized || (nn.split(' ')[0] === firstPart && firstPart.length > 3 && nn.startsWith(firstPart));
   });
 }
