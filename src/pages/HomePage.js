@@ -7,6 +7,7 @@ import {
   Shield, Baby, Eye, Apple, Zap,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from '../context/AuthContext';
 import { quickSearch } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
 
@@ -38,6 +39,7 @@ const CATEGORIES = [
 
 
 export default function HomePage() {
+  const { isAdmin } = useAuth();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
   const TOTAL       = ALL_DRUGS.length;
   const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
@@ -66,7 +68,9 @@ export default function HomePage() {
       <section className="bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 text-white py-16 sm:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
-            Search <span className="text-primary-300">{TOTAL}+</span> Medications
+            {isAdmin
+              ? <>Search <span className="text-primary-300">{TOTAL}+</span> Medications</>
+              : <>Search <span className="text-primary-300">Medications</span></>}
           </h1>
           <p className="text-lg sm:text-xl text-primary-100 mb-10 max-w-2xl mx-auto">
             Comprehensive Nigerian clinical drug reference covering dosages, interactions,
@@ -136,21 +140,23 @@ export default function HomePage() {
             )}
           </form>
 
-          {/* Live stats */}
-          <div className="flex justify-center gap-8 mt-10 text-primary-100">
-            <div className="text-center">
-              <div className="text-2xl font-bold">{loading ? '—' : TOTAL}</div>
-              <div className="text-sm opacity-80">Drugs</div>
+          {/* Live stats — internal figures, admin-only */}
+          {isAdmin && (
+            <div className="flex justify-center gap-8 mt-10 text-primary-100">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{loading ? '—' : TOTAL}</div>
+                <div className="text-sm opacity-80">Drugs</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{loading ? '—' : CLASS_COUNT}</div>
+                <div className="text-sm opacity-80">Drug Classes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{loading ? '—' : RX_COUNT}</div>
+                <div className="text-sm opacity-80">Rx Categories</div>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">{loading ? '—' : CLASS_COUNT}</div>
-              <div className="text-sm opacity-80">Drug Classes</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold">{loading ? '—' : RX_COUNT}</div>
-              <div className="text-sm opacity-80">Rx Categories</div>
-            </div>
-          </div>
+          )}
         </div>
       </section>
 
