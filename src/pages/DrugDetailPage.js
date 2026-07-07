@@ -415,12 +415,10 @@ function AiInsightsTab({ drug }) {
       setState('done');
 
       // Non-admins never see the Save button, a "✓ Saved" badge, or a page
-      // reload — but this still saves in the background, safely:
-      //   - a field that's currently empty gets the new AI content outright
-      //   - a field that already has content only gets APPENDED to (never
-      //     replaced) — and only when the new text is more comprehensive
-      //     than what's already there, and isn't just a re-statement of it
-      //   - nothing is ever removed or overwritten
+      // reload — but this still saves in the background, using the exact
+      // same write behavior as admin's own Save button (writeToFirestore):
+      // parsed fields are written as-is, no merge, no skip-if-would-overwrite,
+      // no confirm step. Just silent.
       if (!isAdmin) {
         try {
           const parsedFields = parseAiDrugDetail(full);
@@ -430,29 +428,11 @@ function AiInsightsTab({ drug }) {
               last_updated: serverTimestamp(),
             });
           } else {
-            const mergedFields = {};
-            for (const f of STRUCTURED_FIELDS) {
-              if (f === 'strength') continue; // handled by the fast path above
-              const newVal = parsedFields[f] && String(parsedFields[f]).trim();
-              if (!newVal) continue;
-              const existingVal = drug[f] && String(drug[f]).trim();
-              if (!existingVal) {
-                mergedFields[f] = newVal; // nothing there yet — safe to add
-              } else if (newVal.length > existingVal.length && !newVal.includes(existingVal) && !existingVal.includes(newVal)) {
-                // Genuinely more comprehensive and not just a restatement —
-                // add it alongside the existing text rather than over it.
-                mergedFields[f] = `${existingVal}\n\n${newVal}`;
-              }
-              // Otherwise: new content is shorter, equal, or already covered
-              // by what's there — leave the existing field untouched.
-            }
-            if (Object.keys(mergedFields).length > 0) {
-              await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
-                ...mergedFields,
-                ai_insights:  full,
-                last_updated: serverTimestamp(),
-              });
-            }
+            await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+              ...parsedFields,
+              ai_insights:  full,
+              last_updated: serverTimestamp(),
+            });
           }
         } catch {
           // Intentionally silent — this must never surface to the user.
