@@ -65,9 +65,20 @@ export async function requireAdmin(req) {
     throw err;
   }
 
+  // Initialize the Admin SDK app *before* the token-verification try/catch
+  // below, so a missing/broken service account key surfaces as its own
+  // clear 500 error instead of being misreported as "invalid session."
+  let authClient;
+  try {
+    authClient = adminAuth();
+  } catch (e) {
+    e.status = 500;
+    throw e;
+  }
+
   let decoded;
   try {
-    decoded = await adminAuth().verifyIdToken(token);
+    decoded = await authClient.verifyIdToken(token);
   } catch {
     const err = new Error('Invalid or expired session — please sign in again.');
     err.status = 401;
