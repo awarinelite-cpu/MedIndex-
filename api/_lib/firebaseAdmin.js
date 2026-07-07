@@ -22,8 +22,9 @@ function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
   let jsonText;
-  if (b64) jsonText = Buffer.from(b64, 'base64').toString('utf8');
-  else if (raw) jsonText = raw;
+  let source;
+  if (b64) { jsonText = Buffer.from(b64, 'base64').toString('utf8'); source = 'FIREBASE_SERVICE_ACCOUNT_BASE64'; }
+  else if (raw) { jsonText = raw; source = 'FIREBASE_SERVICE_ACCOUNT_KEY'; }
   else {
     throw new Error(
       'Server is missing FIREBASE_SERVICE_ACCOUNT_BASE64 (or FIREBASE_SERVICE_ACCOUNT_KEY). ' +
@@ -34,11 +35,33 @@ function loadServiceAccount() {
   let parsed;
   try {
     parsed = JSON.parse(jsonText);
-  } catch {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_* environment variable is not valid JSON.');
+  } catch (parseErr) {
+    // Give a specific, actionable diagnosis instead of a generic message.
+    const preview = jsonText.slice(0, 40).replace(/\s/g, '·');
+    let hint = 'The decoded value is not valid JSON.';
+    if (source === 'FIREBASE_SERVICE_ACCOUNT_BASE64' && !/^ey/.test(jsonText.trim()) && jsonText.trim().startsWith('{')) {
+      hint = 'This looks like raw JSON was pasted into FIREBASE_SERVICE_ACCOUNT_BASE64 ' +
+             '(it starts with "{"). Base64 text should NOT start with a curly brace — ' +
+             'either base64-encode the file first, or use FIREBASE_SERVICE_ACCOUNT_KEY instead for raw JSON.';
+    } else if (jsonText.trim().length === 0) {
+      hint = `${source} is set but empty after decoding — check the value was pasted correctly.`;
+    } else if (!jsonText.trim().startsWith('{')) {
+      hint = `Decoded value does not start with "{" (starts with: "${preview}"). ` +
+             'The env var may be truncated or corrupted — try re-generating and re-pasting it.';
+    }
+    throw new Error(`FIREBASE_SERVICE_ACCOUNT_* environment variable is not valid JSON. ${hint}`);
   }
+
+  if (!parsed.private_key || !parsed.client_email || !parsed.project_id) {
+    throw new Error(
+      'FIREBASE_SERVICE_ACCOUNT_* JSON is missing required fields ' +
+      '(private_key, client_email, or project_id). Re-download the service account key from ' +
+      'Firebase Console → Project Settings → Service Accounts → Generate new private key.'
+    );
+  }
+
   // Env vars often escape newlines in the private key — restore them.
-  if (parsed.private_key) parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+  parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
   return parsed;
 }
 
