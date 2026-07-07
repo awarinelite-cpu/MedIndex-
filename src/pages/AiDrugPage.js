@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Lock } from 'lucide-react';
+import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { renderAiText } from '../utils/renderAiText';
 import { saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
@@ -59,6 +59,17 @@ export default function AiDrugPage() {
         setText(full);
       }
       setState('done');
+
+      // Non-admins never see a save control — but every AI Insight lookup
+      // they run still quietly adds/refreshes this drug in the shared
+      // database in the background, so the catalogue grows from real usage
+      // without relying on the admin to fill every entry by hand. Admins
+      // keep their existing explicit "Save to Database" button below.
+      if (!isAdmin) {
+        saveAiDrugToDatabase({ genericName, drugClass, text: full }).catch(() => {
+          // Intentionally silent — this must never surface to the user.
+        });
+      }
     } catch (e) {
       setError(e.message || 'Failed to load AI lookup.');
       setState('error');
@@ -182,13 +193,6 @@ export default function AiDrugPage() {
           <div className="mt-4 flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             <span>{saveError}</span>
-          </div>
-        )}
-
-        {state === 'done' && !isAdmin && (
-          <div className="mt-4 flex items-center gap-2 text-xs text-drug-muted">
-            <Lock className="w-3.5 h-3.5 flex-shrink-0" />
-            Only admins can save AI-generated drugs into the shared database.
           </div>
         )}
 

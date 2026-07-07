@@ -51,6 +51,17 @@ function AiSearchFallback({ searchQuery }) {
       }
       sessionStorage.setItem(cacheKey, full);
       setState('done');
+
+      // Non-admins never see a save control or the "✓ Saved" badge — but
+      // every AI lookup they run still quietly adds/refreshes this drug in
+      // the shared database in the background. Deliberately does NOT touch
+      // saveState/saveError, since those drive UI (including the "✓ Saved
+      // to database" badge above) that must stay invisible to them.
+      if (!isAdmin) {
+        saveAiDrugToDatabase({ genericName: searchQuery.trim(), drugClass: '', text: full }).catch(() => {
+          // Intentionally silent — this must never surface to the user.
+        });
+      }
     } catch (e) {
       setError(e.message || 'Failed to load AI lookup.');
       setState('error');
