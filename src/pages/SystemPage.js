@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import Papa from 'papaparse';
 import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
   Pill, ChevronRight, Grid3X3, List, ArrowLeft, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, Download,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -659,6 +660,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
 export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
+  const { isAdmin }   = useAuth();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
   // Track drug↔condition links the admin just removed, so they disappear
@@ -727,6 +729,44 @@ export default function SystemPage() {
     }).length;
   }, [drugs, classFilter, nameSearch]);
 
+  // Same field set as the main Bulk Upload template (UploadPage.js), plus
+  // condition_tags so drugs land under the right condition on this System
+  // page as soon as they're uploaded.
+  const DRUG_CSV_HEADERS = [
+    'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
+    'overview','strength','indications','therapeutic_note',
+    'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
+    'pharmacology','advice_to_patients','contraindications','precautions',
+    'pregnancy_lactation','interaction','adverse_effect','nursing_action',
+    'pharmacovigilance','product_description','storage_recommendations','pack_size_price',
+    'source','status','condition_tags',
+  ];
+
+  function downloadSystemTemplate() {
+    // One pre-filled row per condition already known for this system, with
+    // condition_tags set to that condition's id — everything else left blank
+    // for Dee to fill in per drug. Rows can be duplicated in Excel/Sheets for
+    // multiple drugs under the same condition.
+    const conditions = [...conditionGroups.values()].map(e => e.condition);
+    const rows = conditions.length > 0
+      ? conditions.map(cond => {
+          const row = DRUG_CSV_HEADERS.reduce((acc, h) => ({ ...acc, [h]: '' }), {});
+          row.condition_tags = cond.id;
+          row.status = 'Active';
+          row.source = 'CSV Upload';
+          return row;
+        })
+      : [DRUG_CSV_HEADERS.reduce((acc, h) => ({ ...acc, [h]: '' }), {})];
+
+    const csv = Papa.unparse(rows, { columns: DRUG_CSV_HEADERS });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const safeName = system.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    link.download = `${safeName}_bulk_upload_template.csv`;
+    link.click();
+  }
+
   if (!system) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
@@ -793,6 +833,16 @@ export default function SystemPage() {
                 className={`p-2 rounded ${viewMode === 'grid' ? 'bg-primary-100 text-primary-700' : 'text-drug-muted'}`}>
           <Grid3X3 className="w-5 h-5" />
         </button>
+
+        {isAdmin && (
+          <button
+            onClick={downloadSystemTemplate}
+            className="btn-secondary flex items-center gap-2 whitespace-nowrap"
+            title="Download a CSV pre-filled with this system's conditions, ready for Bulk Upload"
+          >
+            <Download className="w-4 h-4" /> Download CSV Template
+          </button>
+        )}
       </div>
 
       {/* Filter summary */}
