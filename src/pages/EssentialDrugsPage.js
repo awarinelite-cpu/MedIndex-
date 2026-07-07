@@ -4,6 +4,7 @@ import { Pill, Search, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { isEssentialDrug } from '../data/essentialMedicines';
 import { quickSearch } from '../utils/searchDrugs';
+import { getDisplayDrugClass } from '../utils/drugCategory';
 
 export default function EssentialDrugsPage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
@@ -77,7 +78,7 @@ export default function EssentialDrugsPage() {
                 </span>
               </div>
               <h3 className="text-lg font-bold group-hover:text-green-700 transition-colors">{drug.generic_name}</h3>
-              <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
+              <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>
               <p className="text-sm text-drug-muted mt-2 line-clamp-2">
                 {drug.indications || drug.primary_indications}
               </p>

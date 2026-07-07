@@ -17,6 +17,7 @@ import {
   serverTimestamp, query, orderBy,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { getDisplayDrugClass } from '../utils/drugCategory';
 
 // ── Route badges ─────────────────────────────────────────────────────────────
 const ROUTE_META = {
@@ -896,7 +897,7 @@ export default function DrugDetailPage() {
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
         <p className="text-lg text-primary-600 font-medium mt-1">
           <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="hover:underline">
-            {drug.drug_class}
+            {getDisplayDrugClass(drug)}
           </Link>
           {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
             <>
@@ -1254,7 +1255,7 @@ export default function DrugDetailPage() {
                   to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`}
                   className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 transition-colors"
                 >
-                  {drug.drug_class}
+                  {getDisplayDrugClass(drug)}
                 </Link>
                 {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
                   <Link

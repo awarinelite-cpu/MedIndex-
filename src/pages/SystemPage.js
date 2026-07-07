@@ -18,6 +18,7 @@ import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugCo
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 import { doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
+import { getDisplayDrugClass } from '../utils/drugCategory';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -411,7 +412,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
                       <h3 className="font-bold text-sm group-hover:text-primary-700 transition-colors">
                         {drug.generic_name}
                       </h3>
-                      <p className="text-xs text-primary-600 mt-0.5">{drug.drug_subclass || drug.drug_class}</p>
+                      <p className="text-xs text-primary-600 mt-0.5">{drug.drug_subclass || getDisplayDrugClass(drug)}</p>
                       <p className="text-xs text-drug-muted mt-1.5 line-clamp-2">
                         {drug.indications || drug.primary_indications}
                       </p>
@@ -434,7 +435,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm truncate">{drug.generic_name}</div>
                         <div className="text-xs text-primary-600 truncate">
-                          {drug.drug_subclass || drug.drug_class}
+                          {drug.drug_subclass || getDisplayDrugClass(drug)}
                         </div>
                       </div>
                       <RxBadge status={drug.prescription_status} />

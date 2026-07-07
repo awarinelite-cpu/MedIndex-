@@ -8,6 +8,7 @@ import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
 import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete } from '../utils/aiDrugSave';
 import { logSearch } from '../utils/logSearch';
+import { getDisplayDrugClass } from '../utils/drugCategory';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -864,7 +865,7 @@ export default function BrowsePage() {
                 </span>
               </div>
               <h3 className="text-lg font-bold group-hover:text-primary-700 transition-colors">{drug.generic_name}</h3>
-              <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
+              <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>
 
               {/* Show WHY this drug appeared when searching by indication */}
               {drug._matchType === 'indication' && drug._matchSnippet ? (
@@ -897,7 +898,7 @@ export default function BrowsePage() {
                 {drug._matchType === 'indication' && drug._matchSnippet ? (
                   <p className="text-sm text-teal-600 truncate">✓ {drug._matchSnippet}</p>
                 ) : (
-                  <p className="text-sm text-primary-600 truncate">{drug.drug_class}</p>
+                  <p className="text-sm text-primary-600 truncate">{getDisplayDrugClass(drug)}</p>
                 )}
               </div>
               <span className={`text-xs font-bold px-2 py-1 rounded flex-shrink-0 ${

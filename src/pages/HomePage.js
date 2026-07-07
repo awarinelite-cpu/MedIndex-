@@ -10,6 +10,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { quickSearch } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
+import { getDisplayDrugClass } from '../utils/drugCategory';
 
 const SYSTEM_ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope,
@@ -117,7 +118,7 @@ export default function HomePage() {
                       {drug._matchType === 'indication' && drug._matchSnippet ? (
                         <div className="text-xs text-teal-600 truncate">✓ {drug._matchSnippet}</div>
                       ) : (
-                        <div className="text-xs text-gray-500 truncate">{drug.drug_class}</div>
+                        <div className="text-xs text-gray-500 truncate">{getDisplayDrugClass(drug)}</div>
                       )}
                     </div>
                     <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${
@@ -214,7 +215,7 @@ export default function HomePage() {
                 <h3 className="text-lg font-bold text-drug-text group-hover:text-primary-700 transition-colors">
                   {drug.generic_name}
                 </h3>
-                <p className="text-sm text-primary-600 font-medium mt-1">{drug.drug_class}</p>
+                <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>
                 <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
               </Link>
             ))}
