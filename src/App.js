@@ -14,6 +14,7 @@ import BrowsePage from './pages/BrowsePage';
 import DrugListsPage from './pages/DrugListsPage';
 import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
+import AdminUsersPage from './pages/AdminUsersPage';
 import UploadPage from './pages/UploadPage';
 import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
@@ -89,6 +90,11 @@ function App() {
         <Route path="/admin/upload" element={
           <ProtectedAdminRoute>
             <AdminLayout><UploadPage /></AdminLayout>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/users" element={
+          <ProtectedAdminRoute>
+            <AdminLayout><AdminUsersPage /></AdminLayout>
           </ProtectedAdminRoute>
         } />
 

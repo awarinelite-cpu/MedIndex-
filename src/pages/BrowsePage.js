@@ -7,6 +7,7 @@ import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
 import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete } from '../utils/aiDrugSave';
+import { logSearch } from '../utils/logSearch';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -688,7 +689,7 @@ function BulkStrengthUpdate({ drugsMissingStrength, className, onDone }) {
 
 export default function BrowsePage() {
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
 
   const { condition }             = useParams();
@@ -757,6 +758,15 @@ export default function BrowsePage() {
 
     return pool;
   }, [ALL_DRUGS, searchQuery, filterClass, filterStatus]);
+
+  // Log this search for the admin panel's per-user search history (skipped
+  // for signed-out visitors and for empty queries; debounced inside logSearch
+  // so it only fires once typing pauses, not on every keystroke).
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      logSearch({ user, query: searchQuery, resultCount: filteredDrugs.length });
+    }
+  }, [user, searchQuery, filteredDrugs.length]);
 
   // Full roster of drugs in the currently filtered class, independent of any
   // search/status narrowing — used so the AI class-expansion knows about

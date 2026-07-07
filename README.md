@@ -76,6 +76,30 @@ Use the template from the Admin Portal or create your own with these required co
 
 All other 73 columns are optional. See the full template viewer for details.
 
+## Admin Users Panel Setup
+
+The `/admin/users` page (list all accounts, disable/enable, delete, send
+password reset) calls a server-side API route (`api/admin/users.js`) that
+uses the Firebase **Admin SDK**, since listing/disabling/deleting other
+users' accounts isn't possible with the public client SDK.
+
+To enable it:
+
+1. Firebase Console → **Project Settings → Service Accounts** → **Generate
+   new private key**. This downloads a JSON file — keep it secret, it's a
+   full-access credential for your Firebase project.
+2. Base64-encode it:
+   ```bash
+   base64 -i your-service-account.json | tr -d '\n'
+   ```
+3. In Vercel → Project → Settings → Environment Variables, add:
+   - `FIREBASE_SERVICE_ACCOUNT_BASE64` = (the base64 string from step 2)
+4. Redeploy. Only accounts listed in the `admins` Firestore collection
+   (the same one the rest of the admin panel already uses) can call this API.
+
+Never commit the service account JSON to the repo or paste it in chat —
+treat it like a password.
+
 ## Project Structure
 
 ```
