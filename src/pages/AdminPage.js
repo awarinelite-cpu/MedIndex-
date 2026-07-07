@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import Papa from 'papaparse';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
   writeBatch, serverTimestamp,
@@ -9,7 +10,7 @@ import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
-  Sparkles, ChevronRight, Zap, PlayCircle,
+  Sparkles, ChevronRight, Zap, PlayCircle, Download,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
@@ -21,6 +22,42 @@ import ConditionTagBackfill from '../components/ConditionTagBackfill';
 // and legacy CSV schema (primary_indications/side_effects/nursing_considerations)
 function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
+}
+
+// ── CSV export for incomplete drugs ────────────────────────────────────────
+// Same column schema as UploadPage's bulk-upload template, so the exported
+// file can be edited and re-uploaded as-is: generic_name/drug_class are
+// used to re-match the existing Firestore doc (see UploadPage computeDocId),
+// so filled-in rows will update the existing incomplete record rather than
+// create a duplicate.
+const CSV_EXPORT_HEADERS = [
+  'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
+  'overview','strength','indications','therapeutic_note',
+  'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
+  'pharmacology','advice_to_patients','contraindications','precautions',
+  'pregnancy_lactation','interaction','adverse_effect','nursing_action',
+  'pharmacovigilance','product_description','storage_recommendations','pack_size_price',
+  'source','status',
+];
+
+function downloadIncompleteCSV(incompleteDrugs, showToast) {
+  if (!incompleteDrugs || incompleteDrugs.length === 0) {
+    showToast && showToast('Nothing to download — no incomplete drugs.');
+    return;
+  }
+  const rows = incompleteDrugs.map(d => {
+    const row = {};
+    CSV_EXPORT_HEADERS.forEach(h => { row[h] = d[h] ?? ''; });
+    return row;
+  });
+  const csv = Papa.unparse(rows, { columns: CSV_EXPORT_HEADERS });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `incomplete_drugs_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 // ── Editable fields ────────────────────────────────────────────────────────
@@ -584,6 +621,14 @@ export default function AdminPage() {
           <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
             <Upload className="w-4 h-4"/> Bulk Upload
           </Link>
+          {stats.incomplete > 0 && (
+            <button
+              onClick={() => downloadIncompleteCSV(drugs.filter(isIncomplete), showToast)}
+              className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors"
+            >
+              <Download className="w-4 h-4"/> Download Incomplete ({stats.incomplete})
+            </button>
+          )}
           {globalFixRunning ? (
             <div className="flex items-center gap-3 px-4 py-2 rounded-lg border-1.5 border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold" style={{border:'1.5px solid #FDE68A'}}>
               <RefreshCw className="w-4 h-4 animate-spin"/>
@@ -688,6 +733,11 @@ export default function AdminPage() {
               {!bulkFixRunning && !globalFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
                 <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
+                </button>
+              )}
+              {incompleteInView.length>0 && (
+                <button onClick={()=>downloadIncompleteCSV(incompleteInView, showToast)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #E2E8F0',background:'#fff',color:'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <Download className="w-4 h-4"/>Download {incompleteInView.length} incomplete (CSV)
                 </button>
               )}
               {bulkFixRunning && (
