@@ -186,11 +186,18 @@ function AiSectionFill({ drug, tabId, onFilled }) {
   const cfg     = TAB_SECTIONS[tabId];
   const missing = missingTabFields(drug, tabId);
 
-  if (!cfg || missing.length === 0) return null;
+  if (!cfg) return null;
 
   const allMissing = missing.length === cfg.fields.length;
+  const hasContent = missing.length === 0;
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (opts = {}) => {
+    if (hasContent && !opts.confirmed) {
+      const ok = window.confirm(
+        `Regenerate ${cfg.label} with AI? This will replace the current ${cfg.label.toLowerCase()} information saved for this drug.`
+      );
+      if (!ok) return;
+    }
     setState('generating');
     setError('');
     try {
@@ -202,6 +209,36 @@ function AiSectionFill({ drug, tabId, onFilled }) {
       setState('error');
     }
   };
+
+  // This tab's fields are already fully populated — instead of the big
+  // "info missing" card, show a small, unobtrusive Regenerate control (same
+  // idea as the Regenerate button on the AI Insights tab) so a bad/partial
+  // AI generation can always be redone.
+  if (hasContent) {
+    return (
+      <div className="mt-2 flex items-center gap-3 flex-wrap">
+        <button
+          onClick={() => handleGenerate()}
+          disabled={state === 'generating'}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-60"
+        >
+          {state === 'generating' ? (
+            <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Regenerating {cfg.label}…</>
+          ) : (
+            <><RefreshCw className="w-3.5 h-3.5" /> Regenerate {cfg.label} with AI</>
+          )}
+        </button>
+        {state === 'done' && (
+          <span className="text-xs font-semibold text-green-700 inline-flex items-center gap-1">
+            <Check className="w-3.5 h-3.5" /> Updated
+          </span>
+        )}
+        {state === 'error' && (
+          <span className="text-xs text-red-600">{error}</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="section-card p-5 border border-primary-200 bg-primary-50/50">
