@@ -20,6 +20,7 @@ import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
 import AllSystemsPage from './pages/AllSystemsPage';
+import EssentialDrugsPage from './pages/EssentialDrugsPage';
 function App() {
   return (
     <AuthProvider>
@@ -73,6 +74,11 @@ function App() {
         <Route path="/system/:systemId" element={
           <ProtectedUserRoute>
             <Layout><SystemPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/essential-drugs" element={
+          <ProtectedUserRoute>
+            <Layout><EssentialDrugsPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/calculators" element={

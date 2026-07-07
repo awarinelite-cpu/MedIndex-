@@ -4,7 +4,7 @@ import {
   Search, Pill, Heart, Activity, Brain, Bone,
   Stethoscope, ChevronRight, Grid3X3, LayoutGrid,
   Soup, Droplets, Droplet, HeartHandshake, Sparkle,
-  Shield, Baby, Eye, Apple, Zap,
+  Shield, Baby, Eye, Apple, Zap, ShieldCheck,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +33,7 @@ const CATEGORIES = [
   ...PINNED_CARDS,
   { name: 'All Categories', icon: Grid3X3,    color: 'text-primary-600', bg: 'bg-primary-50', to: '/browse'  },
   { name: 'More Systems',   icon: LayoutGrid, color: 'text-slate-600',   bg: 'bg-slate-50',   to: '/systems' },
+  { name: 'Essential Drugs', icon: ShieldCheck, color: 'text-green-600', bg: 'bg-green-50',   to: '/essential-drugs' },
 ];
 
 // All 15 systems shown — no hidden "More Systems" tile
