@@ -186,7 +186,7 @@ function AiSectionFill({ drug, tabId, onFilled }) {
   const cfg     = TAB_SECTIONS[tabId];
   const missing = missingTabFields(drug, tabId);
 
-  if (!isAdmin || !cfg || missing.length === 0) return null;
+  if (!cfg || missing.length === 0) return null;
 
   const allMissing = missing.length === cfg.fields.length;
 
@@ -212,12 +212,15 @@ function AiSectionFill({ drug, tabId, onFilled }) {
             {allMissing
               ? <>No <strong>{cfg.label}</strong> information saved for this drug yet.</>
               : <>Some <strong>{cfg.label}</strong> information is missing for this drug.</>}
-            {' '}Generate it with AI and save it to this record.
+            {' '}{isAdmin ? 'Generate it with AI and save it to this record.' : 'Generate it with AI.'}
           </p>
           {state === 'error' && <p className="text-sm text-red-600 mt-2">{error}</p>}
           {state === 'done' && (
             <p className="text-sm text-green-700 mt-2 inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4" /> Saved — the information above has been added to this drug.
+              <Check className="w-4 h-4" />
+              {isAdmin
+                ? 'Saved — the information above has been added to this drug.'
+                : `Here's the ${cfg.label.toLowerCase()} information — see it in the tab above.`}
             </p>
           )}
           {state !== 'done' && (
@@ -410,6 +413,37 @@ function AiInsightsTab({ drug }) {
         setText(full);
       }
       setState('done');
+
+      // Non-admins never see the Save button, a "✓ Saved" badge, or a page
+      // reload — but a safe subset of this still saves in the background:
+      // only fields that are genuinely empty on this record get written.
+      // If saving would overwrite anything already curated, skip entirely
+      // rather than silently clobbering it without the confirm step admins
+      // get. Mirrors handleSave's own strength-only fast path otherwise.
+      if (!isAdmin) {
+        try {
+          const parsedFields = parseAiDrugDetail(full);
+          if (needsStrengthOnly(drug) && parsedFields.strength) {
+            await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+              strength:     parsedFields.strength,
+              last_updated: serverTimestamp(),
+            });
+          } else {
+            const wouldOverwrite = STRUCTURED_FIELDS.some(
+              f => f !== 'strength' && drug[f] && String(drug[f]).trim() && parsedFields[f]
+            );
+            if (!wouldOverwrite) {
+              await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
+                ...parsedFields,
+                ai_insights:  full,
+                last_updated: serverTimestamp(),
+              });
+            }
+          }
+        } catch {
+          // Intentionally silent — this must never surface to the user.
+        }
+      }
     } catch (e) {
       setError(e.message || 'Failed to load AI insights.');
       setState('error');
@@ -524,7 +558,7 @@ function AiInsightsTab({ drug }) {
           {state === 'streaming' && (
             <RefreshCw className="w-3.5 h-3.5 text-primary-400 animate-spin" />
           )}
-          {saveState === 'saved' && (
+          {isAdmin && saveState === 'saved' && (
             <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
               ✓ Saved — refreshing…
             </span>
