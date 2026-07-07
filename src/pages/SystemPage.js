@@ -283,8 +283,8 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, defaultOpen, systemName, onDrugRemoved }) {
-  const [open, setOpen] = useState(defaultOpen);
+function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved }) {
+  const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
 
@@ -340,7 +340,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
     <div className={`bg-white border rounded-2xl overflow-hidden ${isEmpty ? 'border-dashed border-drug-border' : 'border-drug-border shadow-sm'}`}>
       {/* Header */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggle}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
@@ -671,6 +671,8 @@ export default function SystemPage() {
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
+  // Only one condition accordion open at a time; none open by default.
+  const [openConditionId, setOpenConditionId] = useState(null);
 
   const system = getSystemById(systemId);
 
@@ -820,7 +822,7 @@ export default function SystemPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {[...conditionGroups.values()].map((entry, idx) => (
+              {[...conditionGroups.values()].map((entry) => (
                 <ConditionSection
                   key={entry.condition.id}
                   condition={entry.condition}
@@ -828,7 +830,8 @@ export default function SystemPage() {
                   viewMode={viewMode}
                   classFilter={classFilter}
                   nameSearch={nameSearch}
-                  defaultOpen={idx === 0}
+                  isOpen={openConditionId === entry.condition.id}
+                  onToggle={() => setOpenConditionId(o => o === entry.condition.id ? null : entry.condition.id)}
                   systemName={system.name}
                   onDrugRemoved={handleDrugRemoved}
                 />
