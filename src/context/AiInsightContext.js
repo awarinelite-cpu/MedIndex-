@@ -3,10 +3,11 @@
 // Runs the "complete all incomplete drugs" job as a background process that
 // lives above the router, so it keeps running (and the floating widget stays
 // visible) no matter which page the admin navigates to.
-import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
+import { GripHorizontal } from 'lucide-react';
 
 function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
@@ -209,6 +210,95 @@ export function useAiInsight() {
   return ctx;
 }
 
+// ── Draggable wrapper: lets either widget be dragged anywhere on screen ──
+// Position is remembered per-widget (localStorage) so it stays put across
+// reloads and navigation. Until the user drags it for the first time, it
+// sits at its default corner and still responds to layout changes (e.g.
+// shifting up when the other widget is also showing).
+function DraggableWidget({ id, defaultBottom = 20, defaultRight = 16, width = 300, children }) {
+  const [dragPos, setDragPos] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`ai_widget_pos_${id}`);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const [dragging, setDragging] = useState(false);
+  const elRef = useRef(null);
+  const dragInfo = useRef(null);
+
+  const clamp = (x, y, w, h) => ({
+    x: Math.min(Math.max(4, x), Math.max(4, window.innerWidth - w - 4)),
+    y: Math.min(Math.max(4, y), Math.max(4, window.innerHeight - h - 4)),
+  });
+
+  const onPointerDown = (e) => {
+    const el = elRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    dragInfo.current = { startX: e.clientX, startY: e.clientY, startLeft: rect.left, startTop: rect.top, w: rect.width, h: rect.height };
+    setDragging(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragInfo.current) return;
+    const { startX, startY, startLeft, startTop, w, h } = dragInfo.current;
+    setDragPos(clamp(startLeft + (e.clientX - startX), startTop + (e.clientY - startY), w, h));
+  };
+  const endDrag = () => {
+    if (!dragInfo.current) return;
+    dragInfo.current = null;
+    setDragging(false);
+    setDragPos(pos => {
+      if (pos) { try { localStorage.setItem(`ai_widget_pos_${id}`, JSON.stringify(pos)); } catch {} }
+      return pos;
+    });
+  };
+
+  // Keep it fully on-screen if the viewport is resized/rotated after a drag.
+  useEffect(() => {
+    if (!dragPos) return;
+    const onResize = () => {
+      const rect = elRef.current?.getBoundingClientRect();
+      if (rect) setDragPos(p => p ? clamp(p.x, p.y, rect.width, rect.height) : p);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!dragPos]);
+
+  const outerStyle = dragPos
+    ? { position: 'fixed', left: dragPos.x, top: dragPos.y, zIndex: 9999, width }
+    : { position: 'fixed', bottom: defaultBottom, right: defaultRight, zIndex: 9999, width, transition: dragging ? 'none' : 'bottom 0.25s ease' };
+
+  return (
+    <div
+      ref={elRef}
+      style={{
+        ...outerStyle, background: '#0F172A', color: '#fff', borderRadius: 20,
+        boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)',
+        overflow: 'hidden', userSelect: dragging ? 'none' : 'auto',
+      }}
+    >
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        title="Drag to move"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '7px 0 3px', cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none',
+        }}
+      >
+        <GripHorizontal className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.35)' }} />
+      </div>
+      <div style={{ padding: '2px 18px 18px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
   const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary } = useContext(AiInsightContext);
@@ -241,14 +331,7 @@ function GlobalAiInsightWidget() {
   }
 
   return (
-    <div style={{
-      position: 'fixed', bottom: stackedBelow ? 270 : 20, right: 16, zIndex: 9999,
-      width: 300, background: '#0F172A', color: '#fff',
-      borderRadius: 20, padding: '16px 18px',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      transition: 'bottom 0.25s ease',
-    }}>
+    <DraggableWidget id="ai-insight" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
       {running ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -318,7 +401,7 @@ function GlobalAiInsightWidget() {
           </div>
         </>
       )}
-    </div>
+    </DraggableWidget>
   );
 }
 
@@ -335,13 +418,7 @@ function ConditionSaveWidget() {
   const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 20, right: 16, zIndex: 9999,
-      width: 300, background: '#0F172A', color: '#fff',
-      borderRadius: 20, padding: '16px 18px',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-      border: '1px solid rgba(255,255,255,0.08)',
-    }}>
+    <DraggableWidget id="condition-save" defaultBottom={20} defaultRight={16} width={300}>
       {conditionRunning ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -409,6 +486,6 @@ function ConditionSaveWidget() {
           </div>
         </>
       )}
-    </div>
+    </DraggableWidget>
   );
 }
