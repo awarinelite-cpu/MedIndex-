@@ -309,7 +309,9 @@ function DrugImageCard({ drug }) {
         strength:    drug.strength,
       });
       await saveDrugImage({ docId: drug.firestoreId || drug.id, imageDataUrl });
-      window.location.reload();
+      // No reload needed — the live useDrugs() listener pushes drug.image_url
+      // to this component automatically within about a second of the write.
+      setState('idle');
     } catch (e) {
       setError(e.message || 'Failed to generate an image.');
       setState('error');
@@ -321,7 +323,10 @@ function DrugImageCard({ drug }) {
     setError('');
     try {
       await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: urlInput });
-      window.location.reload();
+      // Live listener will push the new image_url in automatically.
+      setUrlState('idle');
+      setUrlInput('');
+      setShowUrlField(false);
     } catch (e) {
       setError(e.message || 'Failed to save image link.');
       setUrlState('error');
@@ -563,8 +568,9 @@ function AiInsightsTab({ drug }) {
           strength:     parsedFields.strength,
           last_updated: serverTimestamp(),
         });
+        // Live useDrugs() listener pushes the new strength in automatically —
+        // no reload needed.
         setSaveState('saved');
-        setTimeout(() => window.location.reload(), 900);
         return;
       }
 
@@ -582,7 +588,6 @@ function AiInsightsTab({ drug }) {
 
       await writeToFirestore(parsedFields);
       setSaveState('saved');
-      setTimeout(() => window.location.reload(), 900);
     } catch (e) {
       setSaveError(e.message || 'Failed to save this drug.');
       setSaveState('error');
@@ -596,7 +601,6 @@ function AiInsightsTab({ drug }) {
       const parsedFields = parseAiDrugDetail(text);
       await writeToFirestore(parsedFields);
       setSaveState('saved');
-      setTimeout(() => window.location.reload(), 900);
     } catch (e) {
       setSaveError(e.message || 'Failed to update this drug.');
       setSaveState('error');

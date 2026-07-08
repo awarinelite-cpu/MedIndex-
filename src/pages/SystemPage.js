@@ -510,7 +510,9 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
       await addCustomConditions(systemId, toAdd);
       setAddedIds(prev => new Set([...prev, ...toAdd.map(c => c.id)]));
       setAddAllState('done');
-      setTimeout(() => window.location.reload(), 900);
+      // No reload needed — addedIds above updates the UI immediately, and
+      // the live useCustomConditions() listener confirms it from Firestore
+      // in the background.
     } catch (e) {
       setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
       setAddAllState('idle');
