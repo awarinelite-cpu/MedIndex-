@@ -25,6 +25,7 @@ function getImageUrl(row) {
 }
 
 export default function BulkImageUploadPage() {
+  // eslint-disable-next-line no-unused-vars
   const [file, setFile] = useState(null);
   const [rows, setRows] = useState([]); // [{ name, docId, url, status: 'matched'|'not_found'|'invalid_url' }]
   const [parseStatus, setParseStatus] = useState('idle'); // idle | checking | ready | error
