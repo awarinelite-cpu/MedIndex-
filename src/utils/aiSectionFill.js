@@ -60,9 +60,9 @@ export function missingTabFields(drug, tabId) {
 }
 
 // Fetch AI text for just this tab's sections (streamed as plain text).
-export async function fetchAiSectionText({ genericName, drugClass, tabId }) {
+export async function fetchAiSectionText({ genericName, drugClass, tabId, endpoint = '/api/drug-ai-details' }) {
   const cfg = TAB_SECTIONS[tabId];
-  const res = await fetch('/api/drug-ai-details', {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -97,7 +97,7 @@ export async function fetchAiSectionText({ genericName, drugClass, tabId }) {
 // Generate this tab's sections, parse them, and save ONLY this tab's fields
 // onto the drug record (merge — never touches other tabs' data). Returns the
 // fields that were saved so the UI can update immediately.
-export async function fillTabWithAi({ drug, tabId }) {
+export async function fillTabWithAi({ drug, tabId, endpoint = '/api/drug-ai-details' }) {
   await getAuthUser();
   const cfg = TAB_SECTIONS[tabId];
   if (!cfg) throw new Error(`Unknown tab: ${tabId}`);
@@ -106,6 +106,7 @@ export async function fillTabWithAi({ drug, tabId }) {
     genericName: drug.generic_name,
     drugClass:   drug.drug_class,
     tabId,
+    endpoint,
   });
   const parsed = parseAiDrugDetail(text);
 

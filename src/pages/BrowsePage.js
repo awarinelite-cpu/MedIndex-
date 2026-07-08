@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
+import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
@@ -13,6 +14,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
   const cacheKey = `ai_search_${searchQuery.trim().toLowerCase()}`;
 
   const [state, setState]         = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
@@ -29,7 +31,7 @@ function AiSearchFallback({ searchQuery }) {
     setSaveState('idle');
     setQueriedFor(searchQuery);
     try {
-      const res = await fetch('/api/drug-ai-details', {
+      const res = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ genericName: searchQuery.trim(), notInDatabase: true }),
@@ -207,6 +209,7 @@ function normalizeDrugName(name) {
 
 function AiClassFallback({ className, existingDrugs }) {
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
   // IMPORTANT: drugs flagged _seed come from the bundled local seed file and
   // do NOT exist in Firestore. They must never count as "already in database" —
   // that was falsely blocking AI saves for drugs that were never actually saved.
@@ -252,7 +255,7 @@ function AiClassFallback({ className, existingDrugs }) {
       setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
       const drugClassForItem = item.subclass || className;
       try {
-        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint: provider.endpoint });
         const result = await saveAiDrugToDatabase({
           genericName: item.name,
           drugClass: drugClassForItem,
@@ -284,7 +287,7 @@ function AiClassFallback({ className, existingDrugs }) {
       const drug = incompleteExisting[i];
       setFixProgress({ current: i + 1, total: incompleteExisting.length, currentName: drug.generic_name });
       try {
-        const itemText = await fetchAiDrugText({ genericName: drug.generic_name, drugClass: drug.drug_class || className });
+        const itemText = await fetchAiDrugText({ genericName: drug.generic_name, drugClass: drug.drug_class || className, endpoint: provider.endpoint });
         const result = await saveAiDrugToDatabase({
           genericName: drug.generic_name,
           drugClass: drug.drug_class || className,
@@ -307,7 +310,7 @@ function AiClassFallback({ className, existingDrugs }) {
     setText('');
     setQueriedFor(className);
     try {
-      const res = await fetch('/api/drug-ai-details', {
+      const res = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'class', className: className.trim(), knownDrugNames }),

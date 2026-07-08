@@ -15,6 +15,7 @@ import {
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import { useAiInsight } from '../context/AiInsightContext';
+import { useAiProvider } from '../context/AiProviderContext';
 import ConditionTagBackfill from '../components/ConditionTagBackfill';
 
 // ── Completeness check using unified field group aliases ──────────────────
@@ -93,6 +94,7 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
+  const { provider } = useAiProvider();
   const {
     running: globalFixRunning, progress: globalFixProgress,
     startGlobalFix, stopGlobalFix, subscribeFix,
@@ -254,7 +256,7 @@ export default function AdminPage() {
       const existingNames   = existingInClass.map(d => (d.generic_name || '').toLowerCase());
 
       log(`📋 Fetching AI drug list for "${className}"…`);
-      const listRes = await fetch('/api/drug-ai-details', {
+      const listRes = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -640,7 +642,7 @@ export default function AdminPage() {
               onClick={()=>{
                 const incomplete = drugs.filter(isIncomplete);
                 if (incomplete.length === 0) { showToast('Nothing to fix — every drug is already complete.'); return; }
-                startGlobalFix(incomplete);
+                startGlobalFix(incomplete, provider.endpoint);
                 showToast(`General AI Insight started — fixing ${incomplete.length} drugs silently in the background. Feel free to navigate away.`, 'info');
               }}
               disabled={loading}

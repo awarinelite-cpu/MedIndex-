@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
+import { useAiProvider } from '../context/AiProviderContext';
 import { getSystemById } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
@@ -58,6 +59,7 @@ function normalizeDrugName(name) {
 /* ── AI expansion for a clinical condition ───────────────────────────────── */
 function AiConditionFallback({ conditionId, conditionLabel, systemName, existingDrugs }) {
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
   const { drugs: allDrugs } = useDrugs();
   // Match AI suggestions against EVERY drug in the database — not just the
   // drugs already tagged to this condition. Since display is now strictly
@@ -89,7 +91,7 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
     setError('');
     setText('');
     try {
-      const full = await fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames });
+      const full = await fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames, endpoint: provider.endpoint });
       setText(full);
       sessionStorage.setItem(cacheKey, full);
       setState('done');
@@ -134,7 +136,7 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
       // Drug is new — generate with AI, save, then tag with this condition.
       const drugClassForItem = item.subclass || undefined;
       try {
-        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem });
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint: provider.endpoint });
         const result = await saveAiDrugToDatabase({
           genericName: item.name,
           drugClass: drugClassForItem,
@@ -477,6 +479,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 /* ── AI expansion for a whole system: suggest new condition categories ──── */
 function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
 
   const cacheKey = `ai_system_conditions_${systemId}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
@@ -497,7 +500,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
     setError('');
     setText('');
     try {
-      const full = await fetchSystemConditionsList({ systemName, existingLabels });
+      const full = await fetchSystemConditionsList({ systemName, existingLabels, endpoint: provider.endpoint });
       setText(full);
       sessionStorage.setItem(cacheKey, full);
       setState('done');

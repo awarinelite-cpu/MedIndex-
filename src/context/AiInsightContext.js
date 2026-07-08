@@ -45,7 +45,7 @@ export function AiInsightProvider({ children }) {
   // drugsArg: optional pre-fetched incomplete drug list (e.g. from AdminPage's
   // already-loaded state). If omitted, fetches fresh from Firestore so this
   // can be triggered from anywhere, not just while the drug list is loaded.
-  const startGlobalFix = useCallback(async (drugsArg) => {
+  const startGlobalFix = useCallback(async (drugsArg, endpoint = '/api/drug-ai-details') => {
     if (running) return;
     abortRef.current = false;
     setSummary(null);
@@ -68,10 +68,10 @@ export function AiInsightProvider({ children }) {
       setCurrentName(drug.generic_name);
       try {
         let { parsed, complete, missing } = await generateDrugOnce({
-          genericName: drug.generic_name, drugClass: drug.drug_class,
+          genericName: drug.generic_name, drugClass: drug.drug_class, endpoint,
         });
         if (!complete) {
-          const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class });
+          const retry = await generateDrugOnce({ genericName: drug.generic_name, drugClass: drug.drug_class, endpoint });
           if (retry.missing.length <= missing.length) { parsed = retry.parsed; complete = retry.complete; missing = retry.missing; }
         }
         await saveParsedDrug({ genericName: drug.generic_name, drugClass: drug.drug_class, parsed, existingDrug: drug });

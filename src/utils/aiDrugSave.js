@@ -43,8 +43,8 @@ export function isDrugComplete(data) {
 }
 
 // ── Fetch AI text for a drug ──────────────────────────────────────────────
-export async function fetchAiDrugText({ genericName, drugClass }) {
-  const res = await fetch('/api/drug-ai-details', {
+export async function fetchAiDrugText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ genericName, drugClass: drugClass || undefined, notInDatabase: true }),
@@ -74,8 +74,8 @@ export async function fetchAiDrugText({ genericName, drugClass }) {
 // its formulation strength filled in — skips the full 20-field generation
 // and only writes the single 'strength' field, so it's much faster/cheaper
 // than a full regenerate + save.
-export async function fetchStrengthText({ genericName, drugClass }) {
-  const res = await fetch('/api/drug-ai-details', {
+export async function fetchStrengthText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'strength', genericName, drugClass: drugClass || undefined }),
@@ -121,8 +121,8 @@ export async function saveStrengthOnly({ docId, strengthText }) {
 // ── Fetch a broader list of drugs for a clinical condition ─────────────────
 // Mirrors the 'class' mode fetch but keyed on a clinical condition instead
 // of a drug class — used by SystemPage's condition cards.
-export async function fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames }) {
-  const res = await fetch('/api/drug-ai-details', {
+export async function fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'condition', conditionLabel, systemName: systemName || undefined, knownDrugNames }),
@@ -148,8 +148,8 @@ export async function fetchConditionDrugList({ conditionLabel, systemName, known
 }
 
 // ── Fetch AI-suggested additional conditions for a body system ─────────────
-export async function fetchSystemConditionsList({ systemName, existingLabels }) {
-  const res = await fetch('/api/drug-ai-details', {
+export async function fetchSystemConditionsList({ systemName, existingLabels, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'system_conditions', systemName, existingLabels }),
@@ -177,8 +177,8 @@ export async function fetchSystemConditionsList({ systemName, existingLabels }) 
 // ── Generate, validate, and save a drug ──────────────────────────────────
 // generateDrugOnce: generates AI text for one drug and returns parsed result
 // with completeness status. Does NOT save to Firestore.
-export async function generateDrugOnce({ genericName, drugClass }) {
-  const text   = await fetchAiDrugText({ genericName, drugClass });
+export async function generateDrugOnce({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
+  const text   = await fetchAiDrugText({ genericName, drugClass, endpoint });
   const parsed = parseAiDrugDetail(text);
   const missing = getMissingGroups(parsed);
   return { parsed, missing, complete: missing.length === 0 };

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
+import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { needsStrengthOnly } from '../utils/aiDrugSave';
@@ -181,6 +182,7 @@ function renderCSV(value, opts = {}) {
    AI. The result is saved onto the drug and appears in the tab immediately. */
 function AiSectionFill({ drug, tabId, onFilled }) {
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
   const [state, setState] = useState('idle'); // idle | generating | done | error
   const [error, setError] = useState('');
 
@@ -202,7 +204,7 @@ function AiSectionFill({ drug, tabId, onFilled }) {
     setState('generating');
     setError('');
     try {
-      const updates = await fillTabWithAi({ drug, tabId });
+      const updates = await fillTabWithAi({ drug, tabId, endpoint: provider.endpoint });
       onFilled(updates);
       setState('done');
     } catch (e) {
@@ -430,6 +432,7 @@ function DrugImageCard({ drug }) {
 /* ── AI Insights Tab ─────────────────────────────────────────────────────── */
 function AiInsightsTab({ drug }) {
   const { isAdmin }    = useAuth();
+  const { provider }   = useAiProvider();
   // If already saved to Firestore, show immediately — no need to regenerate
   const [state, setState]       = useState(drug.ai_insights ? 'done' : 'idle');
   const [text, setText]         = useState(drug.ai_insights || '');
@@ -486,7 +489,7 @@ function AiInsightsTab({ drug }) {
         drug.nafdac_no && `NAFDAC no.: ${drug.nafdac_no}`,
       ].filter(Boolean).join('\n');
 
-      const res = await fetch('/api/drug-ai-details', {
+      const res = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

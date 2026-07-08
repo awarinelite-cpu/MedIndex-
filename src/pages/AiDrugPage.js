@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
 
@@ -17,6 +18,7 @@ export default function AiDrugPage() {
   const navigate = useNavigate();
 
   const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
 
   const [state, setState] = useState('loading'); // loading | streaming | done | error
   const [text, setText]   = useState('');
@@ -32,7 +34,7 @@ export default function AiDrugPage() {
     setError('');
     setText('');
     try {
-      const res = await fetch('/api/drug-ai-details', {
+      const res = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

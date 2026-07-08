@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import AiProviderDropdown from './AiProviderDropdown';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
@@ -200,6 +201,9 @@ export default function Layout({ children }) {
                   Install
                 </button>
               )}
+              {/* AI Provider selector */}
+              {user && <AiProviderDropdown />}
+
               {/* User avatar + sign out */}
               {user && (
                 <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">

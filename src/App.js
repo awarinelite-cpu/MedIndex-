@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AiInsightProvider } from './context/AiInsightContext';
+import { AiProviderProvider } from './context/AiProviderContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
@@ -25,6 +26,7 @@ import EssentialDrugsPage from './pages/EssentialDrugsPage';
 function App() {
   return (
     <AuthProvider>
+      <AiProviderProvider>
       <AiInsightProvider>
       <Routes>
 {/* ── Auth pages (public — no login required) ──────────────────── */}
@@ -115,6 +117,7 @@ function App() {
 
       </Routes>
       </AiInsightProvider>
+      </AiProviderProvider>
     </AuthProvider>
   );
 }
