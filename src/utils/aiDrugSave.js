@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
+import { autoTagDrugConditions } from './autoTagConditions';
 
 // Wait for Firebase Auth session to restore, then verify sign-in
 async function getAuthUser() {
@@ -250,6 +251,13 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
     });
   }
 
+  // Re-run condition auto-tagging whenever this is a brand-new drug, or the
+  // patch touched indications (the field condition-matching actually reads)
+  // — no point re-checking on a patch that only filled in, say, dosage.
+  if (!existing || patch.indications || patch.primary_indications) {
+    await autoTagDrugConditions(docId, { ...existing, ...parsed, ...patch, generic_name: genericName });
+  }
+
   return { status: 'saved', id: docId, patched: Object.keys(patch) };
 }
 
@@ -282,6 +290,11 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
       : serverTimestamp(),
     last_updated: serverTimestamp(),
   }, { merge: false });
+
+  // Auto-tag this drug onto any conditions whose keywords match its
+  // indications — so a newly-searched drug shows up under the right
+  // condition cards immediately, with no manual tagging step.
+  await autoTagDrugConditions(docId, { ...parsed, generic_name: genericName });
 
   // Always 'saved'. missingGroups is informational only — never blocks saving.
   return { status: 'saved', id: docId, missingGroups: missing };

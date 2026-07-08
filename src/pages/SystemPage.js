@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
@@ -18,7 +18,7 @@ import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
-import { doc, updateDoc, serverTimestamp, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayRemove, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 
@@ -446,6 +446,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
+  const { enqueueAutoFillCondition } = useAiInsight();
 
   const cacheKey = `ai_system_conditions_${systemId}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
@@ -486,6 +487,9 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
     try {
       await addCustomConditions(systemId, [{ id, label: item.label, icon: item.icon, keywords: item.keywords }]);
       setAddedIds(prev => new Set(prev).add(id));
+      // Automatically start filling this brand-new condition with drugs —
+      // no need to open it and click "Find more drugs" / "Save All" manually.
+      enqueueAutoFillCondition({ conditionId: id, label: item.label, systemName, endpoint: provider.endpoint });
     } catch (e) {
       setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
     } finally {
@@ -510,6 +514,10 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
       await addCustomConditions(systemId, toAdd);
       setAddedIds(prev => new Set([...prev, ...toAdd.map(c => c.id)]));
       setAddAllState('done');
+      // Automatically start filling every newly created condition with
+      // drugs, one at a time (progress shows in the floating widget) — no
+      // manual "Save All" click needed for any of them.
+      toAdd.forEach(c => enqueueAutoFillCondition({ conditionId: c.id, label: c.label, systemName, endpoint: provider.endpoint }));
       // No reload needed — addedIds above updates the UI immediately, and
       // the live useCustomConditions() listener confirms it from Firestore
       // in the background.
@@ -633,6 +641,8 @@ export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
   const { isAdmin }   = useAuth();
+  const { provider }  = useAiProvider();
+  const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
   // Track drug↔condition links the admin just removed, so they disappear
@@ -681,6 +691,51 @@ export default function SystemPage() {
     () => groupDrugsByCondition(drugs, systemId, extraConditions),
     [drugs, systemId, extraConditions]
   );
+
+  // ── Auto-fill sweep: any condition in THIS system that currently has zero
+  // tagged drugs gets queued for AI auto-fill automatically — no admin click
+  // needed. Each condition is only ever auto-attempted once (tracked in
+  // Firestore via a flag doc), so this doesn't re-run every time the system
+  // page is visited, and doesn't repeatedly burn AI quota retrying a
+  // condition that legitimately turned up nothing.
+  useEffect(() => {
+    if (!isAdmin || loading || !system) return;
+    let cancelled = false;
+
+    (async () => {
+      const emptyConditions = [...conditionGroups.entries()]
+        .filter(([, g]) => g.drugs.length === 0)
+        .map(([id, g]) => ({ id, label: g.condition.label }));
+      if (emptyConditions.length === 0) return;
+
+      try {
+        const flagRef = doc(db, 'app_config', 'condition_autofill_attempted');
+        const snap = await getDoc(flagRef);
+        const attempted = new Set(snap.exists() ? (snap.data().ids || []) : []);
+        const toQueue = emptyConditions.filter(c => !attempted.has(`${systemId}::${c.id}`));
+        if (toQueue.length === 0 || cancelled) return;
+
+        // Mark them attempted immediately, before the AI calls even start,
+        // so a second tab/admin/visit in the meantime doesn't queue the
+        // same conditions again.
+        await setDoc(flagRef, {
+          ids: arrayUnion(...toQueue.map(c => `${systemId}::${c.id}`)),
+        }, { merge: true });
+
+        toQueue.forEach(c => enqueueAutoFillCondition({
+          conditionId: c.id, label: c.label, systemName: system.name, endpoint: provider.endpoint,
+        }));
+      } catch (e) {
+        console.warn('[empty-condition auto-fill sweep] failed:', e.message);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // Deliberately only re-runs when the system or loading state changes —
+    // NOT on every conditionGroups recompute, which would re-fire while the
+    // very auto-fill run this triggers is still in progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, loading, systemId]);
 
   // All drug classes across this system (for dropdown)
   const allClasses = useMemo(() => {
