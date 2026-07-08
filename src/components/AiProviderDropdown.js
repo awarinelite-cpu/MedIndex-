@@ -5,7 +5,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAiProvider, AI_PROVIDERS } from '../context/AiProviderContext';
 
-export default function AiProviderDropdown() {
+export default function AiProviderDropdown({ placement = 'right' }) {
   const { provider, setProvider } = useAiProvider();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -55,7 +55,8 @@ export default function AiProviderDropdown() {
         <div style={{
           position:     'absolute',
           top:          'calc(100% + 6px)',
-          right:        0,
+          right:        placement === 'right' ? 0 : 'auto',
+          left:         placement === 'left'  ? 0 : 'auto',
           zIndex:       9999,
           minWidth:     190,
           background:   '#0F172A',

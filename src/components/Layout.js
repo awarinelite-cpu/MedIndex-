@@ -288,6 +288,11 @@ export default function Layout({ children }) {
               {/* Mobile sign out */}
               {user && (
                 <div className="border-t border-white/10 pt-2 mt-2">
+                  {/* AI Provider selector — mobile */}
+                  <div className="px-3 py-2">
+                    <p className="text-xs text-white/40 uppercase tracking-widest font-bold mb-2">AI Provider</p>
+                    <AiProviderDropdown placement="left" />
+                  </div>
                   <div className="flex items-center justify-between px-3 py-2">
                     <div className="flex items-center gap-2 text-white/70 text-sm">
                       <User className="w-4 h-4" />
