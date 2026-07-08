@@ -9,6 +9,7 @@ import { db } from '../firebase';
 import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList } from '../utils/aiDrugSave';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { useDrugs } from '../hooks/useDrugs';
+import { drugMatchesConditionKeywords } from '../data/systemConditions';
 import { GripHorizontal } from 'lucide-react';
 
 function isIncomplete(drug) {
@@ -135,7 +136,7 @@ export function AiInsightProvider({ children }) {
   // logic, a plain ref never is.
   const conditionRunningRef = useRef(false);
 
-  const startConditionSave = useCallback(async ({ items, conditionId, label, existingByName, endpoint = '/api/drug-ai-details' }) => {
+  const startConditionSave = useCallback(async ({ items, conditionId, label, conditionKeywords, existingByName, endpoint = '/api/drug-ai-details' }) => {
     if (conditionRunningRef.current || !items || items.length === 0) return;
     conditionRunningRef.current = true;
     conditionAbortRef.current = false;
@@ -144,7 +145,7 @@ export function AiInsightProvider({ children }) {
     setConditionRunning(true);
     setConditionProgress({ done: 0, total: items.length });
 
-    let done = 0, saved = 0, reused = 0, failed = 0;
+    let done = 0, saved = 0, reused = 0, failed = 0, skippedMismatch = 0;
     const errors = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -154,6 +155,19 @@ export function AiInsightProvider({ children }) {
 
       const existing = existingByName.get(normalizeDrugName(item.name));
       if (existing) {
+        // The AI mentioned this name and it happens to already be in the
+        // database — but that alone doesn't mean it's actually indicated
+        // for THIS condition (it may be in the DB for something else
+        // entirely). Check its stored indications against the condition's
+        // keywords before tagging it on; a null result means we have no
+        // keywords to check against, so fall back to trusting the AI.
+        const relevant = drugMatchesConditionKeywords(existing, conditionKeywords);
+        if (relevant === false) {
+          skippedMismatch++;
+          done++;
+          setConditionProgress({ done, total: items.length });
+          continue;
+        }
         try {
           await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
             condition_tags: arrayUnion(conditionId),
@@ -196,7 +210,7 @@ export function AiInsightProvider({ children }) {
     conditionRunningRef.current = false;
     setConditionRunning(false);
     setConditionCurrentName(null);
-    setConditionSummary({ saved, reused, failed, errors, stopped, total: items.length, label });
+    setConditionSummary({ saved, reused, failed, skippedMismatch, errors, stopped, total: items.length, label });
 
     // A newly-created or empty condition may have been queued up while this
     // job was running — pick up the next one automatically.
@@ -256,7 +270,7 @@ export function AiInsightProvider({ children }) {
         // Awaited fully — queueLockRef stays held for this job's entire
         // save run, not just the initial fetch, so nothing else can jump
         // the queue while it's in progress.
-        await startConditionSave({ items, conditionId: job.conditionId, label: job.label, existingByName, endpoint: job.endpoint });
+        await startConditionSave({ items, conditionId: job.conditionId, label: job.label, conditionKeywords: job.conditionKeywords, existingByName, endpoint: job.endpoint });
       }
     } catch (e) {
       console.warn('[autoFillQueue] failed for condition', job.label, e.message);
@@ -559,6 +573,11 @@ function ConditionSaveWidget() {
           {conditionSummary.reused > 0 && (
             <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
               🔗 {conditionSummary.reused} existing drug{conditionSummary.reused !== 1 ? 's' : ''} linked
+            </div>
+          )}
+          {conditionSummary.skippedMismatch > 0 && (
+            <div style={{ fontSize: 12, color: '#FBBF24', marginBottom: 4 }}>
+              ⚠ {conditionSummary.skippedMismatch} skipped — not actually indicated for this condition
             </div>
           )}
           {conditionSummary.failed > 0 && (

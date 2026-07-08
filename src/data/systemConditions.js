@@ -649,6 +649,16 @@ function matchesConditionByKeyword(drug, cond) {
   });
 }
 
+// Same check as above, exported for use outside this module — specifically
+// by the condition auto-fill job (AiInsightContext), which needs to verify
+// an EXISTING drug the AI mentioned for a condition is actually indicated
+// for it before blindly tagging it on, rather than trusting a name match
+// alone (that was silently tagging drugs onto conditions they don't treat).
+export function drugMatchesConditionKeywords(drug, keywords) {
+  if (!Array.isArray(keywords) || keywords.length === 0) return null; // no keywords to check against — caller should skip the check
+  return matchesConditionByKeyword(drug, { keywords });
+}
+
 // Suggest condition ids for a drug within a system, using the strict keyword
 // rule above. Used by the admin backfill to seed condition_tags. Returns an
 // array of condition ids.

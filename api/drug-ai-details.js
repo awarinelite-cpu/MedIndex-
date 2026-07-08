@@ -109,24 +109,27 @@ List every commonly available formulation/route. Do not add headers, bullets, ex
       });
     }
 
-    // We intentionally DO NOT tell the AI to exclude drugs already in the
-    // database. Existing drugs are still used for this condition and must
-    // appear in the list so they get linked to it — the client reuses their
-    // existing information (no regeneration) rather than generating anew.
-    // We still pass the known names as a hint so the AI prefers the exact
-    // same generic-name spelling, which lets the client match them reliably.
+    // Bias this strongly toward genuinely NEW medications rather than the
+    // same familiar shortlist every time. The old wording ("include them
+    // anyway") actively encouraged recycling already-known drugs — several
+    // of which weren't even properly indicated for the condition but got
+    // added anyway just because the AI mentioned the name and it matched
+    // something already in the database. Now the known list is framed as
+    // "already covered, go beyond this" instead of "feel free to repeat".
     const knownList = Array.isArray(knownDrugNames) && knownDrugNames.length
-      ? `\nSome of these medications may already be in the app's database; include them anyway if they are used for this condition. When a medication matches one of the following, use this exact spelling of its generic name so it can be recognised: ${knownDrugNames.join(', ')}\n`
+      ? `\nThese generic names are ALREADY in the app's database and, in most cases, already linked to this condition — do NOT spend the list repeating them: ${knownDrugNames.join(', ')}\nOnly re-mention one of the above if it is such a standard first-line agent that leaving it out would be a glaring clinical omission — and even then, keep that to a small minority of the list. The large majority of your answer should be medications NOT in that list: additional generics, newer agents, less commonly listed but still genuinely indicated options, and different brand-name/trade products available in Nigeria for generics not already covered above.\n`
       : '';
 
-    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is looking at the clinical condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} and wants the full list of medications used to treat or manage it.
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is looking at the clinical condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} and wants to discover MORE medications used to treat or manage it — genuinely new entries for the database, not a repeat of what's already there.
 ${knownList}
-List the commonly used medications (generic names) indicated for "${conditionLabel}" — the COMPLETE clinical picture, including well-known first-line agents even if they might already be in the database. Group them by drug class using ## markdown headers (e.g. "## ACE Inhibitors", "## Thiazide Diuretics", "## Beta-Blockers") — a condition is usually treated by several different drug classes, so use as many class headers as are actually relevant.
+Search broadly, the way a nurse would when checking multiple references and pharmacy stock lists — not just the handful of textbook first-line names. Think through generic names AND the brand/trade-name products marketed in Nigeria for this condition (e.g. a locally common trade name can point you to a generic that textbooks under-emphasize). Every medication you list must be GENUINELY indicated for "${conditionLabel}" specifically — do not include a drug just because it's well-known or commonly prescribed for other conditions; if you are not confident it treats THIS condition, leave it out rather than guessing.
 
-For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), its role specifically for "${conditionLabel}" (first-line/adjunct/second-line, etc.), and any notable distinguishing feature. Example format:
-- **Lisinopril** — PO; first-line for hypertension and heart failure with reduced ejection fraction; avoid in pregnancy.
+List the medications (generic names) indicated for "${conditionLabel}", grouped by drug class using ## markdown headers (e.g. "## ACE Inhibitors", "## Thiazide Diuretics", "## Beta-Blockers") — a condition is usually treated by several different drug classes, so use as many class headers as are actually relevant.
 
-Aim for a reasonably thorough list (roughly 10-25 medications across the relevant classes) so the nurse gets real coverage of how this condition is managed, not just one or two examples. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
+For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), a common Nigerian brand/trade name in parentheses if you know one, its role specifically for "${conditionLabel}" (first-line/adjunct/second-line, etc.), and any notable distinguishing feature. Example format:
+- **Lisinopril** (Zestril) — PO; first-line for hypertension and heart failure with reduced ejection fraction; avoid in pregnancy.
+
+Aim for a thorough, genuinely comprehensive list (roughly 15-30 medications across the relevant classes) that goes beyond the obvious/commonly-cited names, so the nurse gets real breadth — not just the same short list every time. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
 
 This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
   } else if (mode === 'system_conditions') {

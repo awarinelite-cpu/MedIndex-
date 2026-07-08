@@ -58,7 +58,7 @@ function normalizeDrugName(name) {
 }
 
 /* ── AI expansion for a clinical condition ───────────────────────────────── */
-function AiConditionFallback({ conditionId, conditionLabel, systemName, existingDrugs }) {
+function AiConditionFallback({ conditionId, conditionLabel, conditionKeywords, systemName, existingDrugs }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   const { drugs: allDrugs } = useDrugs();
@@ -118,7 +118,7 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
   const items = state === 'done' ? parseAiDrugList(text) : [];
 
   const saveAllToDatabase = () => {
-    startConditionSave({ items, conditionId, label: conditionLabel, existingByName, endpoint: provider.endpoint });
+    startConditionSave({ items, conditionId, label: conditionLabel, conditionKeywords, existingByName, endpoint: provider.endpoint });
   };
 
   if (state === 'idle') {
@@ -212,8 +212,8 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
           {bulkResults.saved > 0 && `${bulkResults.saved} newly generated`}
           {bulkResults.saved > 0 && bulkResults.reused > 0 && ', '}
           {bulkResults.reused > 0 && `${bulkResults.reused} existing drug${bulkResults.reused !== 1 ? 's' : ''} linked (info reused)`}
+          {bulkResults.skippedMismatch > 0 && `, ${bulkResults.skippedMismatch} skipped (not actually indicated for this condition)`}
           {bulkResults.errors.length > 0 && `, ${bulkResults.errors.length} failed`}.
-          Refresh to see them in the list above.
         </div>
       )}
 
@@ -431,6 +431,7 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
             <AiConditionFallback
               conditionId={condition.id}
               conditionLabel={condition.label}
+              conditionKeywords={condition.keywords}
               systemName={systemName}
               existingDrugs={drugs}
             />
@@ -489,7 +490,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
       setAddedIds(prev => new Set(prev).add(id));
       // Automatically start filling this brand-new condition with drugs —
       // no need to open it and click "Find more drugs" / "Save All" manually.
-      enqueueAutoFillCondition({ conditionId: id, label: item.label, systemName, endpoint: provider.endpoint });
+      enqueueAutoFillCondition({ conditionId: id, label: item.label, conditionKeywords: item.keywords, systemName, endpoint: provider.endpoint });
     } catch (e) {
       setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
     } finally {
@@ -517,7 +518,7 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
       // Automatically start filling every newly created condition with
       // drugs, one at a time (progress shows in the floating widget) — no
       // manual "Save All" click needed for any of them.
-      toAdd.forEach(c => enqueueAutoFillCondition({ conditionId: c.id, label: c.label, systemName, endpoint: provider.endpoint }));
+      toAdd.forEach(c => enqueueAutoFillCondition({ conditionId: c.id, label: c.label, conditionKeywords: c.keywords, systemName, endpoint: provider.endpoint }));
       // No reload needed — addedIds above updates the UI immediately, and
       // the live useCustomConditions() listener confirms it from Firestore
       // in the background.
@@ -703,7 +704,7 @@ export default function SystemPage() {
   const runEmptyConditionSweep = async ({ resetFirst = false } = {}) => {
     const emptyConditions = [...conditionGroups.entries()]
       .filter(([, g]) => g.drugs.length === 0)
-      .map(([id, g]) => ({ id, label: g.condition.label }));
+      .map(([id, g]) => ({ id, label: g.condition.label, keywords: g.condition.keywords }));
     if (emptyConditions.length === 0) return 0;
 
     const flagRef = doc(db, 'app_config', 'condition_autofill_attempted');
@@ -725,7 +726,7 @@ export default function SystemPage() {
     }, { merge: true });
 
     toQueue.forEach(c => enqueueAutoFillCondition({
-      conditionId: c.id, label: c.label, systemName: system.name, endpoint: provider.endpoint,
+      conditionId: c.id, label: c.label, conditionKeywords: c.keywords, systemName: system.name, endpoint: provider.endpoint,
     }));
     return toQueue.length;
   };
