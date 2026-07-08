@@ -6,27 +6,33 @@
 // Every request must carry the calling admin's Firebase ID token as
 // `Authorization: Bearer <token>` — verified server-side against the
 // `admins` Firestore collection before anything else runs.
+//
+// CACHING: Firebase Auth listUsers() is subject to a hard quota (~1 req/s).
+// We cache the result in the Vercel function's module-level memory for 60s
+// so repeated page loads and refreshes don't burn through the quota.
+// Cache is busted after any disable/enable/delete action so the list stays
+// accurate after mutations.
 // ──────────────────────────────────────────────────────────────────────────
 
-// ── /api/admin/users ──────────────────────────────────────────────────────
-// Node.js serverless function (needs firebase-admin, so no `edge` runtime).
-// GET  → list every Firebase Auth user (email, name, status, sign-in info)
-// POST → { action: 'disable' | 'enable' | 'delete', uid } on one user
-//
-// Every request must carry the calling admin's Firebase ID token as
-// `Authorization: Bearer <token>` — verified server-side against the
-// `admins` Firestore collection before anything else runs.
-//
-// NOTE: the Admin SDK module is imported dynamically (inside the handler,
-// inside a try/catch) rather than with a top-level `import`. A top-level
-// import that fails (bad/missing service account, bundling issue, etc.)
-// crashes the whole function before any of our own error handling can run,
-// which shows up to the caller as a bare, message-less 500. Loading it
-// dynamically turns that same failure into a normal caught rejection, so
-// the real error message always makes it back to the client.
-// ──────────────────────────────────────────────────────────────────────────
+// Module-level cache shared across warm function invocations in the same
+// Vercel container. Cold starts get a fresh cache automatically.
+let _cache = null;       // { users: [...], nextPageToken: null, ts: Date.now() }
+const CACHE_TTL_MS = 60_000; // 60 seconds
+
+function isCacheValid() {
+  return _cache && (Date.now() - _cache.ts < CACHE_TTL_MS);
+}
+function bustCache() {
+  _cache = null;
+}
 
 export default async function handler(req, res) {
+  // CORS pre-flight
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') { res.status(204).end(); return; }
+
   try {
     let firebaseAdmin;
     try {
@@ -45,23 +51,52 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── GET: list users ────────────────────────────────────────────────────
     if (req.method === 'GET') {
-      const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken : undefined;
-      const result = await adminAuth().listUsers(1000, pageToken);
-      const users = result.users.map(u => ({
-        uid:           u.uid,
-        email:         u.email || '',
-        displayName:   u.displayName || '',
-        disabled:      u.disabled,
-        emailVerified: u.emailVerified,
-        createdAt:     u.metadata.creationTime || null,
-        lastSignInAt:  u.metadata.lastSignInTime || null,
-        providers:     (u.providerData || []).map(p => p.providerId),
-      }));
-      res.status(200).json({ users, nextPageToken: result.pageToken || null });
+      // Return cached result if still fresh
+      if (isCacheValid()) {
+        res.setHeader('X-Cache', 'HIT');
+        res.status(200).json({ users: _cache.users, nextPageToken: _cache.nextPageToken, cached: true });
+        return;
+      }
+
+      try {
+        // Fetch up to 500 users (safer than 1000 for quota headroom)
+        const result = await adminAuth().listUsers(500);
+        const users = result.users.map(u => ({
+          uid:           u.uid,
+          email:         u.email || '',
+          displayName:   u.displayName || '',
+          disabled:      u.disabled,
+          emailVerified: u.emailVerified,
+          createdAt:     u.metadata.creationTime || null,
+          lastSignInAt:  u.metadata.lastSignInTime || null,
+          providers:     (u.providerData || []).map(p => p.providerId),
+        }));
+
+        // Store in module-level cache
+        _cache = { users, nextPageToken: result.pageToken || null, ts: Date.now() };
+
+        res.setHeader('X-Cache', 'MISS');
+        res.status(200).json({ users, nextPageToken: result.pageToken || null });
+      } catch (e) {
+        // Surface quota errors with a clear, actionable message instead of
+        // the raw gRPC "8 RESOURCE_EXHAUSTED" string
+        const msg = e?.message || '';
+        const isQuota = msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Quota exceeded') || e?.code === 8;
+        if (isQuota) {
+          res.status(429).json({
+            error: 'Firebase Auth quota exceeded — the user list can only be fetched ~1 time per second. Please wait 60 seconds and try again.',
+            retryAfterSeconds: 60,
+          });
+          return;
+        }
+        throw e; // re-throw non-quota errors to the outer catch
+      }
       return;
     }
 
+    // ── POST: mutate one user ──────────────────────────────────────────────
     if (req.method === 'POST') {
       const { action, uid } = req.body || {};
       if (!uid)    { res.status(400).json({ error: 'Missing uid.' }); return; }
@@ -77,15 +112,20 @@ export default async function handler(req, res) {
       else if (action === 'delete')  await adminAuth().deleteUser(uid);
       else { res.status(400).json({ error: `Unknown action: ${action}` }); return; }
 
+      // Bust the cache so the next GET reflects the mutation
+      bustCache();
+
       res.status(200).json({ ok: true });
       return;
     }
 
     res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ error: 'Method not allowed' });
+
   } catch (e) {
-    // Last-resort net: whatever broke, always return real JSON with the
-    // actual message rather than letting the platform return a bare 500.
-    res.status(500).json({ error: e?.message || 'Unknown server error.', stack: e?.stack?.split('\n').slice(0, 3) });
+    res.status(500).json({
+      error: e?.message || 'Unknown server error.',
+      stack: e?.stack?.split('\n').slice(0, 3),
+    });
   }
 }

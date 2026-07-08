@@ -125,9 +125,10 @@ function UserActivityPanel({ uid }) {
 }
 
 export default function AdminUsersPage() {
-  const [users,   setUsers]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
+  const [users,      setUsers]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState('');
+  const [retryAfter, setRetryAfter] = useState(0); // seconds countdown after quota error
   const [search,  setSearch]  = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // '', 'active', 'disabled'
   const [expandedUid, setExpandedUid] = useState(null);
@@ -138,8 +139,22 @@ export default function AdminUsersPage() {
   const loadUsers = useCallback(async () => {
     setLoading(true);
     setError('');
+    setRetryAfter(0);
     try {
-      const data = await callUsersApi('GET');
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 429) {
+        // Quota error — show countdown
+        const secs = data.retryAfterSeconds || 60;
+        setRetryAfter(secs);
+        setError(data.error || 'Firebase quota exceeded. Please wait and try again.');
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       setUsers(data.users || []);
     } catch (e) {
       setError(e.message || 'Failed to load users.');
@@ -148,6 +163,23 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // Countdown timer for quota retry — auto-reloads when it hits 0
+  useEffect(() => {
+    if (retryAfter <= 0) return;
+    const t = setInterval(() => {
+      setRetryAfter(s => {
+        if (s <= 1) {
+          clearInterval(t);
+          // Auto-retry once the wait period is over
+          loadUsers();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [retryAfter, loadUsers]);
 
   const stats = useMemo(() => ({
     total:    users.length,
@@ -247,13 +279,30 @@ export default function AdminUsersPage() {
         ))}
       </div>
 
-      {/* Server-not-configured error */}
+      {/* Error banner */}
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-red-700">
+          <div className="text-sm text-red-700 flex-1">
             <p className="font-semibold mb-1">Couldn't load users</p>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{error}</p>
+            {retryAfter > 0 ? (
+              <div>
+                <p className="mb-2">Firebase Auth quota exceeded — too many requests in a short time.</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-2 bg-red-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-red-500 rounded-full transition-all duration-1000"
+                      style={{ width: `${(retryAfter / 60) * 100}%` }}
+                    />
+                  </div>
+                  <span className="font-bold text-red-600 text-xs w-16 text-right">
+                    {retryAfter}s — auto-retry
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p style={{ whiteSpace: 'pre-wrap' }}>{error}</p>
+            )}
           </div>
         </div>
       )}
