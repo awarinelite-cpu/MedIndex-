@@ -4,12 +4,26 @@
 // lives above the router, so it keeps running (and the floating widget stays
 // visible) no matter which page the admin navigates to.
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { generateDrugOnce, saveParsedDrug, getMissingGroups } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
 
 function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
+}
+
+// Same name-normalisation used by SystemPage's condition matching, duplicated
+// here (rather than imported) so this context has no dependency on any page.
+function normalizeDrugName(name) {
+  let n = (name || '').trim().toLowerCase();
+  n = n.replace(/[\s/.+-]+/g, ' ').trim();
+  n = n.replace(/\bco (\w)/g, 'co$1');
+  n = n
+    .replace(/\bclavulanic acid\b/g, 'clavulanate')
+    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return n;
 }
 
 const CONCURRENCY = 8; // paid Gemini tier — safe to run 8 in parallel
@@ -101,13 +115,90 @@ export function AiInsightProvider({ children }) {
   const stopGlobalFix   = useCallback(() => { abortRef.current = true; }, []);
   const dismissSummary  = useCallback(() => setSummary(null), []);
 
+  // ── Second, independent background job: "Save All" for a condition's AI
+  // drug list. Previously this ran as local component state inside
+  // SystemPage's AiConditionFallback, which meant collapsing the accordion
+  // or opening a different condition (both unmount that component) killed
+  // all visible progress and left nothing coordinating the loop. Lives here
+  // instead so it survives navigation exactly like the drug-completion job.
+  const [conditionRunning,     setConditionRunning]     = useState(false);
+  const [conditionProgress,    setConditionProgress]    = useState({ done: 0, total: 0 });
+  const [conditionCurrentName, setConditionCurrentName] = useState(null);
+  const [conditionSummary,     setConditionSummary]     = useState(null);
+  const [conditionLabel,       setConditionLabel]       = useState('');
+  const conditionAbortRef = useRef(false);
+
+  const startConditionSave = useCallback(async ({ items, conditionId, label, existingByName, endpoint = '/api/drug-ai-details' }) => {
+    if (conditionRunning || !items || items.length === 0) return;
+    conditionAbortRef.current = false;
+    setConditionSummary(null);
+    setConditionLabel(label);
+    setConditionRunning(true);
+    setConditionProgress({ done: 0, total: items.length });
+
+    let done = 0, saved = 0, reused = 0, failed = 0;
+    const errors = [];
+
+    for (let i = 0; i < items.length; i++) {
+      if (conditionAbortRef.current) break;
+      const item = items[i];
+      setConditionCurrentName(item.name);
+
+      const existing = existingByName.get(normalizeDrugName(item.name));
+      if (existing) {
+        try {
+          await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
+            condition_tags: arrayUnion(conditionId),
+            last_updated:   serverTimestamp(),
+          });
+          reused++;
+        } catch (e) {
+          errors.push({ name: item.name, message: `Failed to link existing drug: ${e.message}` });
+          failed++;
+        }
+      } else {
+        const drugClassForItem = item.subclass || undefined;
+        try {
+          const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint });
+          const result = await saveAiDrugToDatabase({
+            genericName: item.name, drugClass: drugClassForItem, text: itemText, overwrite: true,
+          });
+          if (result.status === 'saved') {
+            saved++;
+            try {
+              await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), { condition_tags: arrayUnion(conditionId) });
+            } catch { /* tag is best-effort */ }
+          }
+        } catch (e) {
+          errors.push({ name: item.name, message: e.message || 'Failed to save.' });
+          failed++;
+        }
+        await new Promise(r => setTimeout(r, 350));
+      }
+
+      done++;
+      setConditionProgress({ done, total: items.length });
+    }
+
+    const stopped = conditionAbortRef.current;
+    setConditionRunning(false);
+    setConditionCurrentName(null);
+    setConditionSummary({ saved, reused, failed, errors, stopped, total: items.length, label });
+  }, [conditionRunning]);
+
+  const stopConditionSave      = useCallback(() => { conditionAbortRef.current = true; }, []);
+  const dismissConditionSummary = useCallback(() => setConditionSummary(null), []);
+
   return (
     <AiInsightContext.Provider value={{
       running, progress, currentName, summary,
       startGlobalFix, stopGlobalFix, dismissSummary, subscribeFix,
+      conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
+      startConditionSave, stopConditionSave, dismissConditionSummary,
     }}>
       {children}
       <GlobalAiInsightWidget />
+      <ConditionSaveWidget />
     </AiInsightContext.Provider>
   );
 }
@@ -120,7 +211,7 @@ export function useAiInsight() {
 
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
-  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary } = useContext(AiInsightContext);
+  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary } = useContext(AiInsightContext);
   const [startTime] = React.useState(() => Date.now());
   const [now, setNow] = React.useState(Date.now());
 
@@ -133,6 +224,7 @@ function GlobalAiInsightWidget() {
   if (!running && !summary) return null;
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const stackedBelow = conditionRunning || conditionSummary; // shift up so it doesn't overlap the other widget
 
   // ETA calculation
   let etaLabel = '';
@@ -150,11 +242,12 @@ function GlobalAiInsightWidget() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 20, right: 16, zIndex: 9999,
+      position: 'fixed', bottom: stackedBelow ? 270 : 20, right: 16, zIndex: 9999,
       width: 300, background: '#0F172A', color: '#fff',
       borderRadius: 20, padding: '16px 18px',
       boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
       border: '1px solid rgba(255,255,255,0.08)',
+      transition: 'bottom 0.25s ease',
     }}>
       {running ? (
         <>
@@ -218,6 +311,97 @@ function GlobalAiInsightWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissSummary}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Floating widget for the condition "Save All" job — same background-
+// survives-navigation guarantee, stacked below the drug-completion widget ──
+function ConditionSaveWidget() {
+  const {
+    conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
+    stopConditionSave, dismissConditionSummary,
+  } = useContext(AiInsightContext);
+
+  if (!conditionRunning && !conditionSummary) return null;
+
+  const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 20, right: 16, zIndex: 9999,
+      width: 300, background: '#0F172A', color: '#fff',
+      borderRadius: 20, padding: '16px 18px',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+      border: '1px solid rgba(255,255,255,0.08)',
+    }}>
+      {conditionRunning ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#8B5CF6', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Saving "{conditionLabel}"…
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, flexShrink: 0 }}>{pct}%</span>
+          </div>
+
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg, #8B5CF6, #A78BFA)', borderRadius: 3, width: `${pct}%`, transition: 'width 0.5s ease' }} />
+          </div>
+
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>
+            {conditionProgress.done} / {conditionProgress.total} drugs
+          </div>
+
+          {conditionCurrentName && (
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              ⚡ {conditionCurrentName}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+            Running in background — you can navigate freely
+          </div>
+
+          <button
+            onClick={stopConditionSave}
+            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+          >
+            ⏹ Stop
+          </button>
+        </>
+      ) : conditionSummary && (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {conditionSummary.stopped ? '⏹ Stopped — ' : '✅ Done — '}"{conditionSummary.label}"
+          </div>
+          {conditionSummary.saved > 0 && (
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+              ✓ {conditionSummary.saved} newly generated
+            </div>
+          )}
+          {conditionSummary.reused > 0 && (
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+              🔗 {conditionSummary.reused} existing drug{conditionSummary.reused !== 1 ? 's' : ''} linked
+            </div>
+          )}
+          {conditionSummary.failed > 0 && (
+            <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
+              ✗ {conditionSummary.failed} failed
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={dismissConditionSummary}
               style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss

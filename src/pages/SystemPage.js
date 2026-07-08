@@ -10,14 +10,15 @@ import {
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
+import { useAiInsight } from '../context/AiInsightContext';
 import { getSystemById } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
-import { fetchConditionDrugList, fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchSystemConditionsList, slugifyDrugName } from '../utils/aiDrugSave';
+import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
-import { doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 
@@ -82,9 +83,22 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
   const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError] = useState('');
 
-  const [bulkState, setBulkState]     = useState('idle'); // idle | running | done
-  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
-  const [bulkResults, setBulkResults] = useState(null); // { saved, errors: [{name, message}] }
+  // The actual "Save All" job now lives in AiInsightContext, mounted above
+  // the router — so it keeps running (with a floating progress widget) even
+  // if this component unmounts, which happens the moment this condition's
+  // accordion is collapsed or a different condition is opened. This card
+  // only reflects progress when ITS OWN condition is the one currently
+  // tracked; a different condition's job keeps running invisibly and still
+  // shows in the global widget.
+  const {
+    conditionRunning, conditionProgress, conditionSummary, conditionLabel: activeLabel,
+    startConditionSave,
+  } = useAiInsight();
+  const isThisConditionActive = activeLabel === conditionLabel;
+  const bulkState    = isThisConditionActive && conditionRunning ? 'running' : (isThisConditionActive && conditionSummary ? 'done' : 'idle');
+  const bulkProgress = isThisConditionActive ? conditionProgress : { done: 0, total: 0 };
+  const bulkResults  = isThisConditionActive ? conditionSummary : null;
+  const anyConditionRunning = conditionRunning; // a DIFFERENT condition may be saving right now
 
   const runLookup = async () => {
     setState('loading');
@@ -103,62 +117,8 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
 
   const items = state === 'done' ? parseAiDrugList(text) : [];
 
-  const saveAllToDatabase = async () => {
-    setBulkState('running');
-    setBulkResults(null);
-    let saved = 0, reused = 0;
-    const errors = [];
-
-    // For each AI-suggested drug:
-    //   - If it ALREADY EXISTS: do NOT regenerate. Just tag its existing
-    //     record with this condition id so it shows here, drawing on the
-    //     information it already has.
-    //   - If it's NEW: generate full details once with AI, save, and tag it.
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
-
-      const existing = existingByName.get(normalizeDrugName(item.name));
-      if (existing) {
-        // Reuse the existing drug as-is — only attach the condition link.
-        try {
-          await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
-            condition_tags: arrayUnion(conditionId),
-            last_updated:   serverTimestamp(),
-          });
-          reused += 1;
-        } catch (e) {
-          errors.push({ name: item.name, message: `Failed to link existing drug: ${e.message}` });
-        }
-        continue;
-      }
-
-      // Drug is new — generate with AI, save, then tag with this condition.
-      const drugClassForItem = item.subclass || undefined;
-      try {
-        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint: provider.endpoint });
-        const result = await saveAiDrugToDatabase({
-          genericName: item.name,
-          drugClass: drugClassForItem,
-          text: itemText,
-          overwrite: true,
-        });
-        if (result.status === 'saved') {
-          saved += 1;
-          try {
-            await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), {
-              condition_tags: arrayUnion(conditionId),
-            });
-          } catch { /* tag is best-effort; keyword match still applies */ }
-        }
-      } catch (e) {
-        errors.push({ name: item.name, message: e.message || 'Failed to save.' });
-      }
-      await new Promise(r => setTimeout(r, 350));
-    }
-
-    setBulkResults({ saved, reused, errors });
-    setBulkState('done');
+  const saveAllToDatabase = () => {
+    startConditionSave({ items, conditionId, label: conditionLabel, existingByName, endpoint: provider.endpoint });
   };
 
   if (state === 'idle') {
@@ -211,7 +171,7 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
           <span className="text-sm font-bold text-drug-text truncate">AI: More drugs for "{conditionLabel}"</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {isAdmin && items.length > 0 && bulkState !== 'running' && (
+          {isAdmin && items.length > 0 && !anyConditionRunning && (
             <button
               onClick={saveAllToDatabase}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-lg"
@@ -219,9 +179,12 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
               <Save className="w-3 h-3" /> Save All
             </button>
           )}
+          {isAdmin && anyConditionRunning && !isThisConditionActive && (
+            <span className="text-xs text-drug-muted italic">Saving "{activeLabel}"…</span>
+          )}
           <button
             onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
-            disabled={bulkState === 'running'}
+            disabled={anyConditionRunning}
             className="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Regenerate
@@ -232,12 +195,15 @@ function AiConditionFallback({ conditionId, conditionLabel, systemName, existing
       {bulkState === 'running' && (
         <div className="p-4 border-b border-drug-border">
           <p className="text-xs text-drug-muted mb-2">
-            Saving {bulkProgress.current}/{bulkProgress.total} — {bulkProgress.currentName}
+            Saving {bulkProgress.done}/{bulkProgress.total}
           </p>
           <div className="w-full bg-gray-100 rounded-full h-1.5">
             <div className="bg-primary-500 h-1.5 rounded-full transition-all"
-                 style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }} />
+                 style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }} />
           </div>
+          <p className="text-[11px] text-drug-muted mt-2">
+            Running in the background — feel free to browse elsewhere; progress also shows in the widget at the bottom of the screen.
+          </p>
         </div>
       )}
 
