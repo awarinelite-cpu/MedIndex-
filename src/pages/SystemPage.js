@@ -692,6 +692,55 @@ export default function SystemPage() {
     [drugs, systemId, extraConditions]
   );
 
+  const [retryingEmpty, setRetryingEmpty] = useState(false);
+
+  // Shared by the automatic on-visit sweep below AND the manual "Retry"
+  // button (admin-only) — resetFirst clears this system's entries from the
+  // attempted-flag doc before sweeping, so conditions that were queued but
+  // never actually got processed (e.g. the queue race that existed before
+  // this fix, or any other silent failure) can be re-attempted on demand
+  // instead of being permanently skipped.
+  const runEmptyConditionSweep = async ({ resetFirst = false } = {}) => {
+    const emptyConditions = [...conditionGroups.entries()]
+      .filter(([, g]) => g.drugs.length === 0)
+      .map(([id, g]) => ({ id, label: g.condition.label }));
+    if (emptyConditions.length === 0) return 0;
+
+    const flagRef = doc(db, 'app_config', 'condition_autofill_attempted');
+    const snap = await getDoc(flagRef);
+    let attemptedIds = snap.exists() ? (snap.data().ids || []) : [];
+
+    if (resetFirst) {
+      const prefix = `${systemId}::`;
+      attemptedIds = attemptedIds.filter(id => !id.startsWith(prefix));
+      await setDoc(flagRef, { ids: attemptedIds }, { merge: true });
+    }
+
+    const attempted = new Set(attemptedIds);
+    const toQueue = emptyConditions.filter(c => !attempted.has(`${systemId}::${c.id}`));
+    if (toQueue.length === 0) return 0;
+
+    await setDoc(flagRef, {
+      ids: arrayUnion(...toQueue.map(c => `${systemId}::${c.id}`)),
+    }, { merge: true });
+
+    toQueue.forEach(c => enqueueAutoFillCondition({
+      conditionId: c.id, label: c.label, systemName: system.name, endpoint: provider.endpoint,
+    }));
+    return toQueue.length;
+  };
+
+  async function handleRetryEmptyConditions() {
+    setRetryingEmpty(true);
+    try {
+      await runEmptyConditionSweep({ resetFirst: true });
+    } catch (e) {
+      console.warn('[retry empty conditions] failed:', e.message);
+    } finally {
+      setRetryingEmpty(false);
+    }
+  }
+
   // ── Auto-fill sweep: any condition in THIS system that currently has zero
   // tagged drugs gets queued for AI auto-fill automatically — no admin click
   // needed. Each condition is only ever auto-attempted once (tracked in
@@ -703,28 +752,9 @@ export default function SystemPage() {
     let cancelled = false;
 
     (async () => {
-      const emptyConditions = [...conditionGroups.entries()]
-        .filter(([, g]) => g.drugs.length === 0)
-        .map(([id, g]) => ({ id, label: g.condition.label }));
-      if (emptyConditions.length === 0) return;
-
       try {
-        const flagRef = doc(db, 'app_config', 'condition_autofill_attempted');
-        const snap = await getDoc(flagRef);
-        const attempted = new Set(snap.exists() ? (snap.data().ids || []) : []);
-        const toQueue = emptyConditions.filter(c => !attempted.has(`${systemId}::${c.id}`));
-        if (toQueue.length === 0 || cancelled) return;
-
-        // Mark them attempted immediately, before the AI calls even start,
-        // so a second tab/admin/visit in the meantime doesn't queue the
-        // same conditions again.
-        await setDoc(flagRef, {
-          ids: arrayUnion(...toQueue.map(c => `${systemId}::${c.id}`)),
-        }, { merge: true });
-
-        toQueue.forEach(c => enqueueAutoFillCondition({
-          conditionId: c.id, label: c.label, systemName: system.name, endpoint: provider.endpoint,
-        }));
+        if (cancelled) return;
+        await runEmptyConditionSweep();
       } catch (e) {
         console.warn('[empty-condition auto-fill sweep] failed:', e.message);
       }
@@ -821,12 +851,23 @@ export default function SystemPage() {
         <div className={`p-3 rounded-xl ${system.bg}`}>
           <Icon className={`w-7 h-7 ${system.color}`} />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl sm:text-3xl font-bold">{system.name}</h1>
           <p className="text-drug-muted mt-0.5 text-sm">
             {loading ? 'Loading…' : `${drugs.length} medication${drugs.length !== 1 ? 's' : ''} · ${conditionGroups.size} condition${conditionGroups.size !== 1 ? 's' : ''} · ${allClasses.length} drug class${allClasses.length !== 1 ? 'es' : ''}`}
           </p>
         </div>
+        {isAdmin && !loading && (
+          <button
+            onClick={handleRetryEmptyConditions}
+            disabled={retryingEmpty}
+            title="Re-queue any conditions in this system that still have zero drugs — useful if an earlier auto-fill run stalled partway through"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50 flex-shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${retryingEmpty ? 'animate-spin' : ''}`} />
+            {retryingEmpty ? 'Retrying…' : 'Retry empty conditions'}
+          </button>
+        )}
       </div>
 
       {/* Filters bar */}

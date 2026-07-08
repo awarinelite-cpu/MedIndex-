@@ -222,32 +222,49 @@ export function AiInsightProvider({ children }) {
   const { drugs: drugsForAutoFill } = useDrugs();
   useEffect(() => { allDrugsRef.current = drugsForAutoFill; }, [drugsForAutoFill]);
 
+  // Guards against a race that was silently dropping jobs: enqueueing
+  // several conditions at once (e.g. "Add All", or the empty-condition
+  // sweep finding 5 at once) called processAutoFillQueue() once per
+  // condition. Since the AI fetch inside it is async, multiple calls could
+  // each shift a different job off the queue before the first one had
+  // actually set conditionRunningRef — so only the first job's
+  // startConditionSave call ever "won" the run, and every other
+  // already-shifted job got silently discarded when ITS OWN startConditionSave
+  // call saw conditionRunningRef already true and bailed out. This lock
+  // makes the whole "shift a job → fetch → hand off to startConditionSave"
+  // sequence atomic, so extra concurrent calls just no-op instead of
+  // stealing and losing a job.
+  const queueLockRef = useRef(false);
+
   const processAutoFillQueue = useCallback(async () => {
-    if (conditionRunningRef.current) return; // will be re-invoked when the current job finishes
+    if (queueLockRef.current || conditionRunningRef.current) return;
     const job = autoFillQueueRef.current.shift();
     if (!job) return;
 
-    const lookupPool = allDrugsRef.current || [];
-    const knownDrugNames = lookupPool.map(d => d.generic_name).filter(Boolean);
-    const existingByName = new Map();
-    lookupPool.forEach(d => { if (d.generic_name) existingByName.set(normalizeDrugName(d.generic_name), d); });
-
+    queueLockRef.current = true;
     try {
+      const lookupPool = allDrugsRef.current || [];
+      const knownDrugNames = lookupPool.map(d => d.generic_name).filter(Boolean);
+      const existingByName = new Map();
+      lookupPool.forEach(d => { if (d.generic_name) existingByName.set(normalizeDrugName(d.generic_name), d); });
+
       const full = await fetchConditionDrugList({
         conditionLabel: job.label, systemName: job.systemName, knownDrugNames, endpoint: job.endpoint,
       });
       const items = parseAiDrugList(full);
       if (items.length > 0) {
+        // Awaited fully — queueLockRef stays held for this job's entire
+        // save run, not just the initial fetch, so nothing else can jump
+        // the queue while it's in progress.
         await startConditionSave({ items, conditionId: job.conditionId, label: job.label, existingByName, endpoint: job.endpoint });
-        // startConditionSave calls processAutoFillQueueRef.current() itself
-        // once it finishes, continuing the queue — nothing more to do here.
-        return;
       }
     } catch (e) {
       console.warn('[autoFillQueue] failed for condition', job.label, e.message);
+    } finally {
+      queueLockRef.current = false;
     }
-    // Nothing to save (empty AI result) or the fetch itself failed — move on
-    // to the next queued condition instead of stalling the whole queue.
+    // Whether this job saved something, found nothing, or errored — move on
+    // to whatever's next in the queue.
     processAutoFillQueueRef.current?.();
   }, [startConditionSave]);
 
