@@ -8,12 +8,29 @@
 // wrong matches with the ✕ button on each condition card.
 
 import React, { useState } from 'react';
-import { collection, getDocs, doc, writeBatch, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, getDocs, doc, addDoc, writeBatch, serverTimestamp, arrayUnion, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Tag, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Tag, RefreshCw, CheckCircle, AlertTriangle, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
-import { suggestConditionTagsForDrug } from '../data/systemConditions';
+import { SYSTEM_CONDITIONS, suggestConditionTagsForDrug } from '../data/systemConditions';
 import { useCustomConditions } from '../hooks/useCustomConditions';
+
+// Maps a condition id -> { label, systemName } across every system, built-in
+// plus admin-added custom conditions, so preview/history rows can show
+// "Hypertension (Cardiovascular)" instead of a bare id or a bare count.
+function buildConditionLookup(customConditionsBySystem) {
+  const map = new Map();
+  for (const system of ANATOMICAL_SYSTEMS) {
+    const list = [...(SYSTEM_CONDITIONS[system.id] || []), ...(customConditionsBySystem?.[system.id] || [])];
+    for (const cond of list) {
+      if (!map.has(cond.id)) map.set(cond.id, { label: cond.label, systemName: system.name });
+    }
+  }
+  return map;
+}
+function resolveIds(ids, lookup) {
+  return ids.map(id => lookup.get(id) || { label: id, systemName: 'Unknown system' });
+}
 
 export default function ConditionTagBackfill() {
   const { customConditionsBySystem } = useCustomConditions();
@@ -92,6 +109,14 @@ export default function ConditionTagBackfill() {
   const [resyncPreview,  setResyncPreview]  = useState(null); // { changes[], tagsToAdd, tagsToRemove }
   const [resyncError,    setResyncError]    = useState('');
 
+  // Past resync runs, loaded on demand from Firestore so the move history
+  // is still there after a page reload — not just for the run just applied.
+  const [history,        setHistory]        = useState(null); // array of past run docs, or null until loaded
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedRunId,  setExpandedRunId]  = useState(null);
+
+  const conditionLookup = buildConditionLookup(customConditionsBySystem);
+
   const previewResync = async () => {
     setResyncState('previewing');
     setResyncError('');
@@ -119,7 +144,14 @@ export default function ConditionTagBackfill() {
         const toRemove = existingTags.filter(id => !suggestedIds.has(id));
 
         if (toAdd.length > 0 || toRemove.length > 0) {
-          changes.push({ id: drug.id, name: drug.generic_name || '(unnamed)', toAdd, toRemove, finalTags: [...suggestedIds] });
+          changes.push({
+            id: drug.id,
+            name: drug.generic_name || '(unnamed)',
+            toAdd, toRemove,
+            addedTo:    resolveIds(toAdd, conditionLookup),
+            removedFrom: resolveIds(toRemove, conditionLookup),
+            finalTags: [...suggestedIds],
+          });
           tagsToAdd    += toAdd.length;
           tagsToRemove += toRemove.length;
         }
@@ -148,6 +180,24 @@ export default function ConditionTagBackfill() {
         if (ops >= 400) { await batch.commit(); batch = writeBatch(db); ops = 0; }
       }
       if (ops > 0) await batch.commit();
+
+      // Log the move list so it's still reviewable after a reload — this is
+      // the "which drug moved from which system to which" history.
+      try {
+        await addDoc(collection(db, 'condition_resync_logs'), {
+          ranAt: serverTimestamp(),
+          drugsAffected: resyncPreview.changes.length,
+          tagsAdded: resyncPreview.tagsToAdd,
+          tagsRemoved: resyncPreview.tagsToRemove,
+          changes: resyncPreview.changes.map(c => ({
+            id: c.id, name: c.name,
+            addedTo: c.addedTo, removedFrom: c.removedFrom,
+          })),
+        });
+      } catch (logErr) {
+        console.warn('[ConditionTagBackfill] failed to save resync history log:', logErr.message);
+      }
+
       setResyncState('done');
     } catch (e) {
       setResyncError(e.message || 'Resync failed.');
@@ -156,6 +206,44 @@ export default function ConditionTagBackfill() {
   };
 
   const cancelResyncPreview = () => { setResyncPreview(null); setResyncState('idle'); };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const q = query(collection(db, 'condition_resync_logs'), orderBy('ranAt', 'desc'), limit(10));
+      const snap = await getDocs(q);
+      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.warn('[ConditionTagBackfill] failed to load resync history:', e.message);
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Shared detail list — "Drug: removed from X (System), added to Y (System)"
+  // — used both for the live preview/result and for a past run pulled from
+  // history, so the two look identical.
+  function renderChangeList(changes, cap = 40) {
+    return (
+      <div className="mt-2 max-h-64 overflow-y-auto text-xs text-drug-muted space-y-1.5 border-t border-drug-border pt-2">
+        {changes.slice(0, cap).map(c => (
+          <div key={c.id}>
+            <span className="font-medium text-drug-text">{c.name}</span>
+            {(c.removedFrom || []).map((r, i) => (
+              <div key={`r-${i}`} className="text-red-600 pl-2">− removed from {r.label} ({r.systemName})</div>
+            ))}
+            {(c.addedTo || []).map((a, i) => (
+              <div key={`a-${i}`} className="text-green-700 pl-2">+ added to {a.label} ({a.systemName})</div>
+            ))}
+          </div>
+        ))}
+        {changes.length > cap && (
+          <div>…and {changes.length - cap} more drug{changes.length - cap !== 1 ? 's' : ''}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6 border border-primary-200 bg-primary-50/40 rounded-2xl p-5">
@@ -265,18 +353,7 @@ export default function ConditionTagBackfill() {
                     {', '}
                     <span className="text-red-600">−{resyncPreview.tagsToRemove} tag{resyncPreview.tagsToRemove !== 1 ? 's' : ''} to remove</span>
                   </p>
-                  <div className="mt-2 max-h-40 overflow-y-auto text-xs text-drug-muted space-y-1 border-t border-drug-border pt-2">
-                    {resyncPreview.changes.slice(0, 25).map(c => (
-                      <div key={c.id} className="truncate">
-                        <span className="font-medium text-drug-text">{c.name}</span>
-                        {c.toAdd.length > 0 && <span className="text-green-700"> +{c.toAdd.length}</span>}
-                        {c.toRemove.length > 0 && <span className="text-red-600"> −{c.toRemove.length}</span>}
-                      </div>
-                    ))}
-                    {resyncPreview.changes.length > 25 && (
-                      <div>…and {resyncPreview.changes.length - 25} more</div>
-                    )}
-                  </div>
+                  {renderChangeList(resyncPreview.changes)}
                   <div className="mt-3 flex items-center gap-2">
                     <button
                       onClick={applyResync}
@@ -301,10 +378,15 @@ export default function ConditionTagBackfill() {
               </div>
             )}
 
-            {resyncState === 'done' && (
-              <p className="mt-3 text-sm text-green-700 inline-flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4" /> Resync complete. Refresh a system page to see the changes.
-              </p>
+            {resyncState === 'done' && resyncPreview && (
+              <div className="mt-3 bg-white border border-green-200 rounded-xl p-4">
+                <p className="text-sm font-semibold text-green-700 inline-flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4" />
+                  Applied — {resyncPreview.changes.length} drug{resyncPreview.changes.length !== 1 ? 's' : ''} moved
+                </p>
+                {renderChangeList(resyncPreview.changes)}
+                <p className="mt-2 text-xs text-drug-muted">Refresh a system page to see the changes. This list is also saved under "Resync history" below.</p>
+              </div>
             )}
 
             {resyncState === 'error' && (
@@ -321,6 +403,70 @@ export default function ConditionTagBackfill() {
                 <RefreshCw className="w-4 h-4" />
                 {resyncState === 'done' ? 'Preview resync again' : resyncState === 'error' ? 'Try again' : 'Preview resync'}
               </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── History: past resync runs pulled from Firestore, so the move
+           list survives a page reload and isn't only visible right after
+           applying. ── */}
+      <div className="mt-5 pt-5 border-t border-primary-200/60">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <History className="w-5 h-5 text-slate-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-drug-text">Resync history</h3>
+            <p className="text-sm text-drug-muted mt-1">
+              Past resync runs — which drugs moved, and which system/condition they moved from and to.
+            </p>
+
+            {history === null && (
+              <button
+                onClick={loadHistory}
+                disabled={historyLoading}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-white border border-drug-border rounded-lg text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
+              >
+                <History className="w-4 h-4" />
+                {historyLoading ? 'Loading…' : 'View resync history'}
+              </button>
+            )}
+
+            {history !== null && history.length === 0 && (
+              <p className="mt-3 text-sm text-drug-muted">No resync runs logged yet.</p>
+            )}
+
+            {history !== null && history.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {history.map(run => {
+                  const isOpen = expandedRunId === run.id;
+                  const when = run.ranAt?.toDate ? run.ranAt.toDate().toLocaleString() : '—';
+                  return (
+                    <div key={run.id} className="bg-white border border-drug-border rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setExpandedRunId(isOpen ? null : run.id)}
+                        className="w-full flex items-center justify-between gap-2 p-3 text-left hover:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-drug-text">{when}</div>
+                          <div className="text-xs text-drug-muted">
+                            {run.drugsAffected} drug{run.drugsAffected !== 1 ? 's' : ''} moved ·{' '}
+                            <span className="text-green-700">+{run.tagsAdded}</span>{' '}
+                            <span className="text-red-600">−{run.tagsRemoved}</span>
+                          </div>
+                        </div>
+                        {isOpen ? <ChevronUp className="w-4 h-4 text-drug-muted flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+                      </button>
+                      {isOpen && (
+                        <div className="px-3 pb-3">
+                          {renderChangeList(run.changes || [])}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
