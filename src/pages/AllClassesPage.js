@@ -16,8 +16,8 @@ import { isDrugComplete } from '../utils/aiDrugSave';
 function ClassSweepInsightCard({ allClasses, endpoint }) {
   const {
     classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
-    classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary,
-    startClassSweep, stopClassSweep, dismissClassSweepSummary,
+    classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary, classSweepResumed,
+    startClassSweep, stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
   } = useAiInsight();
 
   const itemPct = classSweepItemProgress.total
@@ -55,6 +55,9 @@ function ClassSweepInsightCard({ allClasses, endpoint }) {
           <p className="text-sm text-green-50 mt-1 truncate">
             Now scanning: <strong>{classSweepCurrentClass}</strong>
           </p>
+          {classSweepResumed && (
+            <p className="text-xs text-green-100 mt-1">↻ Resumed from where it last stopped</p>
+          )}
         </div>
 
         <div className="p-5">
@@ -91,8 +94,25 @@ function ClassSweepInsightCard({ allClasses, endpoint }) {
 
           <p className="text-xs text-drug-muted mb-3">
             This keeps running in the background — you can navigate away and it'll keep going until it
-            finishes, you stop it, or you log out.
+            finishes, you stop it, or you log out. If you do stop it, tapping "AI Insight" again picks
+            up right where it left off instead of starting over.
           </p>
+
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => jumpClassSweep('prev')}
+              disabled={classSweepClassIndex <= 1}
+              className="flex-1 py-2 bg-white border border-drug-border text-drug-text font-semibold rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-default"
+            >
+              ⏮ Previous class
+            </button>
+            <button
+              onClick={() => jumpClassSweep('next')}
+              className="flex-1 py-2 bg-white border border-drug-border text-drug-text font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Next class ⏭
+            </button>
+          </div>
 
           <button
             onClick={stopClassSweep}
@@ -113,11 +133,17 @@ function ClassSweepInsightCard({ allClasses, endpoint }) {
         {classSweepSummary.stopped ? 'Class Sweep stopped' : 'Class Sweep complete'}
       </div>
       <p className="text-sm text-drug-muted mb-3">
+        {classSweepSummary.resumedFrom ? `Resumed from class #${classSweepSummary.resumedFrom + 1} · ` : ''}
         Covered {classSweepSummary.classesCovered} of {classSweepSummary.classesTotal} classes ·
         <span className="text-green-700 font-semibold"> {classSweepSummary.totalSaved} new drugs saved</span>
         {classSweepSummary.totalExisting > 0 ? ` · ${classSweepSummary.totalExisting} already in database` : ''}
         {classSweepSummary.totalFailed > 0 ? ` · ${classSweepSummary.totalFailed} failed` : ''}
       </p>
+      {classSweepSummary.stopped && (
+        <p className="text-xs text-drug-muted mb-3">
+          Stopped partway through — tapping "Run again" will pick up right where this left off.
+        </p>
+      )}
       <div className="flex items-center gap-3">
         <button
           onClick={dismissClassSweepSummary}

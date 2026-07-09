@@ -16,6 +16,33 @@ function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
 }
 
+// ── Class Sweep checkpoint — remembers which class to resume from next
+// time, so stopping (or a page reload / logout mid-run) doesn't throw away
+// progress. Keyed against the exact class list it was built from; if the
+// list of classes has changed since, the old checkpoint no longer applies
+// and a fresh sweep starts from the top instead.
+const CLASS_SWEEP_CHECKPOINT_KEY = 'medindex_class_sweep_checkpoint_v1';
+
+function loadClassSweepCheckpoint() {
+  try {
+    const raw = localStorage.getItem(CLASS_SWEEP_CHECKPOINT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function saveClassSweepCheckpoint(queue, index) {
+  try {
+    localStorage.setItem(CLASS_SWEEP_CHECKPOINT_KEY, JSON.stringify({ queue, index }));
+  } catch { /* ignore quota/storage errors — worst case it just restarts */ }
+}
+function clearClassSweepCheckpoint() {
+  try { localStorage.removeItem(CLASS_SWEEP_CHECKPOINT_KEY); } catch {}
+}
+function sameQueue(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 // Same name-normalisation used by SystemPage's condition matching, duplicated
 // here (rather than imported) so this context has no dependency on any page.
 function normalizeDrugName(name) {
@@ -237,20 +264,43 @@ export function AiInsightProvider({ children }) {
   const [classSweepCurrentDrug,    setClassSweepCurrentDrug]    = useState(null);
   const [classSweepLog,            setClassSweepLog]            = useState([]); // [{className, saved, existing, failed}]
   const [classSweepSummary,        setClassSweepSummary]        = useState(null);
+  // True for the lifetime of a run that started from a saved checkpoint
+  // rather than class #1 — lets the pop card show "Resumed…" for that run.
+  const [classSweepResumed,        setClassSweepResumed]        = useState(false);
   const classSweepAbortRef  = useRef(false);
   const classSweepRunningRef = useRef(false);
+  // Pending manual navigation request from the pop card's Previous/Next
+  // buttons — a 0-based target index into the queue, or null when no jump
+  // is pending. Checked between drugs (and between classes) so a tap takes
+  // effect right away instead of waiting for the current class to finish.
+  const classSweepJumpRef = useRef(null);
+  // Mirrors classSweepClassIndex (1-based "class currently in progress")
+  // so jump handlers always read the live value, not a stale closure.
+  const classSweepClassIndexRef = useRef(0);
+  useEffect(() => { classSweepClassIndexRef.current = classSweepClassIndex; }, [classSweepClassIndex]);
 
   const startClassSweep = useCallback(async (classes, endpoint = '/api/drug-ai-details') => {
     if (classSweepRunningRef.current || !classes || classes.length === 0) return;
     classSweepRunningRef.current = true;
     classSweepAbortRef.current = false;
+    classSweepJumpRef.current = null;
     setClassSweepSummary(null);
     setClassSweepLog([]);
 
     // Alphabetical order gives predictable, resumable-feeling progress.
     const queue = [...new Set(classes.filter(Boolean))].sort((a, b) => a.localeCompare(b));
     setClassSweepClassTotal(queue.length);
-    setClassSweepClassIndex(0);
+
+    // Resume from the last checkpoint if it was built from this exact same
+    // class list — otherwise (list has changed, or there's nothing saved)
+    // start fresh from the top instead of guessing.
+    const checkpoint = loadClassSweepCheckpoint();
+    let startAt = (checkpoint && sameQueue(checkpoint.queue, queue) && checkpoint.index > 0 && checkpoint.index < queue.length)
+      ? checkpoint.index
+      : 0;
+
+    setClassSweepClassIndex(startAt);
+    setClassSweepResumed(startAt > 0);
     setClassSweepRunning(true);
 
     let totalSaved = 0, totalExisting = 0, totalFailed = 0;
@@ -262,7 +312,8 @@ export function AiInsightProvider({ children }) {
     const existingByName = new Map();
     lookupPool.forEach(d => { if (d.generic_name) existingByName.set(normalizeDrugName(d.generic_name), d); });
 
-    for (let ci = 0; ci < queue.length; ci++) {
+    let ci = startAt;
+    while (ci < queue.length) {
       if (classSweepAbortRef.current) break;
       const className = queue[ci];
       setClassSweepCurrentClass(className);
@@ -280,7 +331,9 @@ export function AiInsightProvider({ children }) {
         setClassSweepItemProgress({ done: 0, total: items.length });
 
         for (let i = 0; i < items.length; i++) {
-          if (classSweepAbortRef.current) break;
+          // A pending Previous/Next tap breaks out of this class right away
+          // rather than finishing every drug in it first.
+          if (classSweepAbortRef.current || classSweepJumpRef.current !== null) break;
           const item = items[i];
           setClassSweepCurrentDrug(item.name);
 
@@ -315,20 +368,48 @@ export function AiInsightProvider({ children }) {
       perClassLog.push({ className, saved, existing, failed });
       setClassSweepLog([...perClassLog]);
       setClassSweepCurrentDrug(null);
+
+      // A manual Previous/Next tap takes priority over just continuing in
+      // sequence; otherwise carry on to the next class as normal.
+      if (classSweepJumpRef.current !== null) {
+        ci = Math.max(0, classSweepJumpRef.current);
+        classSweepJumpRef.current = null;
+      } else {
+        ci += 1;
+      }
+
+      // Checkpoint after every class so a Stop, a page reload, or logging
+      // out mid-run resumes right here next time instead of restarting
+      // from class #1.
+      saveClassSweepCheckpoint(queue, ci);
     }
 
     const stopped = classSweepAbortRef.current;
     classSweepRunningRef.current = false;
     setClassSweepRunning(false);
     setClassSweepCurrentClass(null);
+    // Reached the natural end of the list with nothing left to resume —
+    // clear the checkpoint so the next "Run again" starts fresh.
+    if (!stopped && ci >= queue.length) clearClassSweepCheckpoint();
     setClassSweepSummary({
       totalSaved, totalExisting, totalFailed, stopped,
       classesCovered: perClassLog.length, classesTotal: queue.length, perClassLog,
+      resumedFrom: startAt > 0 ? startAt : null,
     });
   }, []);
 
   const stopClassSweep           = useCallback(() => { classSweepAbortRef.current = true; }, []);
   const dismissClassSweepSummary = useCallback(() => setClassSweepSummary(null), []);
+
+  // Manual navigation from the pop card — 'next' skips ahead to the class
+  // right after the one in progress, 'prev' goes back to the one before
+  // it. Either way the sweep just keeps going sequentially from the new
+  // spot afterwards, same as normal.
+  const jumpClassSweep = useCallback((direction) => {
+    if (!classSweepRunningRef.current) return;
+    const current0 = classSweepClassIndexRef.current - 1; // 1-based -> 0-based
+    classSweepJumpRef.current = direction === 'next' ? current0 + 1 : current0 - 1;
+  }, []);
 
   // ── Auto-fill queue: conditions that should be populated with drugs
   // automatically, no admin click needed. Two things feed this queue:
@@ -411,8 +492,8 @@ export function AiInsightProvider({ children }) {
       startConditionSave, stopConditionSave, dismissConditionSummary,
       enqueueAutoFillCondition,
       classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
-      classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary,
-      startClassSweep, stopClassSweep, dismissClassSweepSummary,
+      classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary, classSweepResumed,
+      startClassSweep, stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
     }}>
       {children}
       <GlobalAiInsightWidget />
@@ -726,7 +807,7 @@ function ClassSweepWidget() {
   const {
     classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
     classSweepItemProgress, classSweepCurrentDrug, classSweepSummary,
-    stopClassSweep, dismissClassSweepSummary,
+    stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
   } = useContext(AiInsightContext);
 
   if (!classSweepRunning && !classSweepSummary) return null;
@@ -771,12 +852,27 @@ function ClassSweepWidget() {
             Working through every class automatically — stop anytime, or it keeps going until it finishes or you log out.
           </div>
 
-          <button
-            onClick={stopClassSweep}
-            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
-          >
-            ⏹ Stop
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => jumpClassSweep('prev')}
+              disabled={classSweepClassIndex <= 1}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: classSweepClassIndex <= 1 ? 'default' : 'pointer', opacity: classSweepClassIndex <= 1 ? 0.4 : 1 }}
+            >
+              ⏮ Prev
+            </button>
+            <button
+              onClick={() => jumpClassSweep('next')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}
+            >
+              Next ⏭
+            </button>
+            <button
+              onClick={stopClassSweep}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              ⏹ Stop
+            </button>
+          </div>
         </>
       ) : classSweepSummary && (
         <>
