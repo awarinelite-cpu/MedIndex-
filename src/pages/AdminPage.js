@@ -98,6 +98,8 @@ export default function AdminPage() {
   const {
     running: globalFixRunning, progress: globalFixProgress,
     startGlobalFix, stopGlobalFix, subscribeFix,
+    classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
+    startClassSweep,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
@@ -905,6 +907,23 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
+          {/* Class Sweep — background job that walks every class automatically */}
+          {classSweepRunning ? (
+            <div className="w-full py-3 bg-green-50 border border-green-200 text-green-800 font-bold rounded-xl flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin"/>
+              Class Sweep running — class {classSweepClassIndex}/{classSweepClassTotal} ({classSweepCurrentClass}). Use the floating widget to stop it.
+            </div>
+          ) : (
+            <button
+              onClick={() => startClassSweep(allClasses, provider.endpoint)}
+              disabled={!!runningClass}
+              title="Automatically searches hard for drugs in every class, one class at a time, saving new ones as it goes — keeps running in the background across pages until you stop it or log out"
+              className="w-full py-3 bg-green-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Sparkles className="w-4 h-4"/> Auto-Build All {allClasses.length} Classes
+            </button>
+          )}
 
           {/* Stop button */}
           {runningClass && (

@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList } from '../utils/aiDrugSave';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { useDrugs } from '../hooks/useDrugs';
 import { drugMatchesConditionKeywords } from '../data/systemConditions';
@@ -220,6 +220,116 @@ export function AiInsightProvider({ children }) {
   const stopConditionSave      = useCallback(() => { conditionAbortRef.current = true; }, []);
   const dismissConditionSummary = useCallback(() => setConditionSummary(null), []);
 
+  // ── Third, independent background job: "Class Sweep" — works through
+  // EVERY drug class one at a time, asking the AI to search hard for
+  // medications belonging to that class, and auto-saving the ones that
+  // aren't already in the database. When a class finishes, the next class
+  // in the queue starts automatically — no admin click needed per class.
+  // Lives here (not on AdminPage) for the same reason as the condition job:
+  // it must keep running in the background across navigation, and only
+  // stop when the admin explicitly stops it or the app session ends
+  // (logout / tab close).
+  const [classSweepRunning,        setClassSweepRunning]        = useState(false);
+  const [classSweepClassIndex,     setClassSweepClassIndex]     = useState(0);
+  const [classSweepClassTotal,     setClassSweepClassTotal]     = useState(0);
+  const [classSweepCurrentClass,   setClassSweepCurrentClass]   = useState(null);
+  const [classSweepItemProgress,   setClassSweepItemProgress]   = useState({ done: 0, total: 0 });
+  const [classSweepCurrentDrug,    setClassSweepCurrentDrug]    = useState(null);
+  const [classSweepLog,            setClassSweepLog]            = useState([]); // [{className, saved, existing, failed}]
+  const [classSweepSummary,        setClassSweepSummary]        = useState(null);
+  const classSweepAbortRef  = useRef(false);
+  const classSweepRunningRef = useRef(false);
+
+  const startClassSweep = useCallback(async (classes, endpoint = '/api/drug-ai-details') => {
+    if (classSweepRunningRef.current || !classes || classes.length === 0) return;
+    classSweepRunningRef.current = true;
+    classSweepAbortRef.current = false;
+    setClassSweepSummary(null);
+    setClassSweepLog([]);
+
+    // Alphabetical order gives predictable, resumable-feeling progress.
+    const queue = [...new Set(classes.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    setClassSweepClassTotal(queue.length);
+    setClassSweepClassIndex(0);
+    setClassSweepRunning(true);
+
+    let totalSaved = 0, totalExisting = 0, totalFailed = 0;
+    const perClassLog = [];
+    // Local lookup pool, refreshed from Firestore data at the start and kept
+    // in sync as we save — so a drug found under one class isn't regenerated
+    // again if it happens to also appear in a later class's AI list.
+    const lookupPool = [...(allDrugsRef.current || [])];
+    const existingByName = new Map();
+    lookupPool.forEach(d => { if (d.generic_name) existingByName.set(normalizeDrugName(d.generic_name), d); });
+
+    for (let ci = 0; ci < queue.length; ci++) {
+      if (classSweepAbortRef.current) break;
+      const className = queue[ci];
+      setClassSweepCurrentClass(className);
+      setClassSweepClassIndex(ci + 1);
+      setClassSweepItemProgress({ done: 0, total: 0 });
+
+      let saved = 0, existing = 0, failed = 0;
+      try {
+        const knownDrugNames = lookupPool
+          .filter(d => (d.drug_class || '').toLowerCase() === className.toLowerCase())
+          .map(d => d.generic_name).filter(Boolean);
+
+        const full = await fetchClassDrugList({ className, knownDrugNames, endpoint });
+        const items = parseAiDrugList(full);
+        setClassSweepItemProgress({ done: 0, total: items.length });
+
+        for (let i = 0; i < items.length; i++) {
+          if (classSweepAbortRef.current) break;
+          const item = items[i];
+          setClassSweepCurrentDrug(item.name);
+
+          if (existingByName.has(normalizeDrugName(item.name))) {
+            existing++;
+          } else {
+            try {
+              // drugClass is always forced to the class currently being
+              // swept — never left to the AI's own per-item subclass guess
+              // — so every drug saved here is guaranteed to be filed under
+              // exactly the class it was found for.
+              const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: className, endpoint });
+              const result = await saveAiDrugToDatabase({
+                genericName: item.name, drugClass: className, text: itemText, overwrite: true,
+              });
+              if (result.status === 'saved') {
+                saved++;
+                existingByName.set(normalizeDrugName(item.name), { generic_name: item.name, drug_class: className });
+              }
+            } catch (e) {
+              failed++;
+            }
+            await new Promise(r => setTimeout(r, 350));
+          }
+          setClassSweepItemProgress({ done: i + 1, total: items.length });
+        }
+      } catch (e) {
+        failed++; // class-level failure — e.g. the AI list request itself failed
+      }
+
+      totalSaved += saved; totalExisting += existing; totalFailed += failed;
+      perClassLog.push({ className, saved, existing, failed });
+      setClassSweepLog([...perClassLog]);
+      setClassSweepCurrentDrug(null);
+    }
+
+    const stopped = classSweepAbortRef.current;
+    classSweepRunningRef.current = false;
+    setClassSweepRunning(false);
+    setClassSweepCurrentClass(null);
+    setClassSweepSummary({
+      totalSaved, totalExisting, totalFailed, stopped,
+      classesCovered: perClassLog.length, classesTotal: queue.length, perClassLog,
+    });
+  }, []);
+
+  const stopClassSweep           = useCallback(() => { classSweepAbortRef.current = true; }, []);
+  const dismissClassSweepSummary = useCallback(() => setClassSweepSummary(null), []);
+
   // ── Auto-fill queue: conditions that should be populated with drugs
   // automatically, no admin click needed. Two things feed this queue:
   //   1. SystemPage enqueues a condition the moment it's created (single
@@ -300,10 +410,14 @@ export function AiInsightProvider({ children }) {
       conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
       startConditionSave, stopConditionSave, dismissConditionSummary,
       enqueueAutoFillCondition,
+      classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
+      classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary,
+      startClassSweep, stopClassSweep, dismissClassSweepSummary,
     }}>
       {children}
       <GlobalAiInsightWidget />
       <ConditionSaveWidget />
+      <ClassSweepWidget />
     </AiInsightContext.Provider>
   );
 }
@@ -405,7 +519,7 @@ function DraggableWidget({ id, defaultBottom = 20, defaultRight = 16, width = 30
 
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
-  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary } = useContext(AiInsightContext);
+  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary, classSweepRunning, classSweepSummary } = useContext(AiInsightContext);
   const [startTime] = React.useState(() => Date.now());
   const [now, setNow] = React.useState(Date.now());
 
@@ -418,7 +532,10 @@ function GlobalAiInsightWidget() {
   if (!running && !summary) return null;
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
-  const stackedBelow = conditionRunning || conditionSummary; // shift up so it doesn't overlap the other widget
+  // Shift up so it doesn't overlap whichever other widget(s) are showing —
+  // each active widget below this one takes ~250px of vertical space.
+  const widgetsBelow = [conditionRunning || conditionSummary, classSweepRunning || classSweepSummary].filter(Boolean).length;
+  const stackedBelow = widgetsBelow > 0;
 
   // ETA calculation
   let etaLabel = '';
@@ -435,7 +552,7 @@ function GlobalAiInsightWidget() {
   }
 
   return (
-    <DraggableWidget id="ai-insight" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
+    <DraggableWidget id="ai-insight" defaultBottom={stackedBelow ? 20 + widgetsBelow * 250 : 20} defaultRight={16} width={300}>
       {running ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -515,14 +632,16 @@ function ConditionSaveWidget() {
   const {
     conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
     stopConditionSave, dismissConditionSummary,
+    classSweepRunning, classSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!conditionRunning && !conditionSummary) return null;
 
   const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
+  const stackedBelow = classSweepRunning || classSweepSummary;
 
   return (
-    <DraggableWidget id="condition-save" defaultBottom={20} defaultRight={16} width={300}>
+    <DraggableWidget id="condition-save" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
       {conditionRunning ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -588,6 +707,102 @@ function ConditionSaveWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissConditionSummary}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </>
+      )}
+    </DraggableWidget>
+  );
+}
+
+// ── Floating widget for the "Class Sweep" job — walks every drug class in
+// sequence, searching hard for and auto-saving matching drugs, until the
+// admin stops it, the queue runs out, or the session ends. Base layer of
+// the widget stack (bottom: 20) since it's usually the longest-running.
+function ClassSweepWidget() {
+  const {
+    classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
+    classSweepItemProgress, classSweepCurrentDrug, classSweepSummary,
+    stopClassSweep, dismissClassSweepSummary,
+  } = useContext(AiInsightContext);
+
+  if (!classSweepRunning && !classSweepSummary) return null;
+
+  const classPct = classSweepClassTotal ? Math.round(((classSweepClassIndex - (classSweepRunning ? 1 : 0)) / classSweepClassTotal) * 100) : 0;
+  const itemPct  = classSweepItemProgress.total ? Math.round((classSweepItemProgress.done / classSweepItemProgress.total) * 100) : 0;
+
+  return (
+    <DraggableWidget id="class-sweep" defaultBottom={20} defaultRight={16} width={300}>
+      {classSweepRunning ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontWeight: 700, fontSize: 13 }}>Class Sweep running…</span>
+            </div>
+            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, flexShrink: 0 }}>
+              Class {classSweepClassIndex}/{classSweepClassTotal}
+            </span>
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#CBD5E1', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {classSweepCurrentClass}
+          </div>
+
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg, #10B981, #34D399)', borderRadius: 3, width: `${itemPct}%`, transition: 'width 0.5s ease' }} />
+          </div>
+
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>
+            {classSweepItemProgress.total > 0
+              ? `${classSweepItemProgress.done} / ${classSweepItemProgress.total} drugs in this class`
+              : 'Searching for drugs in this class…'}
+          </div>
+
+          {classSweepCurrentDrug && (
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              ⚡ {classSweepCurrentDrug}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+            Working through every class automatically — stop anytime, or it keeps going until it finishes or you log out.
+          </div>
+
+          <button
+            onClick={stopClassSweep}
+            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+          >
+            ⏹ Stop
+          </button>
+        </>
+      ) : classSweepSummary && (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
+            {classSweepSummary.stopped ? '⏹ Class Sweep stopped' : '✅ Class Sweep complete'}
+          </div>
+          <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+            {classSweepSummary.classesCovered} of {classSweepSummary.classesTotal} classes covered
+          </div>
+          <div style={{ fontSize: 12, color: '#34D399', marginBottom: 4 }}>
+            ✓ {classSweepSummary.totalSaved} new drugs saved
+          </div>
+          {classSweepSummary.totalExisting > 0 && (
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+              🔗 {classSweepSummary.totalExisting} already in database
+            </div>
+          )}
+          {classSweepSummary.totalFailed > 0 && (
+            <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
+              ✗ {classSweepSummary.totalFailed} failed
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={dismissClassSweepSummary}
               style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
