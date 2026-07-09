@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
@@ -95,11 +95,10 @@ async function parallelMap(items, fn, concurrency = PARALLEL_SAVES) {
 // ── Main component ─────────────────────────────────────────────────────────
 export default function AdminPage() {
   const { provider } = useAiProvider();
+  const navigate = useNavigate();
   const {
     running: globalFixRunning, progress: globalFixProgress,
     startGlobalFix, stopGlobalFix, subscribeFix,
-    classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
-    startClassSweep,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
@@ -661,23 +660,24 @@ export default function AdminPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         {[
           {label:'Total Drugs',  value:stats.total,      icon:Database,      bg:'bg-primary-50',color:'text-drug-text',  ic:'text-primary-600'},
-          {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600'  },
+          {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600',
+            onClick:()=>navigate('/admin/classes'), hint:'text-blue-600', hoverBorder:'hover:border-blue-300' },
           {label:'Controlled',   value:stats.controlled, icon:AlertTriangle, bg:'bg-red-50',   color:'text-red-700',    ic:'text-red-600'   },
           {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500',
-            onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());} },
+            onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());}, hint:'text-amber-600', hoverBorder:'hover:border-amber-300' },
         ].map(s=>(
           <div key={s.label} onClick={s.onClick} role={s.onClick?'button':undefined} tabIndex={s.onClick?0:undefined}
             onKeyDown={s.onClick?(e=>{if(e.key==='Enter')s.onClick();}):undefined}
             className={`bg-white border rounded-xl p-5 transition-all ${
               s.onClick
-                ? `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${filterIncompleteOnly && s.label==='Incomplete' ? 'border-amber-400 ring-2 ring-amber-200' : 'border-drug-border hover:border-amber-300'}`
+                ? `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${filterIncompleteOnly && s.label==='Incomplete' ? 'border-amber-400 ring-2 ring-amber-200' : `border-drug-border ${s.hoverBorder || 'hover:border-amber-300'}`}`
                 : 'border-drug-border'
             }`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-drug-muted">{s.label}</p>
                 <p className={`text-2xl font-bold ${s.color}`}>{loading?'—':s.value}</p>
-                {s.onClick && <p className="text-[11px] text-amber-600 font-semibold mt-0.5">Tap to view →</p>}
+                {s.onClick && <p className={`text-[11px] font-semibold mt-0.5 ${s.hint || 'text-amber-600'}`}>Tap to view →</p>}
               </div>
               <div className={`p-2.5 ${s.bg} rounded-lg`}><s.icon className={`w-5 h-5 ${s.ic}`}/></div>
             </div>
@@ -908,22 +908,8 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Class Sweep — background job that walks every class automatically */}
-          {classSweepRunning ? (
-            <div className="w-full py-3 bg-green-50 border border-green-200 text-green-800 font-bold rounded-xl flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin"/>
-              Class Sweep running — class {classSweepClassIndex}/{classSweepClassTotal} ({classSweepCurrentClass}). Use the floating widget to stop it.
-            </div>
-          ) : (
-            <button
-              onClick={() => startClassSweep(allClasses, provider.endpoint)}
-              disabled={!!runningClass}
-              title="Automatically searches hard for drugs in every class, one class at a time, saving new ones as it goes — keeps running in the background across pages until you stop it or log out"
-              className="w-full py-3 bg-green-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Sparkles className="w-4 h-4"/> Auto-Build All {allClasses.length} Classes
-            </button>
-          )}
+          {/* Class Sweep now lives on the All Drug Classes page — tap the
+              "Drug Classes" stat card above to launch it with live progress. */}
 
           {/* Stop button */}
           {runningClass && (
