@@ -731,7 +731,6 @@ function ClassSweepWidget() {
 
   if (!classSweepRunning && !classSweepSummary) return null;
 
-  const classPct = classSweepClassTotal ? Math.round(((classSweepClassIndex - (classSweepRunning ? 1 : 0)) / classSweepClassTotal) * 100) : 0;
   const itemPct  = classSweepItemProgress.total ? Math.round((classSweepItemProgress.done / classSweepItemProgress.total) * 100) : 0;
 
   return (
