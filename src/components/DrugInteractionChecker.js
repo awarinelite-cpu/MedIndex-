@@ -9,45 +9,25 @@ const SEVERITY = {
   unknown:       { label: 'Insufficient Data',     color: '#374151', bg: '#F9FAFB', border: '#D1D5DB', icon: AlertCircle },
 };
 
-// ── API call to Claude ────────────────────────────────────────────────────────
+// ── API call via Vercel backend route ─────────────────────────────────────────
 async function checkInteractionsWithAI(primaryDrug, selectedDrugs) {
-  const drugList = selectedDrugs.map(d => d.generic_name).join(', ');
-  const prompt = `You are a clinical pharmacologist. Analyze drug interactions between "${primaryDrug.generic_name}" (${primaryDrug.drug_class || 'drug class unknown'}) and each of the following drugs: ${drugList}.
-
-For EACH drug, respond ONLY with a JSON array. Each element must have:
-- "drug": the drug name (exactly as given)
-- "severity": one of "safe", "monitor", "contraindicated", or "unknown"
-- "mechanism": brief mechanism of the interaction (1-2 sentences)
-- "effect": clinical effect if combined (1-2 sentences)
-- "recommendation": what to do clinically (1-2 sentences)
-
-Return ONLY the JSON array, no markdown, no explanation, no preamble.`;
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('/api/drug-interaction-check', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify({ primaryDrug, selectedDrugs }),
   });
 
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'API request failed');
+    throw new Error(data.error || `Server error (${response.status}). Please try again.`);
   }
 
-  const data = await response.json();
-  const text = data.content?.map(c => c.text || '').join('') || '';
-
-  // Strip any accidental markdown fences
-  const clean = text.replace(/```json|```/gi, '').trim();
-  try {
-    return JSON.parse(clean);
-  } catch {
-    throw new Error('Could not parse interaction results. Please try again.');
+  if (!Array.isArray(data.results)) {
+    throw new Error('Unexpected response from server. Please try again.');
   }
+
+  return data.results;
 }
 
 // ── Drug search dropdown ──────────────────────────────────────────────────────
