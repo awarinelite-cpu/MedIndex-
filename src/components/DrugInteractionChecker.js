@@ -120,8 +120,28 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
       )}
 
       {open && query.trim() && results.length === 0 && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-drug-border rounded-xl shadow-xl px-4 py-3 text-sm text-drug-muted">
-          No drugs found for &ldquo;{query}&rdquo;
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-drug-border rounded-xl shadow-xl px-4 py-3">
+          <p className="text-sm text-drug-muted mb-2">No drugs found for &ldquo;{query}&rdquo; in the database.</p>
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors text-left"
+            onClick={() => {
+              const name = query.trim();
+              onAdd({
+                id: `custom-${name.toLowerCase().replace(/\s+/g, '-')}`,
+                generic_name: name,
+                drug_class: '',
+                isCustom: true,
+              });
+              setQuery('');
+              setOpen(false);
+              inputRef.current?.focus();
+            }}
+          >
+            <span className="text-sm font-semibold text-primary-700">
+              Check &ldquo;{query}&rdquo; anyway (not in database)
+            </span>
+            <Plus className="w-4 h-4 text-primary-500 flex-shrink-0" />
+          </button>
         </div>
       )}
     </div>
@@ -347,8 +367,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
                 <span
                   key={d.id}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-full"
+                  title={d.isCustom ? 'Not in the app database — AI-checked on demand' : undefined}
                 >
                   {d.generic_name}
+                  {d.isCustom && <span className="opacity-70 font-normal">(not in DB)</span>}
                   <button onClick={() => removeDrug(d.id)} className="hover:text-primary-200">
                     <X className="w-3 h-3" />
                   </button>
