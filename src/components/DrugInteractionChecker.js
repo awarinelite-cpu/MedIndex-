@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Loader } from 'lucide-react';
+import { useAiProvider } from '../context/AiProviderContext';
 
 // ── Severity badge config ─────────────────────────────────────────────────────
 const SEVERITY = {
@@ -9,12 +10,12 @@ const SEVERITY = {
   unknown:       { label: 'Insufficient Data',     color: '#374151', bg: '#F9FAFB', border: '#D1D5DB', icon: AlertCircle },
 };
 
-// ── API call via Vercel backend route ─────────────────────────────────────────
-async function checkInteractionsWithAI(primaryDrug, selectedDrugs) {
+// ── API call via Vercel backend route (multi-provider) ────────────────────────
+async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 'gemini') {
   const response = await fetch('/api/drug-interaction-check', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ primaryDrug, selectedDrugs }),
+    body: JSON.stringify({ primaryDrug, selectedDrugs, provider: providerId }),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -231,6 +232,7 @@ function InteractionResult({ result, onRemove }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DrugInteractionChecker({ drug, allDrugs }) {
+  const { providerId, provider }    = useAiProvider();
   const [selected, setSelected]     = useState([]);   // drugs to check
   const [results, setResults]       = useState([]);   // AI results
   const [status, setStatus]         = useState('idle'); // idle | loading | done | error
@@ -263,7 +265,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
     setStatus('loading');
     setErrorMsg('');
     try {
-      const data = await checkInteractionsWithAI(drug, selected);
+      const data = await checkInteractionsWithAI(drug, selected, providerId);
       setResults(data);
       setStatus('done');
     } catch (e) {
@@ -301,9 +303,17 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
 
       {/* ── Interaction checker ─── */}
       <div className="section-card p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <FlaskConical className="w-5 h-5 text-primary-500" />
-          <h2 className="text-base font-bold text-drug-text">Drug Compatibility Checker</h2>
+        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="w-5 h-5 text-primary-500" />
+            <h2 className="text-base font-bold text-drug-text">Drug Compatibility Checker</h2>
+          </div>
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{ background: provider.color + '18', color: provider.color }}
+          >
+            {provider.icon} {provider.label}
+          </span>
         </div>
         <p className="text-xs text-drug-muted mb-4">
           Add drugs you want to combine with <strong>{drug.generic_name}</strong>. The AI will check each pair for safety.
