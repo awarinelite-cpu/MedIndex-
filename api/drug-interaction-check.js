@@ -47,6 +47,22 @@ Return a JSON array. Each element must have exactly these keys:
 
 Include roughly 6-15 entries covering the most clinically important and well-established combinations — do not pad with obscure or theoretical ones. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
+// A different shape from SYNERGY_PROMPT: this one starts from a CONDITION,
+// not a specific drug, and returns whole combination REGIMENS (two or more
+// drugs used together as a standard treatment approach for that condition),
+// each with its own component drugs and doses — rather than one partner
+// drug's dosing relative to a single starting drug.
+const INDICATION_SYNERGY_PROMPT = (conditionLabel, systemName) =>
+  `You are a clinical pharmacologist. List standard COMBINATION THERAPY regimens used to treat "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} — established multi-drug regimens from treatment guidelines, where two or more drugs are used together deliberately for synergistic or complementary benefit (broader coverage, improved efficacy, dose reduction, or reduced resistance/side effects). This is NOT about interactions to avoid — only genuine combination treatment approaches.
+
+Return a JSON array. Each element must have exactly these keys:
+- "regimenName": a short name for the combination (e.g. "ACE Inhibitor + Thiazide Diuretic", "Triple Therapy for H. pylori")
+- "indication": the specific clinical scenario this regimen is used for within "${conditionLabel}" (1 sentence) — e.g. first-line, resistant cases, a particular patient subgroup
+- "clinicalReason": the pharmacological or clinical rationale for combining these specific drugs — why the combination works better than any one drug alone (1-2 sentences)
+- "drugs": a JSON array of the component drugs in this regimen, each an object with exactly these keys: "name" (generic drug name), "dosage", "frequency" (e.g. "once daily", "twice daily"), and "duration" (e.g. "7-10 days", "long-term/chronic")
+
+Include roughly 5-12 entries covering the most clinically important and well-established regimens for "${conditionLabel}" — do not pad with obscure or theoretical ones. If "${conditionLabel}" is not a recognized clinical condition or has no well-established combination regimens, return an empty array rather than inventing content. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
+
 function jsonResp(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -78,18 +94,22 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return jsonResp({ error: 'Invalid request body.' }, 400); }
 
-  const { primaryDrug, selectedDrugs, provider = 'gemini', mode = 'pair' } = body || {};
-
-  if (!primaryDrug?.generic_name) {
-    return jsonResp({ error: 'primaryDrug is required.' }, 400);
-  }
+  const { primaryDrug, selectedDrugs, conditionLabel, systemName, provider = 'gemini', mode = 'pair' } = body || {};
 
   let prompt;
-  if (mode === 'list') {
+  if (mode === 'indication_synergy') {
+    if (!conditionLabel || typeof conditionLabel !== 'string') {
+      return jsonResp({ error: 'conditionLabel is required.' }, 400);
+    }
+    prompt = INDICATION_SYNERGY_PROMPT(conditionLabel, systemName);
+  } else if (mode === 'list') {
+    if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
     prompt = LIST_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
   } else if (mode === 'synergy') {
+    if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
     prompt = SYNERGY_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
   } else {
+    if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
     if (!Array.isArray(selectedDrugs) || selectedDrugs.length === 0) {
       return jsonResp({ error: 'selectedDrugs is required.' }, 400);
     }
@@ -102,6 +122,10 @@ export default async function handler(req) {
       selectedDrugs.map(d => `"${d.generic_name}"`).join(', ')
     );
   }
+
+  // indication_synergy responses nest a "drugs" array inside every regimen
+  // entry, so they run larger than the flat per-drug list modes.
+  const maxTokens = mode === 'indication_synergy' ? 3000 : 2000;
 
   // ── Route to the right AI provider ──────────────────────────────────────────
   let aiRes;
@@ -118,7 +142,7 @@ export default async function handler(req) {
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 2000 },
+            generationConfig: { maxOutputTokens: maxTokens },
           }),
         }
       );
@@ -137,7 +161,7 @@ export default async function handler(req) {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 2000,
+          max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         }),
       });
@@ -149,7 +173,7 @@ export default async function handler(req) {
       aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
       });
 
     } else if (provider === 'deepseek') {
@@ -159,7 +183,7 @@ export default async function handler(req) {
       aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
       });
 
     } else if (provider === 'kimi') {
@@ -169,7 +193,7 @@ export default async function handler(req) {
       aiRes = await fetch('https://api.moonshot.cn/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
       });
 
     } else {

@@ -21,6 +21,7 @@ import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normal
 import { doc, updateDoc, serverTimestamp, arrayRemove, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import IndicationCombinationPanel from '../components/IndicationCombinationPanel';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -434,6 +435,14 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
               conditionKeywords={condition.keywords}
               systemName={systemName}
               existingDrugs={drugs}
+            />
+          </div>
+
+          {/* Combination therapy regimens for this specific condition */}
+          <div className="px-4 pb-4">
+            <IndicationCombinationPanel
+              conditionLabel={condition.label}
+              systemName={systemName}
             />
           </div>
         </div>
