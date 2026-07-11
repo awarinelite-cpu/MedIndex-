@@ -6,6 +6,7 @@ import {
   Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import DrugInteractionChecker from '../components/DrugInteractionChecker';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
@@ -1294,16 +1295,9 @@ export default function DrugDetailPage() {
 
         {/* ── INTERACTIONS ─────────────────────────────────────────────── */}
         {activeTab === 'interactions' && (
-          <div className="section-card p-6">
-            <h2 className="text-lg font-bold mb-4">Drug Interactions</h2>
-            <p className="text-drug-muted text-sm mb-4">
-              Always verify interactions against current prescribing information.
-              Consult a pharmacist for patient-specific interaction checking.
-            </p>
-            {drug.interaction
-              ? renderList(drug.interaction, '\n')
-              : <em className="text-drug-muted">Detailed interaction data not available. Refer to product monograph.</em>}
-            <div className="mt-4">
+          <div className="space-y-4">
+            <DrugInteractionChecker drug={drug} allDrugs={drugs} />
+            <div className="section-card p-4">
               <AiSectionFill drug={drug} tabId="interactions" onFilled={handleSectionFilled} />
             </div>
           </div>
