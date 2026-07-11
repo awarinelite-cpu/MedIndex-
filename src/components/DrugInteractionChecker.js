@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { useAiProvider } from '../context/AiProviderContext';
+import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
+import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 
 // ── Severity badge config ─────────────────────────────────────────────────────
 const SEVERITY = {
@@ -33,8 +35,11 @@ async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 
 
 // ── Drug search dropdown ──────────────────────────────────────────────────────
 function DrugSearchInput({ allDrugs, excluded, onAdd }) {
+  const { provider } = useAiProvider();
   const [query, setQuery]       = useState('');
   const [open, setOpen]         = useState(false);
+  const [searchState, setSearchState] = useState('idle'); // idle | searching | error
+  const [searchError, setSearchError] = useState('');
   const inputRef                = useRef(null);
   const listRef                 = useRef(null);
 
@@ -67,6 +72,34 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Not found locally — search the AI, silently save the result to the drug
+  // bank, then add the real saved drug (not a throwaway placeholder) to the
+  // interaction check.
+  const searchAndSave = async () => {
+    const name = query.trim();
+    if (!name) return;
+    setSearchState('searching');
+    setSearchError('');
+    try {
+      const text   = await fetchAiDrugText({ genericName: name, endpoint: provider.endpoint });
+      const result = await saveAiDrugToDatabase({ genericName: name, text });
+      const parsed = parseAiDrugDetail(text);
+      onAdd({
+        id: result.id,
+        generic_name: name,
+        drug_class: parsed.drug_class || '',
+        interaction: parsed.interaction || '',
+      });
+      setQuery('');
+      setOpen(false);
+      setSearchState('idle');
+      inputRef.current?.focus();
+    } catch (e) {
+      setSearchError(e.message || 'Failed to search for this drug.');
+      setSearchState('error');
+    }
+  };
+
   return (
     <div className="relative">
       <div className="flex items-center gap-2 px-3 py-2 border border-drug-border rounded-lg bg-white focus-within:border-primary-400 focus-within:ring-2 focus-within:ring-primary-100 transition-all">
@@ -75,13 +108,13 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
           ref={inputRef}
           type="text"
           value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); setSearchState('idle'); setSearchError(''); }}
           onFocus={() => setOpen(true)}
           placeholder="Search any drug to check compatibility…"
           className="flex-1 text-sm bg-transparent outline-none text-drug-text placeholder-drug-muted"
         />
         {query && (
-          <button onClick={() => { setQuery(''); setOpen(false); }} className="p-0.5 rounded hover:bg-gray-100">
+          <button onClick={() => { setQuery(''); setOpen(false); setSearchState('idle'); }} className="p-0.5 rounded hover:bg-gray-100">
             <X className="w-3.5 h-3.5 text-drug-muted" />
           </button>
         )}
@@ -121,27 +154,28 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
 
       {open && query.trim() && results.length === 0 && (
         <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-drug-border rounded-xl shadow-xl px-4 py-3">
-          <p className="text-sm text-drug-muted mb-2">No drugs found for &ldquo;{query}&rdquo; in the database.</p>
-          <button
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors text-left"
-            onClick={() => {
-              const name = query.trim();
-              onAdd({
-                id: `custom-${name.toLowerCase().replace(/\s+/g, '-')}`,
-                generic_name: name,
-                drug_class: '',
-                isCustom: true,
-              });
-              setQuery('');
-              setOpen(false);
-              inputRef.current?.focus();
-            }}
-          >
-            <span className="text-sm font-semibold text-primary-700">
-              Check &ldquo;{query}&rdquo; anyway (not in database)
-            </span>
-            <Plus className="w-4 h-4 text-primary-500 flex-shrink-0" />
-          </button>
+          {searchState === 'searching' ? (
+            <div className="flex items-center gap-2 text-sm text-drug-muted">
+              <Loader className="w-4 h-4 animate-spin flex-shrink-0" />
+              Searching and saving &ldquo;{query}&rdquo;…
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-drug-muted mb-2">No drugs found for &ldquo;{query}&rdquo; in the database.</p>
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors text-left"
+                onClick={searchAndSave}
+              >
+                <span className="text-sm font-semibold text-primary-700">
+                  Search for &ldquo;{query}&rdquo;
+                </span>
+                <Search className="w-4 h-4 text-primary-500 flex-shrink-0" />
+              </button>
+              {searchState === 'error' && (
+                <p className="text-xs text-red-600 mt-2">{searchError}</p>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -367,10 +401,8 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
                 <span
                   key={d.id}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-full"
-                  title={d.isCustom ? 'Not in the app database — AI-checked on demand' : undefined}
                 >
                   {d.generic_name}
-                  {d.isCustom && <span className="opacity-70 font-normal">(not in DB)</span>}
                   <button onClick={() => removeDrug(d.id)} className="hover:text-primary-200">
                     <X className="w-3 h-3" />
                   </button>
