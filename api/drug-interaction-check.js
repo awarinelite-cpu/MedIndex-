@@ -30,6 +30,23 @@ Return a JSON array, ordered most severe first. Each element must have exactly t
 
 Include roughly 6-15 entries covering the most clinically important interactions — do not pad with minor or theoretical ones. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
+// The positive counterpart to LIST_PROMPT: synergistic/complementary
+// combination therapy, not interactions to avoid.
+const SYNERGY_PROMPT = (primaryName, primaryClass) =>
+  `You are a clinical pharmacologist. List drugs that are commonly and deliberately COMBINED with "${primaryName}" (${primaryClass || 'drug class unknown'}) for synergistic or complementary therapeutic benefit — established combination therapy regimens, NOT interactions to avoid. Think of the kind of combinations found in standard treatment guidelines: combination antihypertensive regimens, combination antimicrobial therapy to broaden coverage or reduce resistance, adjunct therapy that improves efficacy, reduces required dose, or reduces side effects of either drug alone.
+
+Only include combinations with genuine clinical basis — do not include a drug just because it's commonly prescribed alongside this one for an unrelated, coincidental reason.
+
+Return a JSON array. Each element must have exactly these keys:
+- "drug": the specific generic drug name of the combination partner
+- "indication": the clinical condition or scenario this combination is used for (1 sentence)
+- "clinicalReason": the pharmacological or clinical rationale for combining them — why the combination works better than either drug alone (1-2 sentences)
+- "dosage": typical dose of the COMBINATION PARTNER drug specifically when used in this combination
+- "frequency": typical dosing frequency (e.g. "once daily", "twice daily", "every 8 hours")
+- "duration": typical duration of the combined therapy (e.g. "7-10 days", "long-term/chronic", "until symptoms resolve")
+
+Include roughly 6-15 entries covering the most clinically important and well-established combinations — do not pad with obscure or theoretical ones. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
+
 function jsonResp(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -70,6 +87,8 @@ export default async function handler(req) {
   let prompt;
   if (mode === 'list') {
     prompt = LIST_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
+  } else if (mode === 'synergy') {
+    prompt = SYNERGY_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
   } else {
     if (!Array.isArray(selectedDrugs) || selectedDrugs.length === 0) {
       return jsonResp({ error: 'selectedDrugs is required.' }, 400);
