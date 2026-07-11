@@ -700,6 +700,16 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
     conditions.push(cond);
   }
 
+  // Alphabetical order by label, recomputed every call — so conditions stay
+  // sorted A→Z no matter what order they're defined in SYSTEM_CONDITIONS or
+  // added as custom/AI-suggested conditions later. Since Map preserves
+  // insertion order, sorting here before the grouped Map is built is enough
+  // to make the whole system's condition list (and therefore its on-screen
+  // order) alphabetical, automatically, for every future addition too.
+  conditions.sort((a, b) =>
+    (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' })
+  );
+
   const grouped = new Map();
   const uncategorised = [];
 
@@ -754,6 +764,15 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
     if (id === '_other' && entry.drugs.length === 0) {
       grouped.delete(id); // hide the catch-all only when empty
     }
+  }
+
+  // Alphabetize drugs within every condition (including "Other / General"),
+  // recomputed every call so a newly added/tagged drug always lands in the
+  // right alphabetical spot rather than just at the end of the list.
+  for (const entry of grouped.values()) {
+    entry.drugs.sort((a, b) =>
+      (a.generic_name || '').localeCompare(b.generic_name || '', undefined, { sensitivity: 'base' })
+    );
   }
 
   return grouped;
