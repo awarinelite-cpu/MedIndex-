@@ -18,6 +18,18 @@ For EACH drug, return a JSON array. Each element must have exactly these keys:
 
 Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
+const LIST_PROMPT = (primaryName, primaryClass) =>
+  `You are a clinical pharmacologist. List the clinically significant drug interactions for "${primaryName}" (${primaryClass || 'drug class unknown'}) — medications or drug classes that are either contraindicated with it or require caution/monitoring when combined. Do not include drugs that are simply safe to combine; only list ones with a real interaction concern.
+
+Return a JSON array, ordered most severe first. Each element must have exactly these keys:
+- "drug": the specific generic drug name, or a well-known drug class if the interaction applies broadly to the class (e.g. "NSAIDs", "MAO inhibitors")
+- "severity": "contraindicated" or "monitor" only — do not include "safe" or "unknown" entries in this list
+- "mechanism": the pharmacokinetic or pharmacodynamic basis of the interaction (1-2 sentences)
+- "effect": the clinical consequence if combined (1-2 sentences)
+- "recommendation": what a clinician should do in practice (1-2 sentences)
+
+Include roughly 6-15 entries covering the most clinically important interactions — do not pad with minor or theoretical ones. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
+
 function jsonResp(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -49,20 +61,28 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return jsonResp({ error: 'Invalid request body.' }, 400); }
 
-  const { primaryDrug, selectedDrugs, provider = 'gemini' } = body || {};
+  const { primaryDrug, selectedDrugs, provider = 'gemini', mode = 'pair' } = body || {};
 
-  if (!primaryDrug?.generic_name || !Array.isArray(selectedDrugs) || selectedDrugs.length === 0) {
-    return jsonResp({ error: 'primaryDrug and selectedDrugs are required.' }, 400);
-  }
-  if (selectedDrugs.length > 15) {
-    return jsonResp({ error: 'Maximum 15 drugs per check.' }, 400);
+  if (!primaryDrug?.generic_name) {
+    return jsonResp({ error: 'primaryDrug is required.' }, 400);
   }
 
-  const prompt = PROMPT(
-    primaryDrug.generic_name,
-    primaryDrug.drug_class,
-    selectedDrugs.map(d => `"${d.generic_name}"`).join(', ')
-  );
+  let prompt;
+  if (mode === 'list') {
+    prompt = LIST_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
+  } else {
+    if (!Array.isArray(selectedDrugs) || selectedDrugs.length === 0) {
+      return jsonResp({ error: 'selectedDrugs is required.' }, 400);
+    }
+    if (selectedDrugs.length > 15) {
+      return jsonResp({ error: 'Maximum 15 drugs per check.' }, 400);
+    }
+    prompt = PROMPT(
+      primaryDrug.generic_name,
+      primaryDrug.drug_class,
+      selectedDrugs.map(d => `"${d.generic_name}"`).join(', ')
+    );
+  }
 
   // ── Route to the right AI provider ──────────────────────────────────────────
   let aiRes;

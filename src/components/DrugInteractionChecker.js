@@ -25,11 +25,28 @@ async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 
   if (!response.ok) {
     throw new Error(data.error || `Server error (${response.status}). Please try again.`);
   }
-
   if (!Array.isArray(data.results)) {
     throw new Error('Unexpected response from server. Please try again.');
   }
+  return data.results;
+}
 
+// ── API call for the AI's own list of known incompatible drugs ────────────────
+async function fetchIncompatibleDrugsList(primaryDrug, providerId = 'gemini') {
+  const response = await fetch('/api/drug-interaction-check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ primaryDrug, provider: providerId, mode: 'list' }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error || `Server error (${response.status}). Please try again.`);
+  }
+  if (!Array.isArray(data.results)) {
+    throw new Error('Unexpected response from server. Please try again.');
+  }
   return data.results;
 }
 
@@ -306,6 +323,188 @@ function InteractionResult({ result, onRemove }) {
   );
 }
 
+// ── Popup with the full reason for one incompatibility ─────────────────────────
+function IncompatibilityModal({ result, onClose }) {
+  const sev = SEVERITY[result.severity] || SEVERITY.unknown;
+  const Icon = sev.icon;
+
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl overflow-hidden max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ background: sev.bg, borderBottom: `1px solid ${sev.border}` }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon className="w-5 h-5 flex-shrink-0" style={{ color: sev.color }} />
+            <span className="font-bold truncate" style={{ color: sev.color }}>{result.drug}</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/60 flex-shrink-0">
+            <X className="w-4 h-4" style={{ color: sev.color }} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <span
+            className="inline-block text-xs font-bold px-2.5 py-1 rounded-full"
+            style={{ color: sev.color, background: sev.bg, border: `1px solid ${sev.border}` }}
+          >
+            {sev.label}
+          </span>
+
+          {result.mechanism && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-drug-muted mb-1">Why they don't mix</p>
+              <p className="text-sm text-drug-text leading-relaxed">{result.mechanism}</p>
+            </div>
+          )}
+          {result.effect && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-drug-muted mb-1">Clinical effect</p>
+              <p className="text-sm text-drug-text leading-relaxed">{result.effect}</p>
+            </div>
+          )}
+          {result.recommendation && (
+            <div className="pt-3 border-t border-drug-border">
+              <p className="text-xs font-bold uppercase tracking-wide text-drug-muted mb-1">What to do</p>
+              <p className="text-sm font-medium text-drug-text leading-relaxed">{result.recommendation}</p>
+            </div>
+          )}
+
+          <p className="text-xs text-drug-muted pt-2">
+            AI-generated — verify against current prescribing information before applying to patient care.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Button + list of the AI's own known incompatibilities for this drug ────────
+function IncompatibleDrugsPanel({ drug }) {
+  const { providerId, provider } = useAiProvider();
+  const [state, setState]     = useState('idle'); // idle | loading | done | error
+  const [list, setList]       = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [openResult, setOpenResult] = useState(null);
+
+  const runLookup = async () => {
+    setState('loading');
+    setErrorMsg('');
+    try {
+      const data = await fetchIncompatibleDrugsList(drug, providerId);
+      setList(data);
+      setState('done');
+    } catch (e) {
+      setErrorMsg(e.message || 'Failed to load incompatible drugs.');
+      setState('error');
+    }
+  };
+
+  return (
+    <div className="section-card p-5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-amber-500" />
+          <h2 className="text-base font-bold text-drug-text">Incompatible Drugs</h2>
+        </div>
+        {state === 'idle' && (
+          <span
+            className="text-xs font-bold px-2 py-0.5 rounded-full"
+            style={{ background: provider.color + '18', color: provider.color }}
+          >
+            {provider.icon} {provider.label}
+          </span>
+        )}
+      </div>
+
+      {state === 'idle' && (
+        <>
+          <p className="text-xs text-drug-muted mt-1 mb-4">
+            See the AI's list of medications that interact with <strong>{drug.generic_name}</strong> — no need to
+            add drugs one by one.
+          </p>
+          <button
+            onClick={runLookup}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 transition-colors"
+          >
+            <AlertTriangle className="w-4 h-4" /> Show Incompatible Drugs
+          </button>
+        </>
+      )}
+
+      {state === 'loading' && (
+        <div className="flex items-center gap-2 text-sm text-drug-muted mt-3">
+          <Loader className="w-4 h-4 animate-spin" /> Checking known interactions for {drug.generic_name}…
+        </div>
+      )}
+
+      {state === 'error' && (
+        <div className="mt-3 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{errorMsg}</span>
+          <button onClick={runLookup} className="ml-auto text-xs font-bold underline flex-shrink-0">Retry</button>
+        </div>
+      )}
+
+      {state === 'done' && (
+        list.length === 0 ? (
+          <p className="text-sm text-drug-muted mt-3">
+            No significant known interactions were flagged for {drug.generic_name}.
+          </p>
+        ) : (
+          <div className="mt-3 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden">
+            {list.map((r, i) => {
+              const sev = SEVERITY[r.severity] || SEVERITY.unknown;
+              const Icon = sev.icon;
+              return (
+                <button
+                  key={i}
+                  onClick={() => setOpenResult(r)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: sev.color }} />
+                    <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
+                  </div>
+                  <span
+                    className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ color: sev.color, background: sev.bg }}
+                  >
+                    {sev.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )
+      )}
+
+      {state === 'done' && (
+        <p className="text-xs text-drug-muted mt-3">
+          ⚠ AI-generated — tap any drug for the full reason. Always verify against current prescribing information.
+        </p>
+      )}
+
+      {openResult && (
+        <IncompatibilityModal result={openResult} onClose={() => setOpenResult(null)} />
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function DrugInteractionChecker({ drug, allDrugs }) {
   const { providerId, provider }    = useAiProvider();
@@ -376,6 +575,9 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
           </div>
         </div>
       )}
+
+      {/* ── AI's own list of known incompatible drugs — one button, no manual add ─── */}
+      <IncompatibleDrugsPanel drug={drug} />
 
       {/* ── Interaction checker ─── */}
       <div className="section-card p-5" style={{ overflow: 'visible' }}>
