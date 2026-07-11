@@ -75,8 +75,8 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
   // Not found locally — search the AI, silently save the result to the drug
   // bank, then add the real saved drug (not a throwaway placeholder) to the
   // interaction check.
-  const searchAndSave = async () => {
-    const name = query.trim();
+  const searchAndSave = async (nameOverride) => {
+    const name = (nameOverride ?? query).trim();
     if (!name) return;
     setSearchState('searching');
     setSearchError('');
@@ -99,6 +99,26 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
       setSearchState('error');
     }
   };
+
+  // Auto-search fallback: if the user pauses typing for a moment with zero
+  // local matches, kick off the AI search automatically — no button tap
+  // required. Guards against re-firing for a query already auto-searched
+  // (e.g. if they then delete a character and retype the same thing) and
+  // never fires while a search/result dropdown from a real match is open.
+  const autoSearchedRef = useRef('');
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!open || trimmed.length < 3 || results.length > 0) return;
+    if (searchState !== 'idle') return;
+    if (autoSearchedRef.current === trimmed.toLowerCase()) return;
+
+    const timer = setTimeout(() => {
+      autoSearchedRef.current = trimmed.toLowerCase();
+      searchAndSave(trimmed);
+    }, 1100);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, open, results.length, searchState]);
 
   return (
     <div className="relative">
@@ -161,13 +181,15 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
             </div>
           ) : (
             <>
-              <p className="text-sm text-drug-muted mb-2">No drugs found for &ldquo;{query}&rdquo; in the database.</p>
+              <p className="text-sm text-drug-muted mb-2">
+                No drugs found for &ldquo;{query}&rdquo; in the database — searching automatically, or:
+              </p>
               <button
                 className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors text-left"
-                onClick={searchAndSave}
+                onClick={() => searchAndSave()}
               >
                 <span className="text-sm font-semibold text-primary-700">
-                  Search for &ldquo;{query}&rdquo;
+                  Search now for &ldquo;{query}&rdquo;
                 </span>
                 <Search className="w-4 h-4 text-primary-500 flex-shrink-0" />
               </button>
@@ -356,7 +378,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
       )}
 
       {/* ── Interaction checker ─── */}
-      <div className="section-card p-5">
+      <div className="section-card p-5" style={{ overflow: 'visible' }}>
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
           <div className="flex items-center gap-2">
             <FlaskConical className="w-5 h-5 text-primary-500" />
