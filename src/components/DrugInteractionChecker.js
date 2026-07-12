@@ -109,23 +109,25 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Not found locally — search the AI, silently save the result to the drug
-  // bank, then add the real saved drug (not a throwaway placeholder) to the
-  // interaction check.
-  const searchAndSave = async (nameOverride) => {
+  // Not found locally — search the AI and use the result for this check
+  // WITHOUT saving it to the drug bank. Nothing here writes to Firestore;
+  // the raw AI text is kept on the object so a later explicit "Save" tap
+  // (rendered on the chip in the parent) can save it without re-fetching.
+  const searchOnly = async (nameOverride) => {
     const name = (nameOverride ?? query).trim();
     if (!name) return;
     setSearchState('searching');
     setSearchError('');
     try {
       const text   = await fetchAiDrugText({ genericName: name, endpoint: provider.endpoint });
-      const result = await saveAiDrugToDatabase({ genericName: name, text });
       const parsed = parseAiDrugDetail(text);
       onAdd({
-        id: result.id,
+        id: `unsaved-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
         generic_name: name,
         drug_class: parsed.drug_class || '',
         interaction: parsed.interaction || '',
+        _unsaved: true,
+        _rawText: text,
       });
       setQuery('');
       setOpen(false);
@@ -139,9 +141,11 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
 
   // Auto-search fallback: if the user pauses typing for a moment with zero
   // local matches, kick off the AI search automatically — no button tap
-  // required. Guards against re-firing for a query already auto-searched
-  // (e.g. if they then delete a character and retype the same thing) and
-  // never fires while a search/result dropdown from a real match is open.
+  // required. This only runs the search; nothing is saved unless the user
+  // later taps "Save" on the resulting chip. Guards against re-firing for a
+  // query already auto-searched (e.g. if they then delete a character and
+  // retype the same thing) and never fires while a search/result dropdown
+  // from a real match is open.
   const autoSearchedRef = useRef('');
   useEffect(() => {
     const trimmed = query.trim();
@@ -151,7 +155,7 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
 
     const timer = setTimeout(() => {
       autoSearchedRef.current = trimmed.toLowerCase();
-      searchAndSave(trimmed);
+      searchOnly(trimmed);
     }, 1100);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,16 +218,16 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
           {searchState === 'searching' ? (
             <div className="flex items-center gap-2 text-sm text-drug-muted">
               <Loader className="w-4 h-4 animate-spin flex-shrink-0" />
-              Searching and saving &ldquo;{query}&rdquo;…
+              Searching &ldquo;{query}&rdquo;…
             </div>
           ) : (
             <>
               <p className="text-sm text-drug-muted mb-2">
-                No drugs found for &ldquo;{query}&rdquo; in the database — searching automatically, or:
+                No drugs found for &ldquo;{query}&rdquo; in the database — searching automatically (not saved), or:
               </p>
               <button
                 className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-primary-50 hover:bg-primary-100 transition-colors text-left"
-                onClick={() => searchAndSave()}
+                onClick={() => searchOnly()}
               >
                 <span className="text-sm font-semibold text-primary-700">
                   Search now for &ldquo;{query}&rdquo;
@@ -756,6 +760,24 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   const [results, setResults]       = useState([]);   // AI results
   const [status, setStatus]         = useState('idle'); // idle | loading | done | error
   const [errorMsg, setErrorMsg]     = useState('');
+  const [savingId, setSavingId]     = useState(null);  // id currently being saved to the drug bank
+
+  // Explicit, opt-in save — nothing in this component saves to the drug bank
+  // on its own anymore. Only fires when the admin taps "Save" on an unsaved
+  // chip; uses the AI text already fetched during search, so it's a write,
+  // not a re-fetch.
+  const saveDrug = async (d) => {
+    if (!d._unsaved || savingId) return;
+    setSavingId(d.id);
+    try {
+      const result = await saveAiDrugToDatabase({ genericName: d.generic_name, text: d._rawText });
+      setSelected(prev => prev.map(s => s.id === d.id ? { ...s, id: result.id, _unsaved: false, _rawText: undefined } : s));
+    } catch (e) {
+      console.error('Failed to save drug:', e);
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   // Filter out the current drug from allDrugs
   const otherDrugs = useMemo(
@@ -842,6 +864,8 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
         </div>
         <p className="text-xs text-drug-muted mb-4">
           Add drugs you want to combine with <strong>{drug.generic_name}</strong>. The AI will check each pair for safety.
+          Drugs not already in the database are looked up fresh for this check only — they're{' '}
+          <strong>not saved</strong> unless you tap the Save button on the chip.
         </p>
 
         {/* Search */}
@@ -871,10 +895,22 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
               {selected.map(d => (
                 <span
                   key={d.id}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-full"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full ${
+                    d._unsaved ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-primary-600 text-white'
+                  }`}
                 >
                   {d.generic_name}
-                  <button onClick={() => removeDrug(d.id)} className="hover:text-primary-200">
+                  {d._unsaved && (
+                    <button
+                      onClick={() => saveDrug(d)}
+                      disabled={savingId === d.id}
+                      title="This drug was looked up fresh for this check only — tap to save it to the drug bank"
+                      className="ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold hover:bg-amber-700 disabled:opacity-60"
+                    >
+                      {savingId === d.id ? 'Saving…' : 'Save'}
+                    </button>
+                  )}
+                  <button onClick={() => removeDrug(d.id)} className={d._unsaved ? 'hover:text-amber-600' : 'hover:text-primary-200'}>
                     <X className="w-3 h-3" />
                   </button>
                 </span>

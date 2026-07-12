@@ -6,8 +6,10 @@
 
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
-const PROMPT = (primaryName, primaryClass, drugList) =>
-  `You are a clinical pharmacologist. Analyze drug interactions between "${primaryName}" (${primaryClass || 'drug class unknown'}) and each of the following drugs: ${drugList}.
+const PROMPT = (primaryName, drugList) =>
+  `You are a clinical pharmacologist. Analyze drug interactions between "${primaryName}" and each of the following drugs: ${drugList}.
+
+Identify "${primaryName}"'s drug class yourself from your own clinical knowledge — do not assume any class hint that may be provided elsewhere is complete or correct.
 
 For EACH drug, return a JSON array. Each element must have exactly these keys:
 - "drug": the drug name exactly as given
@@ -16,10 +18,12 @@ For EACH drug, return a JSON array. Each element must have exactly these keys:
 - "effect": the clinical consequence if the drugs are combined (1-2 sentences)
 - "recommendation": what a clinician should do in practice (1-2 sentences)
 
+Be thorough and err toward caution: if there is a well-documented interaction concern (including IV compatibility issues like precipitate formation, not just pharmacokinetic/pharmacodynamic interactions), flag it — do not default to "safe" unless you are genuinely confident there is no clinically meaningful concern.
+
 Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
-const LIST_PROMPT = (primaryName, primaryClass) =>
-  `You are a clinical pharmacologist. List the clinically significant drug interactions for "${primaryName}" (${primaryClass || 'drug class unknown'}) — medications or drug classes that are either contraindicated with it or require caution/monitoring when combined. Do not include drugs that are simply safe to combine; only list ones with a real interaction concern.
+const LIST_PROMPT = (primaryName) =>
+  `You are a clinical pharmacologist. Identify "${primaryName}"'s drug class yourself from your own clinical knowledge, then list the clinically significant drug interactions for it — medications or drug classes that are either contraindicated with it or require caution/monitoring when combined, including IV compatibility issues (e.g. precipitate formation) as well as pharmacokinetic/pharmacodynamic interactions. Do not include drugs that are simply safe to combine; only list ones with a real interaction concern.
 
 Return a JSON array, ordered most severe first. Each element must have exactly these keys:
 - "drug": the specific generic drug name, or a well-known drug class if the interaction applies broadly to the class (e.g. "NSAIDs", "MAO inhibitors")
@@ -42,8 +46,8 @@ Include roughly 6-15 entries covering the most clinically important interactions
 // below) since LLMs don't reliably follow "exclude if risky" instructions
 // 100% of the time on every call -- the actual guarantee is the filter, not
 // the prompt wording.
-const SYNERGY_PROMPT = (primaryName, primaryClass) =>
-  `You are a clinical pharmacologist. List drugs that are commonly and deliberately COMBINED with "${primaryName}" (${primaryClass || 'drug class unknown'}) for synergistic or complementary therapeutic benefit — established combination therapy regimens, NOT interactions to avoid. Think of the kind of combinations found in standard treatment guidelines: combination antihypertensive regimens, combination antimicrobial therapy to broaden coverage or reduce resistance, adjunct therapy that improves efficacy, reduces required dose, or reduces side effects of either drug alone.
+const SYNERGY_PROMPT = (primaryName) =>
+  `You are a clinical pharmacologist. Identify "${primaryName}"'s drug class yourself from your own clinical knowledge, then list drugs that are commonly and deliberately COMBINED with it for synergistic or complementary therapeutic benefit — established combination therapy regimens, NOT interactions to avoid. Think of the kind of combinations found in standard treatment guidelines: combination antihypertensive regimens, combination antimicrobial therapy to broaden coverage or reduce resistance, adjunct therapy that improves efficacy, reduces required dose, or reduces side effects of either drug alone.
 
 Only include combinations with genuine clinical basis — do not include a drug just because it's commonly prescribed alongside this one for an unrelated, coincidental reason.
 
@@ -78,6 +82,44 @@ Return a JSON array. Each element must have exactly these keys:
 - "cautionNote": null in almost all cases (see above) — only non-null if, despite your best judgment, you could not find a way to exclude a concerning entry
 
 Include roughly 5-12 entries covering the most clinically important and well-established regimens for "${conditionLabel}" — do not pad with obscure or theoretical ones. If "${conditionLabel}" is not a recognized clinical condition or has no well-established combination regimens, return an empty array rather than inventing content. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
+
+// ── Deterministic safety net for classic, high-stakes absolute contraindications ──
+// AI calls carry irreducible variance — the exact same prompt can occasionally
+// return a different answer on different calls, or when a stale/incomplete
+// stored drug_class biases the framing. For a short list of extremely
+// well-established, universally-taught "never combine" pairs, we do NOT rely
+// on the AI at all: these are enforced here in code, so this specific class of
+// dangerous inconsistency (e.g. Ceftriaxone + a calcium-containing IV fluid
+// coming back "safe" on one call) cannot happen regardless of model, provider,
+// prompt wording, or luck. This list is intentionally short and only contains
+// pairs with essentially universal clinical consensus — it is a floor under
+// the AI's judgment, not a replacement for it.
+function normalizeDrugToken(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const ABSOLUTE_CONTRAINDICATIONS = [
+  {
+    a: ['ceftriaxone', 'rocephin'],
+    b: ['ringerslactate', 'lactatedringers', 'lactatedringer', 'hartmannssolution', 'calciumgluconate', 'calciumchloride', 'calcium'],
+    mechanism: 'Ceftriaxone forms an insoluble calcium-ceftriaxone precipitate when mixed, co-infused, or given via the same IV line as a calcium-containing solution (including Ringer\'s Lactate/Hartmann\'s solution, calcium gluconate, and calcium chloride).',
+    effect: 'The precipitate can form in the lungs and kidneys and has caused documented fatalities in neonates — the FDA carries a boxed warning specifically prohibiting this combination in neonates. The precipitation risk is also established in older children and adults, though the fatal neonatal cases are the best-documented outcome.',
+    recommendation: 'Do NOT co-administer, admix, or infuse through the same line, even sequentially, without a thorough flush of a compatible fluid in between. In neonates (≤28 days), do not use concomitantly at all, via any route, even with separate lines.',
+  },
+];
+
+function checkAbsoluteContraindication(nameA, nameB) {
+  const tokA = normalizeDrugToken(nameA);
+  const tokB = normalizeDrugToken(nameB);
+  for (const rule of ABSOLUTE_CONTRAINDICATIONS) {
+    const aHitsA = rule.a.some(t => tokA.includes(t));
+    const bHitsB = rule.b.some(t => tokB.includes(t));
+    const aHitsB = rule.a.some(t => tokB.includes(t));
+    const bHitsA = rule.b.some(t => tokA.includes(t));
+    if ((aHitsA && bHitsB) || (aHitsB && bHitsA)) return rule;
+  }
+  return null;
+}
 
 function jsonResp(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -120,10 +162,10 @@ export default async function handler(req) {
     prompt = INDICATION_SYNERGY_PROMPT(conditionLabel, systemName);
   } else if (mode === 'list') {
     if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
-    prompt = LIST_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
+    prompt = LIST_PROMPT(primaryDrug.generic_name);
   } else if (mode === 'synergy') {
     if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
-    prompt = SYNERGY_PROMPT(primaryDrug.generic_name, primaryDrug.drug_class);
+    prompt = SYNERGY_PROMPT(primaryDrug.generic_name);
   } else {
     if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
     if (!Array.isArray(selectedDrugs) || selectedDrugs.length === 0) {
@@ -134,7 +176,6 @@ export default async function handler(req) {
     }
     prompt = PROMPT(
       primaryDrug.generic_name,
-      primaryDrug.drug_class,
       selectedDrugs.map(d => `"${d.generic_name}"`).join(', ')
     );
   }
@@ -261,6 +302,42 @@ export default async function handler(req) {
   if (mode === 'synergy' || mode === 'indication_synergy') {
     const hasCaution = (note) => typeof note === 'string' && note.trim().length > 0;
     results = results.filter(r => !hasCaution(r.cautionNote));
+  }
+
+  // ── Deterministic safety net: classic absolute contraindications ──────────
+  // Applied AFTER the AI call, overriding whatever it said. This is the real
+  // guarantee for the short list of pairs in ABSOLUTE_CONTRAINDICATIONS — see
+  // the comment on that list above for why this exists as code, not just
+  // prompt wording.
+  if (mode !== 'list' && mode !== 'synergy' && mode !== 'indication_synergy') {
+    // Default/'pair' mode (and anything else, matching the fallback branch
+    // above): force-correct or inject an entry for any selected drug that
+    // forms a known absolute contraindication with the primary drug.
+    for (const sel of selectedDrugs) {
+      const rule = checkAbsoluteContraindication(primaryDrug.generic_name, sel.generic_name);
+      if (!rule) continue;
+      const forced = {
+        drug: sel.generic_name,
+        severity: 'contraindicated',
+        mechanism: rule.mechanism,
+        effect: rule.effect,
+        recommendation: '⚠ VERIFIED CONTRAINDICATION: ' + rule.recommendation,
+      };
+      const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
+      if (idx >= 0) results[idx] = forced; else results.push(forced);
+    }
+  } else if (mode === 'synergy') {
+    results = results.filter(r => !checkAbsoluteContraindication(primaryDrug.generic_name, r.drug));
+  } else if (mode === 'indication_synergy') {
+    results = results.filter(regimen => {
+      const names = Array.isArray(regimen.drugs) ? regimen.drugs.map(d => d.name) : [];
+      for (let i = 0; i < names.length; i++) {
+        for (let j = i + 1; j < names.length; j++) {
+          if (checkAbsoluteContraindication(names[i], names[j])) return false;
+        }
+      }
+      return true;
+    });
   }
 
   return jsonResp({ results });
