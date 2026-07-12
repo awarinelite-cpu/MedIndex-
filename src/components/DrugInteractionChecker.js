@@ -462,6 +462,20 @@ function CombinationModal({ result, onClose }) {
               <p className="text-sm text-drug-text leading-relaxed">{result.clinicalReason}</p>
             </div>
           )}
+          {result.cautionNote && (
+            <div
+              className="flex items-start gap-2 px-3 py-2.5 rounded-lg"
+              style={{ background: '#FFFBEB', border: '1px solid #FCD34D' }}
+            >
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#92400E' }} />
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide mb-0.5" style={{ color: '#92400E' }}>
+                  Known concern with this combination
+                </p>
+                <p className="text-sm leading-relaxed" style={{ color: '#78350F' }}>{result.cautionNote}</p>
+              </div>
+            </div>
+          )}
           {(result.dosage || result.frequency || result.duration) && (
             <div className="pt-3 border-t border-drug-border">
               <p className="text-xs font-bold uppercase tracking-wide text-drug-muted mb-2">
@@ -698,6 +712,13 @@ function CombinationTherapyPanel({ drug }) {
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 flex-shrink-0 text-emerald-600" />
                     <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
+                    {r.cautionNote && (
+                      <AlertTriangle
+                        className="w-3.5 h-3.5 flex-shrink-0"
+                        style={{ color: '#92400E' }}
+                        title="This combination has a known safety concern — see details"
+                      />
+                    )}
                   </div>
                   {r.indication && (
                     <p className="text-xs text-drug-muted mt-0.5 ml-6 truncate">{r.indication}</p>

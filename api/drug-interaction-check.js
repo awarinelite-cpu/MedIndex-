@@ -32,10 +32,25 @@ Include roughly 6-15 entries covering the most clinically important interactions
 
 // The positive counterpart to LIST_PROMPT: synergistic/complementary
 // combination therapy, not interactions to avoid.
+//
+// FIX (2026-07): this used to instruct the AI to describe ONLY the benefit
+// of each combination with no mechanism to mention risk, while the
+// pairwise Compatibility Checker (PROMPT above) independently and
+// correctly flags real safety concerns for the same drug pairs (e.g.
+// quinine's QT-prolongation risk when combined with IV artesunate). Two
+// separate AI calls, asked two different questions, produced what looked
+// to users like a flat contradiction: one section of the app says
+// "combination partner", another says "use with caution" for the same
+// pair. The fix isn't to hide the synergy list -- these ARE real,
+// historically-documented combinations -- it's to make this prompt
+// capable of saying "yes, and also monitor for X" instead of forcing it
+// to choose between the two facts.
 const SYNERGY_PROMPT = (primaryName, primaryClass) =>
   `You are a clinical pharmacologist. List drugs that are commonly and deliberately COMBINED with "${primaryName}" (${primaryClass || 'drug class unknown'}) for synergistic or complementary therapeutic benefit — established combination therapy regimens, NOT interactions to avoid. Think of the kind of combinations found in standard treatment guidelines: combination antihypertensive regimens, combination antimicrobial therapy to broaden coverage or reduce resistance, adjunct therapy that improves efficacy, reduces required dose, or reduces side effects of either drug alone.
 
 Only include combinations with genuine clinical basis — do not include a drug just because it's commonly prescribed alongside this one for an unrelated, coincidental reason.
+
+IMPORTANT — do not sanitize known risks: an established combination can still carry a real, well-documented safety concern (for example, additive QT-interval prolongation, additive CNS/respiratory depression, increased bleeding risk, or a need for specific monitoring). If a combination you are listing has such a concern, you MUST say so in "cautionNote" — do not omit it just because the combination is standard practice. Only leave "cautionNote" null when you are not aware of any such concern for that specific pair.
 
 Return a JSON array. Each element must have exactly these keys:
 - "drug": the specific generic drug name of the combination partner
@@ -44,6 +59,7 @@ Return a JSON array. Each element must have exactly these keys:
 - "dosage": typical dose of the COMBINATION PARTNER drug specifically when used in this combination
 - "frequency": typical dosing frequency (e.g. "once daily", "twice daily", "every 8 hours")
 - "duration": typical duration of the combined therapy (e.g. "7-10 days", "long-term/chronic", "until symptoms resolve")
+- "cautionNote": a specific, well-documented safety concern or monitoring requirement for this exact combination, or null if there is none you are aware of. Do not restate the general disclaimer to "consult a clinician" here — only a concrete pharmacological concern (e.g. "Both drugs can prolong the QTc interval; concurrent use increases risk of torsades de pointes — ECG monitoring advised.")
 
 Include roughly 6-15 entries covering the most clinically important and well-established combinations — do not pad with obscure or theoretical ones. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
@@ -55,11 +71,14 @@ Include roughly 6-15 entries covering the most clinically important and well-est
 const INDICATION_SYNERGY_PROMPT = (conditionLabel, systemName) =>
   `You are a clinical pharmacologist. List standard COMBINATION THERAPY regimens used to treat "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''} — established multi-drug regimens from treatment guidelines, where two or more drugs are used together deliberately for synergistic or complementary benefit (broader coverage, improved efficacy, dose reduction, or reduced resistance/side effects). This is NOT about interactions to avoid — only genuine combination treatment approaches.
 
+IMPORTANT — do not sanitize known risks: an established regimen can still carry a real, well-documented safety concern between its component drugs (for example, additive QT-interval prolongation, additive CNS/respiratory depression, or a need for specific monitoring). If a regimen has such a concern, say so in "cautionNote" at the regimen level — do not omit it just because the regimen is standard practice. Leave "cautionNote" null only when you are not aware of any such concern.
+
 Return a JSON array. Each element must have exactly these keys:
 - "regimenName": a short name for the combination (e.g. "ACE Inhibitor + Thiazide Diuretic", "Triple Therapy for H. pylori")
 - "indication": the specific clinical scenario this regimen is used for within "${conditionLabel}" (1 sentence) — e.g. first-line, resistant cases, a particular patient subgroup
 - "clinicalReason": the pharmacological or clinical rationale for combining these specific drugs — why the combination works better than any one drug alone (1-2 sentences)
 - "drugs": a JSON array of the component drugs in this regimen, each an object with exactly these keys: "name" (generic drug name), "dosage", "frequency" (e.g. "once daily", "twice daily"), and "duration" (e.g. "7-10 days", "long-term/chronic")
+- "cautionNote": a specific, well-documented safety concern or monitoring requirement between the component drugs of this regimen, or null if there is none you are aware of. Only a concrete pharmacological concern, not a generic "consult a clinician" disclaimer.
 
 Include roughly 5-12 entries covering the most clinically important and well-established regimens for "${conditionLabel}" — do not pad with obscure or theoretical ones. If "${conditionLabel}" is not a recognized clinical condition or has no well-established combination regimens, return an empty array rather than inventing content. Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
