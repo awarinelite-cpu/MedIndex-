@@ -288,7 +288,58 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
   return { status: 'saved', id: docId, patched: Object.keys(patch) };
 }
 
-// ── Backwards-compatibility export ────────────────────────────────────────
+// ── Ensure a drug has all fields required to be safely flagged ────────────
+// Used anywhere a drug is about to be used for a safety judgement (e.g. the
+// Drug Compatibility Checker) rather than just displayed. A drug's own
+// record can be thin — imported from an old CSV, saved mid-Class-Sweep
+// before every field resolved, etc — and REQUIRED_FIELD_GROUPS (in
+// particular Contraindications, Mechanism/Pharmacology, and Adverse
+// Effects) are exactly the clinical parameters a "safe to combine or not"
+// judgement should never be made without. This checks completeness first
+// (free, no network call) and only reaches out to the AI if something is
+// actually missing. It patches ONLY the missing fields via saveParsedDrug
+// (surgical — never overwrites data that's already there), then re-checks
+// completeness on the merged result so the caller knows definitively
+// whether the drug is now safe to use for flagging, or whether even the
+// AI/web lookup couldn't fill every required parameter.
+export async function ensureDrugComplete({ drug, endpoint = '/api/drug-ai-details' }) {
+  if (!drug || !drug.generic_name) {
+    return { drug, wasIncomplete: false, completed: false, missingGroups: REQUIRED_FIELD_GROUPS };
+  }
+  if (isDrugComplete(drug)) {
+    return { drug, wasIncomplete: false, completed: true, missingGroups: [] };
+  }
+
+  try {
+    const text   = await fetchAiDrugText({ genericName: drug.generic_name, drugClass: drug.drug_class, endpoint });
+    const parsed = parseAiDrugDetail(text);
+    const result = await saveParsedDrug({
+      genericName: drug.generic_name,
+      drugClass: drug.drug_class,
+      parsed,
+      existingDrug: drug,
+    });
+
+    // Merge only the fields that actually got patched into a fresh copy of
+    // the drug object, so the caller has complete data immediately without
+    // needing to re-read from Firestore.
+    const patchedFields = {};
+    if (Array.isArray(result.patched)) {
+      result.patched.forEach(f => { if (parsed[f] !== undefined) patchedFields[f] = parsed[f]; });
+    }
+    const merged = {
+      ...drug,
+      ...patchedFields,
+      drug_class: drug.drug_class || patchedFields.drug_class || parsed.drug_class || drug.drug_class,
+    };
+    const stillMissing = getMissingGroups(merged);
+    return { drug: merged, wasIncomplete: true, completed: stillMissing.length === 0, missingGroups: stillMissing };
+  } catch (e) {
+    // AI/network failure — the drug remains exactly as incomplete as it
+    // started. Caller must treat this the same as "could not be completed".
+    return { drug, wasIncomplete: true, completed: false, missingGroups: getMissingGroups(drug), error: e.message };
+  }
+}
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {

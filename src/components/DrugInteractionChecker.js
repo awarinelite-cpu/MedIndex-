@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Loader, Sparkles } from 'lucide-react';
+import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Loader, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAiProvider } from '../context/AiProviderContext';
-import { fetchAiDrugText, saveAiDrugToDatabase } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, getMissingGroups, ensureDrugComplete } from '../utils/aiDrugSave';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 
 // ── Severity badge config ─────────────────────────────────────────────────────
@@ -11,6 +11,24 @@ const SEVERITY = {
   contraindicated:{ label: 'Avoid Combination',    color: '#991B1B', bg: '#FEF2F2', border: '#FCA5A5', icon: AlertTriangle },
   unknown:       { label: 'Insufficient Data',     color: '#374151', bg: '#F9FAFB', border: '#D1D5DB', icon: AlertCircle },
 };
+
+// ── Build a local "Insufficient Data" result for a drug (or the primary
+// drug) that still lacks required clinical parameters after an auto-fill
+// attempt. Never sent to the AI for a safe/unsafe judgement — this is the
+// deterministic floor: no verdict without complete data, full stop.
+function insufficientDataResult(drugName, missingGroups, reason) {
+  const missingLabel = missingGroups.map(g => g.label).join(', ') || 'clinical data';
+  return {
+    drug: drugName,
+    severity: 'unknown',
+    mechanism: null,
+    effect: null,
+    recommendation:
+      reason ||
+      `Cannot be flagged safe or unsafe yet — this drug's record is still missing: ${missingLabel}. ` +
+      `A verdict requires all required clinical parameters to be on file first.`,
+  };
+}
 
 // ── API call via Vercel backend route (multi-provider) ────────────────────────
 async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 'gemini') {
@@ -762,6 +780,41 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   const [errorMsg, setErrorMsg]     = useState('');
   const [savingId, setSavingId]     = useState(null);  // id currently being saved to the drug bank
 
+  // ── Primary drug completeness gate ──────────────────────────────────────
+  // "Safe to combine" is a judgement about THIS drug as much as any partner
+  // it's checked against — a thin/incomplete record (missing contraindications,
+  // mechanism, adverse effects, etc.) shouldn't be the basis for a verdict
+  // either. livePrimaryDrug is the working copy used everywhere below
+  // instead of the raw `drug` prop, since it may get patched with AI-filled
+  // fields after mount.
+  const [livePrimaryDrug, setLivePrimaryDrug] = useState(drug);
+  const [primaryStatus, setPrimaryStatus]     = useState(() => isDrugComplete(drug) ? 'ready' : 'checking');
+  const [primaryMissing, setPrimaryMissing]   = useState(() => getMissingGroups(drug));
+
+  useEffect(() => {
+    let cancelled = false;
+    setLivePrimaryDrug(drug);
+
+    if (isDrugComplete(drug)) {
+      setPrimaryStatus('ready');
+      setPrimaryMissing([]);
+      return;
+    }
+
+    setPrimaryStatus('checking');
+    setPrimaryMissing(getMissingGroups(drug));
+    (async () => {
+      const outcome = await ensureDrugComplete({ drug, endpoint: provider.endpoint });
+      if (cancelled) return;
+      setLivePrimaryDrug(outcome.drug);
+      setPrimaryMissing(outcome.missingGroups);
+      setPrimaryStatus(outcome.completed ? 'ready' : 'incomplete');
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drug.id]);
+
   // Explicit, opt-in save — nothing in this component saves to the drug bank
   // on its own anymore. Only fires when the admin taps "Save" on an unsaved
   // chip; uses the AI text already fetched during search, so it's a write,
@@ -781,15 +834,31 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
 
   // Filter out the current drug from allDrugs
   const otherDrugs = useMemo(
-    () => allDrugs.filter(d => d.id !== drug.id),
-    [allDrugs, drug.id]
+    () => allDrugs.filter(d => d.id !== livePrimaryDrug.id),
+    [allDrugs, livePrimaryDrug.id]
   );
 
+  // Adding an EXISTING (already-saved) drug to the compatibility check:
+  // its record must have every required clinical parameter before it can
+  // be used in a safe/unsafe verdict. Freshly AI-searched-but-unsaved
+  // drugs (_unsaved) already come from a full monograph generation and
+  // skip this — see searchOnly() above.
   const addDrug = (d) => {
     setSelected(prev => prev.some(s => s.id === d.id) ? prev : [...prev, d]);
     // Clear stale results when selection changes
     setResults([]);
     setStatus('idle');
+
+    if (d._unsaved || isDrugComplete(d)) return;
+
+    // Mark this chip as completing, then patch in the background.
+    setSelected(prev => prev.map(s => s.id === d.id ? { ...s, _completing: true } : s));
+    ensureDrugComplete({ drug: d, endpoint: provider.endpoint }).then(outcome => {
+      setSelected(prev => prev.map(s => s.id === d.id
+        ? { ...outcome.drug, _completing: false, _incomplete: !outcome.completed, _missingGroups: outcome.missingGroups }
+        : s
+      ));
+    });
   };
 
   const removeDrug = (id) => {
@@ -806,8 +875,34 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
     setStatus('loading');
     setErrorMsg('');
     try {
-      const data = await checkInteractionsWithAI(drug, selected, providerId);
-      setResults(data);
+      // Primary drug itself never resolved to complete — no pair involving
+      // it can get a real verdict. Every result is "Insufficient Data",
+      // deterministically, no AI call needed.
+      if (primaryStatus === 'incomplete') {
+        setResults(selected.map(d =>
+          insufficientDataResult(
+            d.generic_name,
+            primaryMissing,
+            `Cannot be flagged yet — ${livePrimaryDrug.generic_name}'s own clinical record is still missing: ` +
+            `${primaryMissing.map(g => g.label).join(', ')}. A verdict requires complete data on both sides of the pair.`
+          )
+        ));
+        setStatus('done');
+        return;
+      }
+
+      // Split the selection: drugs with complete data go to the AI for a
+      // real verdict; anything still missing required parameters gets a
+      // deterministic "Insufficient Data" result instead — never a guess.
+      const ready      = selected.filter(d => d._unsaved || !d._incomplete);
+      const incomplete = selected.filter(d => !d._unsaved && d._incomplete);
+
+      const aiResults = ready.length > 0
+        ? await checkInteractionsWithAI(livePrimaryDrug, ready, providerId)
+        : [];
+      const gapResults = incomplete.map(d => insufficientDataResult(d.generic_name, d._missingGroups));
+
+      setResults([...aiResults, ...gapResults]);
       setStatus('done');
     } catch (e) {
       setErrorMsg(e.message || 'Failed to check interactions. Please try again.');
@@ -824,15 +919,46 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   return (
     <div className="space-y-4">
 
+      {/* ── Primary drug completeness banner ─── */}
+      {primaryStatus === 'checking' && (
+        <div className="section-card p-4 flex items-center gap-2.5 bg-blue-50 border border-blue-200">
+          <Loader className="w-4 h-4 text-blue-600 animate-spin flex-shrink-0" />
+          <p className="text-xs text-blue-800">
+            <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record is missing some required data
+            ({primaryMissing.map(g => g.label).join(', ')}) — completing it automatically before any compatibility
+            checks run. This only needs to happen once.
+          </p>
+        </div>
+      )}
+      {primaryStatus === 'incomplete' && (
+        <div className="section-card p-4 flex items-center gap-2.5 bg-red-50 border border-red-200">
+          <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+          <p className="text-xs text-red-800">
+            Could not complete <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record — still missing:
+            {' '}{primaryMissing.map(g => g.label).join(', ')}. Compatibility checks will show "Insufficient Data"
+            until this is filled in, since a safe/unsafe verdict needs every required parameter on file.
+          </p>
+        </div>
+      )}
+      {primaryStatus === 'ready' && primaryMissing.length === 0 && livePrimaryDrug !== drug && (
+        <div className="section-card p-4 flex items-center gap-2.5 bg-emerald-50 border border-emerald-200">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <p className="text-xs text-emerald-800">
+            <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record was automatically completed and is now
+            ready for compatibility checking.
+          </p>
+        </div>
+      )}
+
       {/* ── Existing static interaction data ─── */}
-      {drug.interaction && (
+      {livePrimaryDrug.interaction && (
         <div className="section-card p-5">
           <h3 className="text-sm font-bold text-drug-muted uppercase tracking-wide mb-3">Known Interactions (database)</h3>
           <p className="text-drug-muted text-xs mb-3">
             Always verify interactions against current prescribing information. Consult a pharmacist for patient-specific interaction checking.
           </p>
           <div className="space-y-1">
-            {drug.interaction.split('\n').map((line, i) => line.trim() && (
+            {livePrimaryDrug.interaction.split('\n').map((line, i) => line.trim() && (
               <div key={i} className="flex items-start gap-2 text-sm text-drug-text">
                 <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
                 <span>{line}</span>
@@ -843,10 +969,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
       )}
 
       {/* ── AI's own list of known incompatible drugs — one button, no manual add ─── */}
-      <IncompatibleDrugsPanel drug={drug} />
+      <IncompatibleDrugsPanel drug={livePrimaryDrug} />
 
       {/* ── Positive counterpart: synergistic combination therapy ─── */}
-      <CombinationTherapyPanel drug={drug} />
+      <CombinationTherapyPanel drug={livePrimaryDrug} />
 
       {/* ── Interaction checker ─── */}
       <div className="section-card p-5" style={{ overflow: 'visible' }}>
@@ -863,9 +989,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
           </span>
         </div>
         <p className="text-xs text-drug-muted mb-4">
-          Add drugs you want to combine with <strong>{drug.generic_name}</strong>. The AI will check each pair for safety.
-          Drugs not already in the database are looked up fresh for this check only — they're{' '}
-          <strong>not saved</strong> unless you tap the Save button on the chip.
+          Add drugs you want to combine with <strong>{livePrimaryDrug.generic_name}</strong>. The AI will check each pair for safety.
+          Drugs already in the database get their clinical record auto-completed first if anything required is
+          missing — a verdict is never given on incomplete data. Drugs not already in the database are looked up
+          fresh for this check only — they're <strong>not saved</strong> unless you tap the Save button on the chip.
         </p>
 
         {/* Search */}
@@ -879,7 +1006,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
 
         {/* Same-class quick adds */}
         <SameClassDrugs
-          primaryDrug={drug}
+          primaryDrug={livePrimaryDrug}
           allDrugs={otherDrugs}
           selected={selected}
           onAdd={addDrug}
@@ -889,17 +1016,27 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
         {selected.length > 0 && (
           <div className="mt-4">
             <p className="text-xs font-semibold text-drug-muted uppercase tracking-wide mb-2">
-              Checking with {drug.generic_name}:
+              Checking with {livePrimaryDrug.generic_name}:
             </p>
             <div className="flex flex-wrap gap-2">
               {selected.map(d => (
                 <span
                   key={d.id}
+                  title={d._incomplete ? `Missing: ${(d._missingGroups || []).map(g => g.label).join(', ')} — will show as Insufficient Data` : undefined}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full ${
-                    d._unsaved ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-primary-600 text-white'
+                    d._unsaved
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : d._completing
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : d._incomplete
+                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      : 'bg-primary-600 text-white'
                   }`}
                 >
+                  {d._completing && <Loader className="w-3 h-3 animate-spin flex-shrink-0" />}
+                  {d._incomplete && <AlertTriangle className="w-3 h-3 flex-shrink-0" />}
                   {d.generic_name}
+                  {d._completing && <span className="opacity-80">completing…</span>}
                   {d._unsaved && (
                     <button
                       onClick={() => saveDrug(d)}
@@ -910,7 +1047,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
                       {savingId === d.id ? 'Saving…' : 'Save'}
                     </button>
                   )}
-                  <button onClick={() => removeDrug(d.id)} className={d._unsaved ? 'hover:text-amber-600' : 'hover:text-primary-200'}>
+                  <button
+                    onClick={() => removeDrug(d.id)}
+                    className={d._unsaved ? 'hover:text-amber-600' : d._completing || d._incomplete ? 'hover:text-red-900' : 'hover:text-primary-200'}
+                  >
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -931,11 +1071,18 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
         {selected.length > 0 && (
           <button
             onClick={handleCheck}
-            disabled={status === 'loading'}
+            disabled={status === 'loading' || primaryStatus === 'checking' || selected.some(d => d._completing)}
+            title={
+              primaryStatus === 'checking' || selected.some(d => d._completing)
+                ? 'Completing clinical data before checking — this only takes a moment'
+                : undefined
+            }
             className="mt-4 w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-700 text-white rounded-xl font-semibold text-sm hover:bg-primary-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {status === 'loading' ? (
               <><Loader className="w-4 h-4 animate-spin" /> Checking interactions…</>
+            ) : primaryStatus === 'checking' || selected.some(d => d._completing) ? (
+              <><Loader className="w-4 h-4 animate-spin" /> Completing clinical data…</>
             ) : (
               <><FlaskConical className="w-4 h-4" /> Check {selected.length} drug{selected.length > 1 ? 's' : ''} for interactions</>
             )}
@@ -957,7 +1104,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
           <div className="section-card px-5 py-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
-                <h3 className="font-bold text-drug-text text-sm">Interaction Results for <span className="text-primary-700">{drug.generic_name}</span></h3>
+                <h3 className="font-bold text-drug-text text-sm">Interaction Results for <span className="text-primary-700">{livePrimaryDrug.generic_name}</span></h3>
                 <p className="text-xs text-drug-muted mt-0.5">AI-generated — verify against current prescribing information</p>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
