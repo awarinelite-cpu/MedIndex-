@@ -186,6 +186,8 @@ export default async function handler(req) {
 
   // ── Route to the right AI provider ──────────────────────────────────────────
   let aiRes;
+  let aiUnavailable = false;
+  let aiFailureMessage = '';
 
   try {
     if (provider === 'gemini') {
@@ -259,34 +261,51 @@ export default async function handler(req) {
 
   } catch (err) {
     console.error(`[drug-interaction-check] fetch to ${provider} failed:`, err);
-    return jsonResp({ error: 'Could not reach the AI service. Please try again.' }, 502);
+    aiUnavailable = true;
+    aiFailureMessage = 'Could not reach the AI service.';
   }
 
   // ── Parse response ───────────────────────────────────────────────────────────
-  if (!aiRes.ok) {
-    let detail = '';
-    try { detail = await aiRes.text(); } catch {}
-    console.error(`[drug-interaction-check] ${provider} error ${aiRes.status}:`, detail);
-    if (aiRes.status === 429) {
-      return jsonResp({ error: 'AI rate limit reached. Please wait a moment and try again.' }, 429);
+  let text = '';
+  if (!aiUnavailable) {
+    if (!aiRes.ok) {
+      let detail = '';
+      try { detail = await aiRes.text(); } catch {}
+      console.error(`[drug-interaction-check] ${provider} error ${aiRes.status}:`, detail);
+      aiUnavailable = true;
+      aiFailureMessage = aiRes.status === 429
+        ? 'AI rate limit reached.'
+        : `AI service error (${aiRes.status}).`;
+    } else {
+      let raw;
+      try { raw = await aiRes.json(); }
+      catch { aiUnavailable = true; aiFailureMessage = 'Failed to parse AI response.'; }
+      if (raw) text = extractText(raw, provider).trim();
     }
-    return jsonResp({ error: `AI service error (${aiRes.status}). Please try again.` }, 502);
   }
 
-  let raw;
-  try { raw = await aiRes.json(); }
-  catch { return jsonResp({ error: 'Failed to parse AI response.' }, 502); }
+  let results = [];
+  if (!aiUnavailable) {
+    const clean = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    try {
+      results = JSON.parse(clean);
+      if (!Array.isArray(results)) throw new Error('Expected JSON array');
+    } catch (e) {
+      console.error('[drug-interaction-check] JSON parse failed:', e.message, '| raw text:', clean.slice(0, 300));
+      aiUnavailable = true;
+      aiFailureMessage = 'AI returned an unexpected format.';
+    }
+  }
 
-  const text = extractText(raw, provider).trim();
-  const clean = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-
-  let results;
-  try {
-    results = JSON.parse(clean);
-    if (!Array.isArray(results)) throw new Error('Expected JSON array');
-  } catch (e) {
-    console.error('[drug-interaction-check] JSON parse failed:', e.message, '| raw text:', clean.slice(0, 300));
-    return jsonResp({ error: 'AI returned an unexpected format. Please try again.' }, 502);
+  // ── If the AI is genuinely unreachable, degrade instead of returning
+  // nothing. This ONLY has real content to fall back to in 'pair' mode
+  // (via ABSOLUTE_CONTRAINDICATIONS below) — 'list', 'synergy', and
+  // 'indication_synergy' generate open-ended content from the AI's own
+  // knowledge with no equivalent offline dataset, so there is nothing
+  // honest to return for those; they still hard-error.
+  const hasOfflineFallback = mode !== 'list' && mode !== 'synergy' && mode !== 'indication_synergy';
+  if (aiUnavailable && !hasOfflineFallback) {
+    return jsonResp({ error: aiFailureMessage + ' Please try again.' }, 502);
   }
 
   // ── Deterministic safety filter for synergy/regimen modes ─────────────────
@@ -315,16 +334,31 @@ export default async function handler(req) {
     // forms a known absolute contraindication with the primary drug.
     for (const sel of selectedDrugs) {
       const rule = checkAbsoluteContraindication(primaryDrug.generic_name, sel.generic_name);
-      if (!rule) continue;
-      const forced = {
-        drug: sel.generic_name,
-        severity: 'contraindicated',
-        mechanism: rule.mechanism,
-        effect: rule.effect,
-        recommendation: '⚠ VERIFIED CONTRAINDICATION: ' + rule.recommendation,
-      };
-      const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
-      if (idx >= 0) results[idx] = forced; else results.push(forced);
+      if (rule) {
+        const forced = {
+          drug: sel.generic_name,
+          severity: 'contraindicated',
+          mechanism: rule.mechanism,
+          effect: rule.effect,
+          recommendation: '⚠ VERIFIED CONTRAINDICATION: ' + rule.recommendation,
+        };
+        const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
+        if (idx >= 0) results[idx] = forced; else results.push(forced);
+      } else if (aiUnavailable) {
+        // AI is down and this specific pair isn't one of the small set of
+        // universally-agreed contraindications we can verify without it —
+        // say so honestly rather than silently omitting it or guessing.
+        results.push({
+          drug: sel.generic_name,
+          severity: 'unknown',
+          mechanism: null,
+          effect: null,
+          recommendation:
+            'Cannot be checked right now — the AI service is unavailable, so only the small set of universally ' +
+            'verified classic contraindications (checked without AI) could be applied here. Try again once the ' +
+            'AI service is back, or switch AI provider in the dropdown above.',
+        });
+      }
     }
   } else if (mode === 'synergy') {
     results = results.filter(r => !checkAbsoluteContraindication(primaryDrug.generic_name, r.drug));
@@ -340,5 +374,5 @@ export default async function handler(req) {
     });
   }
 
-  return jsonResp({ results });
+  return jsonResp({ results, aiUnavailable: aiUnavailable || undefined });
 }

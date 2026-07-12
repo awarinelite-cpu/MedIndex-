@@ -46,7 +46,11 @@ async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 
   if (!Array.isArray(data.results)) {
     throw new Error('Unexpected response from server. Please try again.');
   }
-  return data.results;
+  // aiUnavailable: the AI itself couldn't be reached, but the response is
+  // still 200 — verified classic contraindications (checked without AI)
+  // were still applied, and every other pair is honestly labeled
+  // "Insufficient Data" rather than silently dropped. See handleCheck.
+  return { results: data.results, aiUnavailable: !!data.aiUnavailable };
 }
 
 // ── API call for the AI's own list of known incompatible drugs ────────────────
@@ -778,6 +782,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   const [results, setResults]       = useState([]);   // AI results
   const [status, setStatus]         = useState('idle'); // idle | loading | done | error
   const [errorMsg, setErrorMsg]     = useState('');
+  const [aiUnavailable, setAiUnavailable] = useState(false); // AI unreachable last check — degraded results shown
   const [savingId, setSavingId]     = useState(null);  // id currently being saved to the drug bank
 
   // ── Primary drug completeness gate ──────────────────────────────────────
@@ -895,6 +900,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
     if (selected.length === 0) return;
     setStatus('loading');
     setErrorMsg('');
+    setAiUnavailable(false);
     try {
       // Primary drug itself never resolved to complete — no pair involving
       // it can get a real verdict. Every result is "Insufficient Data",
@@ -918,9 +924,17 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
       const ready      = selected.filter(d => d._unsaved || !d._incomplete);
       const incomplete = selected.filter(d => !d._unsaved && d._incomplete);
 
-      const aiResults = ready.length > 0
-        ? await checkInteractionsWithAI(livePrimaryDrug, ready, providerId)
-        : [];
+      let aiResults = [];
+      if (ready.length > 0) {
+        const outcome = await checkInteractionsWithAI(livePrimaryDrug, ready, providerId);
+        aiResults = outcome.results;
+        // AI was unreachable for this check: verified classic
+        // contraindications (Ceftriaxone+calcium etc.) were still applied
+        // server-side without needing AI, and everything else came back
+        // honestly labeled "Insufficient Data" rather than silently
+        // dropped. Surface this so the banner below can explain it.
+        setAiUnavailable(outcome.aiUnavailable);
+      }
       const gapResults = incomplete.map(d => insufficientDataResult(d.generic_name, d._missingGroups));
 
       setResults([...aiResults, ...gapResults]);
@@ -1088,7 +1102,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
               ))}
               {selected.length > 1 && (
                 <button
-                  onClick={() => { setSelected([]); setResults([]); setStatus('idle'); }}
+                  onClick={() => { setSelected([]); setResults([]); setStatus('idle'); setAiUnavailable(false); }}
                   className="text-xs text-drug-muted hover:text-red-600 underline self-center"
                 >
                   Clear all
@@ -1131,6 +1145,18 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
       {/* ── Results ─── */}
       {status === 'done' && results.length > 0 && (
         <div className="space-y-3">
+          {aiUnavailable && (
+            <div className="section-card p-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                <strong>The AI service was unreachable for this check.</strong> Only the small set of universally
+                verified classic contraindications (e.g. Ceftriaxone + calcium-containing IV fluids) could be
+                checked — these don't need AI and are guaranteed correct regardless. Every other pair below is
+                honestly marked "Insufficient Data" rather than guessed. Try again shortly, or switch AI provider
+                using the dropdown above.
+              </p>
+            </div>
+          )}
           {/* Summary bar */}
           <div className="section-card px-5 py-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
