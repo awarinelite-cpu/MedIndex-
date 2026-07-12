@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Loader, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAiProvider } from '../context/AiProviderContext';
 import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, getMissingGroups, ensureDrugComplete } from '../utils/aiDrugSave';
@@ -791,6 +791,22 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   const [primaryStatus, setPrimaryStatus]     = useState(() => isDrugComplete(drug) ? 'ready' : 'checking');
   const [primaryMissing, setPrimaryMissing]   = useState(() => getMissingGroups(drug));
 
+  const runPrimaryCompletion = useCallback(async (targetDrug) => {
+    if (isDrugComplete(targetDrug)) {
+      setLivePrimaryDrug(targetDrug);
+      setPrimaryStatus('ready');
+      setPrimaryMissing([]);
+      return;
+    }
+    setPrimaryStatus('checking');
+    setPrimaryMissing(getMissingGroups(targetDrug));
+    const outcome = await ensureDrugComplete({ drug: targetDrug, endpoint: provider.endpoint });
+    setLivePrimaryDrug(outcome.drug);
+    setPrimaryMissing(outcome.missingGroups);
+    setPrimaryStatus(outcome.completed ? 'ready' : 'incomplete');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider.endpoint]);
+
   useEffect(() => {
     let cancelled = false;
     setLivePrimaryDrug(drug);
@@ -843,6 +859,19 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
   // be used in a safe/unsafe verdict. Freshly AI-searched-but-unsaved
   // drugs (_unsaved) already come from a full monograph generation and
   // skip this — see searchOnly() above.
+  // Runs (or re-runs) the completeness check/auto-fill for one drug in the
+  // selected list — used both right after adding it and from the retry
+  // affordance on an incomplete chip.
+  const completeSelectedDrug = (d) => {
+    setSelected(prev => prev.map(s => s.id === d.id ? { ...s, _completing: true, _incomplete: false } : s));
+    ensureDrugComplete({ drug: d, endpoint: provider.endpoint }).then(outcome => {
+      setSelected(prev => prev.map(s => s.id === d.id
+        ? { ...outcome.drug, _completing: false, _incomplete: !outcome.completed, _missingGroups: outcome.missingGroups }
+        : s
+      ));
+    });
+  };
+
   const addDrug = (d) => {
     setSelected(prev => prev.some(s => s.id === d.id) ? prev : [...prev, d]);
     // Clear stale results when selection changes
@@ -850,15 +879,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
     setStatus('idle');
 
     if (d._unsaved || isDrugComplete(d)) return;
-
-    // Mark this chip as completing, then patch in the background.
-    setSelected(prev => prev.map(s => s.id === d.id ? { ...s, _completing: true } : s));
-    ensureDrugComplete({ drug: d, endpoint: provider.endpoint }).then(outcome => {
-      setSelected(prev => prev.map(s => s.id === d.id
-        ? { ...outcome.drug, _completing: false, _incomplete: !outcome.completed, _missingGroups: outcome.missingGroups }
-        : s
-      ));
-    });
+    completeSelectedDrug(d);
   };
 
   const removeDrug = (id) => {
@@ -931,13 +952,21 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
         </div>
       )}
       {primaryStatus === 'incomplete' && (
-        <div className="section-card p-4 flex items-center gap-2.5 bg-red-50 border border-red-200">
-          <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
-          <p className="text-xs text-red-800">
-            Could not complete <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record — still missing:
-            {' '}{primaryMissing.map(g => g.label).join(', ')}. Compatibility checks will show "Insufficient Data"
-            until this is filled in, since a safe/unsafe verdict needs every required parameter on file.
-          </p>
+        <div className="section-card p-4 bg-red-50 border border-red-200">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <p className="text-xs text-red-800">
+              Could not complete <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record — still missing:
+              {' '}{primaryMissing.map(g => g.label).join(', ')}. Compatibility checks will show "Insufficient Data"
+              until this is filled in, since a safe/unsafe verdict needs every required parameter on file.
+            </p>
+          </div>
+          <button
+            onClick={() => runPrimaryCompletion(livePrimaryDrug)}
+            className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+          >
+            <Loader className="w-3 h-3" /> Try completing again
+          </button>
         </div>
       )}
       {primaryStatus === 'ready' && primaryMissing.length === 0 && livePrimaryDrug !== drug && (
@@ -1022,14 +1051,15 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
               {selected.map(d => (
                 <span
                   key={d.id}
-                  title={d._incomplete ? `Missing: ${(d._missingGroups || []).map(g => g.label).join(', ')} — will show as Insufficient Data` : undefined}
+                  title={d._incomplete ? `Missing: ${(d._missingGroups || []).map(g => g.label).join(', ')} — tap to retry` : undefined}
+                  onClick={d._incomplete ? () => completeSelectedDrug(d) : undefined}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full ${
                     d._unsaved
                       ? 'bg-amber-100 text-amber-800 border border-amber-300'
                       : d._completing
                       ? 'bg-blue-50 text-blue-700 border border-blue-200'
                       : d._incomplete
-                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      ? 'bg-red-50 text-red-700 border border-red-200 cursor-pointer hover:bg-red-100'
                       : 'bg-primary-600 text-white'
                   }`}
                 >
@@ -1037,6 +1067,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
                   {d._incomplete && <AlertTriangle className="w-3 h-3 flex-shrink-0" />}
                   {d.generic_name}
                   {d._completing && <span className="opacity-80">completing…</span>}
+                  {d._incomplete && <span className="opacity-80 underline">retry</span>}
                   {d._unsaved && (
                     <button
                       onClick={() => saveDrug(d)}
@@ -1048,7 +1079,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
                     </button>
                   )}
                   <button
-                    onClick={() => removeDrug(d.id)}
+                    onClick={(e) => { e.stopPropagation(); removeDrug(d.id); }}
                     className={d._unsaved ? 'hover:text-amber-600' : d._completing || d._incomplete ? 'hover:text-red-900' : 'hover:text-primary-200'}
                   >
                     <X className="w-3 h-3" />
