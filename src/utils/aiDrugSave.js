@@ -43,6 +43,27 @@ export function isDrugComplete(data) {
   return getMissingGroups(data).length === 0;
 }
 
+// ── Detect a "drug not found / not recognized" AI response ─────────────────
+// The AI is instructed to say so plainly (instead of inventing information)
+// when it isn't confident a name corresponds to a real generic, brand, or
+// combination product. Previously that text was parsed and saved to the
+// database exactly like a real result. This catches that response so it can
+// be rejected instead of saved.
+const NOT_FOUND_PATTERNS = [
+  /\bnot\s+(a\s+)?(recognized|real|known|valid)\b.{0,40}\b(drug|medication|brand|generic)\b/i,
+  /\bnot\s+confident\b.{0,80}\b(real|corresponds?|generic|brand)\b/i,
+  /\b(does not|doesn'?t)\s+(correspond|match)\b.{0,60}\b(any|a)\b.{0,20}\b(real|known|recognized)\b/i,
+  /\b(could not|couldn'?t|cannot|can'?t|unable to)\s+(find|identify|locate|confirm)\b.{0,60}\b(drug|medication|brand|generic|information)\b/i,
+  /\bno\s+(reliable\s+)?information\s+(found|available)\b.{0,40}\b(drug|medication|brand)\b/i,
+  /^\s*(not available|not known|unknown|unrecognized|no data)\s*$/im,
+];
+
+export function isDrugNotFoundText(text) {
+  if (!text || !text.trim()) return true;
+  const head = text.slice(0, 600); // refusals are stated up front, not buried deep in the response
+  return NOT_FOUND_PATTERNS.some(re => re.test(head)) || NOT_FOUND_PATTERNS.some(re => re.test(text));
+}
+
 // ── Fetch AI text for a drug ──────────────────────────────────────────────
 export async function fetchAiDrugText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
   const res = await fetch(endpoint, {
@@ -344,15 +365,33 @@ export async function ensureDrugComplete({ drug, endpoint = '/api/drug-ai-detail
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
   await getAuthUser();
+
+  // Reject outright refusals ("not a recognized drug", "not available",
+  // etc.) before ever parsing/saving anything — a failed lookup must never
+  // create or overwrite a database entry.
+  if (isDrugNotFoundText(text)) {
+    throw new Error(`"${genericName}" could not be identified as a real drug/brand — nothing was saved.`);
+  }
+
   const parsed    = parseAiDrugDetail(text);
   const missing   = getMissingGroups(parsed);
+
+  // Belt-and-braces: if the response didn't even resolve into real clinical
+  // content (e.g. almost every required section came back empty), treat it
+  // the same as a failed lookup rather than saving a near-blank record.
+  if (missing.length >= REQUIRED_FIELD_GROUPS.length - 1) {
+    throw new Error(`"${genericName}" returned little to no usable clinical information — nothing was saved.`);
+  }
+
   const finalClass = drugClass || parsed.drug_class || 'Unknown';
   const docId     = slugifyDrugName(genericName);
   const ref       = doc(db, 'drugs', docId);
 
-  // ALWAYS save AI search results — even if some fields are incomplete, and
-  // even if a drug with this name already exists (it gets replaced).
-  // Duplicate cleanup will be handled later via an admin duplicate detector.
+  // ALWAYS save real AI search results — even if a couple fields are still
+  // incomplete, and even if a drug with this name already exists (it gets
+  // replaced). Duplicate cleanup will be handled later via an admin
+  // duplicate detector. Genuine "not found" responses are rejected above,
+  // before reaching this point.
   const existing = await getDoc(ref);
   await setDoc(ref, {
     ...parsed,

@@ -7,7 +7,7 @@ import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
-import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, isDrugNotFoundText } from '../utils/aiDrugSave';
 import { logSearch } from '../utils/logSearch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 
@@ -23,12 +23,17 @@ function AiSearchFallback({ searchQuery }) {
   const [queriedFor, setQueriedFor] = useState(searchQuery);
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [saveError, setSaveError] = useState('');
+  const [notFound, setNotFound]   = useState(() => {
+    const cached = sessionStorage.getItem(cacheKey);
+    return cached ? isDrugNotFoundText(cached) : false;
+  });
 
   const runLookup = async () => {
     setState('loading');
     setError('');
     setText('');
     setSaveState('idle');
+    setNotFound(false);
     setQueriedFor(searchQuery);
     try {
       const res = await fetch(provider.endpoint, {
@@ -55,13 +60,16 @@ function AiSearchFallback({ searchQuery }) {
       }
       sessionStorage.setItem(cacheKey, full);
       setState('done');
+      const failedLookup = isDrugNotFoundText(full);
+      setNotFound(failedLookup);
 
       // Non-admins never see a save control or the "✓ Saved" badge — but
       // every AI lookup they run still quietly adds/refreshes this drug in
       // the shared database in the background. Deliberately does NOT touch
       // saveState/saveError, since those drive UI (including the "✓ Saved
       // to database" badge above) that must stay invisible to them.
-      if (!isAdmin) {
+      // A lookup that didn't actually resolve to a real drug is never saved.
+      if (!isAdmin && !failedLookup) {
         saveAiDrugToDatabase({ genericName: searchQuery.trim(), drugClass: '', text: full }).catch(() => {
           // Intentionally silent — this must never surface to the user.
         });
@@ -154,8 +162,8 @@ function AiSearchFallback({ searchQuery }) {
 
         {state === 'done' && (
           <div className="flex items-center gap-2">
-            {/* Save to Database — admin only */}
-            {isAdmin && saveState !== 'saved' && (
+            {/* Save to Database — admin only, and only for a resolved drug */}
+            {isAdmin && !notFound && saveState !== 'saved' && (
               <button
                 onClick={handleSave}
                 disabled={saveState === 'saving'}
@@ -188,11 +196,30 @@ function AiSearchFallback({ searchQuery }) {
         )}
       </div>
 
-      {text
-        ? renderAiText(text)
-        : <p className="text-sm text-drug-muted">Starting…</p>}
+      {state === 'done' && notFound ? (
+        <div className="text-center py-6">
+          <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+          <p className="text-sm text-drug-text mb-1">
+            Couldn't confirm "{queriedFor}" as a real generic or brand-name drug.
+          </p>
+          <p className="text-xs text-drug-muted mb-4">
+            Nothing was saved to the database. Check the spelling, or try the full name if this was an
+            abbreviation.
+          </p>
+          <button
+            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+          >
+            <RefreshCw className="w-4 h-4" /> Try again
+          </button>
+        </div>
+      ) : (
+        text
+          ? renderAiText(text)
+          : <p className="text-sm text-drug-muted">Starting…</p>
+      )}
 
-      {state === 'done' && (
+      {state === 'done' && !notFound && (
         <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
           This drug is not yet in the verified database — the above is AI-generated on demand and not a
           substitute for the current product monograph or clinical judgment. Verify before applying to patient care.

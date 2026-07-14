@@ -185,7 +185,7 @@ This is reference material only, not a substitute for the current product monogr
     }
 
     const notInDatabaseNote = notInDatabase
-      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. "${genericName}" may be entered as a generic name OR a brand/trade name (including branded combination packs, e.g. "Prevpac" = lansoprazole + amoxicillin + clarithromycin triple therapy for H. pylori). If it is a recognized brand name or combination pack, silently resolve it to its actual generic ingredient(s) and proceed with the full breakdown AS THAT COMBINATION — state the resolved generic name(s) in the Overview so the nurse knows what was matched. Only say the medication is not real/recognized (at the very top of your response, instead of inventing information) if you are genuinely not confident it corresponds to any real generic drug, brand name, or combination product — do not decline just because the input looks like a brand name or an unfamiliar spelling.\n`
+      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. "${genericName}" may be entered as a generic name OR a brand/trade name (including branded combination packs, e.g. "Prevpac" = lansoprazole + amoxicillin + clarithromycin triple therapy for H. pylori). Use Google Search to look this up before concluding anything — check international and Nigerian brand/trade name references, manufacturer product pages, and pharmacy/drug-index listings, since many brand names (including regionally-marketed ones) will not be in your training data. If it is a recognized brand name or combination pack, silently resolve it to its actual generic ingredient(s) and proceed with the full breakdown AS THAT COMBINATION — state the resolved generic name(s) in the Overview so the nurse knows what was matched. Only say the medication is not real/recognized (at the very top of your response, instead of inventing information) if, after searching, you are still genuinely not confident it corresponds to any real generic drug, brand name, or combination product — do not decline just because the input looks like a brand name or an unfamiliar spelling.\n`
       : '';
 
     prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
@@ -245,6 +245,11 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: { maxOutputTokens: (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            // Google Search grounding — lets the model look up brand/trade
+            // names (especially Nigerian-market ones) that aren't in its
+            // training data instead of guessing or declaring "not found".
+            // Supported on gemini-2.5-flash / flash-lite / pro.
+            tools: [{ google_search: {} }],
           }),
         }
       );

@@ -4,7 +4,7 @@ import { ArrowLeft, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
-import { saveAiDrugToDatabase, slugifyDrugName } from '../utils/aiDrugSave';
+import { saveAiDrugToDatabase, slugifyDrugName, isDrugNotFoundText } from '../utils/aiDrugSave';
 
 // Auto-runs the same on-demand AI lookup used elsewhere in the app (the one
 // that follows the full CSV field pattern — overview, indications, dosing,
@@ -23,6 +23,7 @@ export default function AiDrugPage() {
   const [state, setState] = useState('loading'); // loading | streaming | done | error
   const [text, setText]   = useState('');
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
   const startedFor = useRef('');
 
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
@@ -33,6 +34,7 @@ export default function AiDrugPage() {
     setState('loading');
     setError('');
     setText('');
+    setNotFound(false);
     try {
       const res = await fetch(provider.endpoint, {
         method: 'POST',
@@ -61,13 +63,16 @@ export default function AiDrugPage() {
         setText(full);
       }
       setState('done');
+      const failedLookup = isDrugNotFoundText(full);
+      setNotFound(failedLookup);
 
       // Non-admins never see a save control — but every AI Insight lookup
       // they run still quietly adds/refreshes this drug in the shared
       // database in the background, so the catalogue grows from real usage
       // without relying on the admin to fill every entry by hand. Admins
       // keep their existing explicit "Save to Database" button below.
-      if (!isAdmin) {
+      // A lookup that didn't actually resolve to a real drug is never saved.
+      if (!isAdmin && !failedLookup) {
         saveAiDrugToDatabase({ genericName, drugClass, text: full }).catch(() => {
           // Intentionally silent — this must never surface to the user.
         });
@@ -131,7 +136,7 @@ export default function AiDrugPage() {
           </div>
           {state === 'done' && (
             <div className="flex items-center gap-3 flex-shrink-0">
-              {isAdmin && saveState !== 'saved' && (
+              {isAdmin && !notFound && saveState !== 'saved' && (
                 <button
                   onClick={saveToDatabase}
                   disabled={saveState === 'saving'}
@@ -172,7 +177,26 @@ export default function AiDrugPage() {
           </div>
         )}
 
-        {(state === 'streaming' || state === 'done') && (
+        {state === 'done' && notFound && (
+          <div className="text-center py-8">
+            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+            <p className="text-sm text-drug-text mb-1">
+              Couldn't confirm "{genericName}" as a real generic or brand-name drug.
+            </p>
+            <p className="text-xs text-drug-muted mb-4">
+              Nothing was saved to the database. Check the spelling, or try the full name if this was an
+              abbreviation.
+            </p>
+            <button
+              onClick={runLookup}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg font-semibold text-sm hover:bg-primary-100"
+            >
+              <RefreshCw className="w-4 h-4" /> Try again
+            </button>
+          </div>
+        )}
+
+        {(state === 'streaming' || (state === 'done' && !notFound)) && (
           text
             ? renderAiText(text)
             : <p className="text-sm text-drug-muted">Starting…</p>
@@ -198,7 +222,7 @@ export default function AiDrugPage() {
           </div>
         )}
 
-        {state === 'done' && (
+        {state === 'done' && !notFound && (
           <div className="mt-6 pt-4 border-t border-drug-border text-xs text-drug-muted leading-relaxed">
             This drug is not yet in the verified database — the above is AI-generated on demand and not a
             substitute for the current product monograph or clinical judgment. Verify before applying to
