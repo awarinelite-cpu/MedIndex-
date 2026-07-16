@@ -132,6 +132,46 @@ For each medication, use a bullet point starting with the **generic name in bold
 Aim for a thorough, genuinely comprehensive list (roughly 15-30 medications across the relevant classes) that goes beyond the obvious/commonly-cited names, so the nurse gets real breadth — not just the same short list every time. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
 
 This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
+  } else if (mode === 'condition_insight') {
+    // Powers the search-page "condition insight" card: a nurse searches an
+    // indication/disease name (not a drug name) and gets a clinical primer
+    // plus a drug list, in one streamed response. Reuses the same drug-list
+    // instructions as 'condition' mode so parseAiDrugList can parse the tail
+    // of this response exactly like it does for that mode — it just adds
+    // three clinical sections in front.
+    const { conditionLabel } = body || {};
+    if (!conditionLabel || typeof conditionLabel !== 'string') {
+      return new Response(JSON.stringify({ error: 'conditionLabel is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const knownList = Array.isArray(knownDrugNames) && knownDrugNames.length
+      ? `\nThese generic names are ALREADY in the app's database — do NOT spend the list repeating them unless one is such a standard first-line agent that leaving it out would be a glaring omission: ${knownDrugNames.join(', ')}\n`
+      : '';
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse has searched "${conditionLabel}" as a clinical condition/indication and wants a quick clinical primer plus the medications used to treat or manage it.
+
+If "${conditionLabel}" is not a recognized clinical condition or you are not confident it is real, respond with only a single line: "Not a recognized clinical condition." and nothing else. Otherwise, respond with exactly four sections, using these exact markdown headers, in this order:
+
+## Overview
+2-4 sentences: what the condition is, in plain but clinically accurate language.
+
+## Etiology
+The main causes and risk factors, as concise bullet points (lines starting with "- ").
+
+## Pathophysiology
+A short paragraph (3-6 sentences) explaining the underlying disease mechanism a nurse should understand.
+
+## Medications
+${knownList}
+List the medications (generic names) indicated for "${conditionLabel}", grouped by drug class using ### markdown sub-headers (e.g. "### ACE Inhibitors", "### Thiazide Diuretics") — use as many class sub-headers as are actually relevant. For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), a common Nigerian brand/trade name in parentheses if known, its role (first-line/adjunct/second-line), and any notable distinguishing feature. Example:
+- **Lisinopril** (Zestril) — PO; first-line for hypertension; avoid in pregnancy.
+
+Include both medications likely already covered in a standard drug reference AND newer or less commonly listed agents that are still genuinely indicated — aim for a thorough, comprehensive list (roughly 15-30 medications). Every medication listed must be GENUINELY indicated for "${conditionLabel}" specifically; if you are not confident it treats this condition, leave it out rather than guessing.
+
+This is reference material only, not a substitute for current clinical guidelines — do not fabricate specific dosing figures, and do not add any text before "## Overview" or after the medication list.`;
   } else if (mode === 'system_conditions') {
     const { systemName: sysName, existingLabels } = body || {};
     if (!sysName || typeof sysName !== 'string') {
@@ -244,7 +284,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'condition_insight' ? 3800 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".

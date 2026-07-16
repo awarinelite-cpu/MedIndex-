@@ -7,9 +7,295 @@ import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
-import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, isDrugNotFoundText } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, isDrugNotFoundText, fetchConditionInsight } from '../utils/aiDrugSave';
+import { parseConditionInsight, isNotAConditionText } from '../utils/parseConditionInsight';
 import { logSearch } from '../utils/logSearch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+
+/* ── AI condition insight: intro/etiology/pathophysiology + drug list ────── */
+/* Shown above search results whenever there's an active search query, so a  */
+/* nurse searching an indication/disease name (not just a drug name) gets a  */
+/* clinical primer plus every matching medication — in-database and new.     */
+function normalizeConditionDrugName(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function ConditionInsightCard({ searchQuery, existingDrugs }) {
+  const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
+  const dbDrugs = useMemo(() => existingDrugs.filter(d => !d._seed), [existingDrugs]);
+  const knownDrugNames = useMemo(() => dbDrugs.map(d => d.generic_name).filter(Boolean), [dbDrugs]);
+  const existingByName = useMemo(() => {
+    const map = new Map();
+    dbDrugs.forEach(d => {
+      if (d.generic_name) map.set(normalizeConditionDrugName(d.generic_name), d);
+    });
+    return map;
+  }, [dbDrugs]);
+
+  const cacheKey = `ai_condition_insight_${searchQuery.trim().toLowerCase()}`;
+  const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle'); // idle | loading | done | error
+  const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
+  const [error, setError] = useState('');
+  const [queriedFor, setQueriedFor] = useState(searchQuery);
+
+  // Per-item "Add" state, keyed by drug name, plus the "Add All" bulk job.
+  const [itemState, setItemState] = useState({}); // name -> 'saving' | 'saved' | 'error'
+  const [bulkState, setBulkState] = useState('idle'); // idle | running | done
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [bulkResults, setBulkResults] = useState(null); // { saved, errors: [{name,message}] }
+
+  const runLookup = async () => {
+    setState('loading');
+    setError('');
+    setText('');
+    setQueriedFor(searchQuery);
+    try {
+      const full = await fetchConditionInsight({ conditionLabel: searchQuery.trim(), knownDrugNames, endpoint: provider.endpoint });
+      setText(full);
+      sessionStorage.setItem(cacheKey, full);
+      setState('done');
+    } catch (e) {
+      setError(e.message || 'Failed to load AI lookup.');
+      setState('error');
+    }
+  };
+
+  const insight = state === 'done' ? parseConditionInsight(text) : null;
+  const items   = state === 'done' ? parseAiDrugList(text) : [];
+  const notACondition = state === 'done' && isNotAConditionText(text);
+
+  const addOne = async (item) => {
+    setItemState(s => ({ ...s, [item.name]: 'saving' }));
+    try {
+      const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
+      await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+      setItemState(s => ({ ...s, [item.name]: 'saved' }));
+    } catch (e) {
+      setItemState(s => ({ ...s, [item.name]: 'error' }));
+    }
+  };
+
+  const addAll = async () => {
+    const newItems = items.filter(item => !existingByName.has(normalizeConditionDrugName(item.name)) && itemState[item.name] !== 'saved');
+    if (newItems.length === 0) return;
+    setBulkState('running');
+    setBulkResults(null);
+    let saved = 0;
+    const errors = [];
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      setBulkProgress({ current: i + 1, total: newItems.length });
+      setItemState(s => ({ ...s, [item.name]: 'saving' }));
+      try {
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
+        await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+        setItemState(s => ({ ...s, [item.name]: 'saved' }));
+        saved++;
+      } catch (e) {
+        setItemState(s => ({ ...s, [item.name]: 'error' }));
+        errors.push({ name: item.name, message: e.message || 'Failed to save.' });
+      }
+      await new Promise(r => setTimeout(r, 350));
+    }
+    setBulkResults({ saved, errors });
+    setBulkState('done');
+  };
+
+  if (!searchQuery.trim()) return null;
+
+  if (state === 'idle') {
+    return (
+      <div className="mb-6 bg-violet-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
+          <p className="text-sm text-drug-text">
+            Is "{searchQuery}" a condition? Get a clinical overview and full drug list.
+          </p>
+        </div>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl font-semibold text-sm hover:bg-violet-700 transition-colors flex-shrink-0"
+        >
+          <Sparkles className="w-4 h-4" /> Get AI Insight
+        </button>
+      </div>
+    );
+  }
+
+  if (state === 'loading') {
+    return (
+      <div className="mb-6 bg-white border border-drug-border rounded-xl p-8 text-center">
+        <RefreshCw className="w-8 h-8 text-violet-400 mx-auto mb-3 animate-spin" />
+        <p className="text-sm text-drug-muted">Gathering clinical overview for "{queriedFor}"…</p>
+      </div>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <div className="mb-6 bg-white border border-drug-border rounded-xl p-6 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+        <p className="text-sm text-red-600 mb-4">{error}</p>
+        <button
+          onClick={runLookup}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg font-semibold text-sm hover:bg-violet-100"
+        >
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
+  }
+
+  // done
+  if (notACondition) {
+    return (
+      <div className="mb-6 bg-white border border-drug-border rounded-xl p-6 text-center">
+        <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+        <p className="text-sm text-drug-text mb-1">"{queriedFor}" doesn't look like a recognized clinical condition.</p>
+        <p className="text-xs text-drug-muted">If this was meant as a drug name instead, use the lookup below.</p>
+      </div>
+    );
+  }
+
+  const newCount = items.filter(item => !existingByName.has(normalizeConditionDrugName(item.name)) && itemState[item.name] !== 'saved').length;
+
+  return (
+    <div className="mb-6 bg-white border border-drug-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-5 py-4 bg-violet-50 border-b border-drug-border flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
+          <h2 className="text-lg font-bold text-drug-text truncate">AI Insight: {queriedFor}</h2>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {isAdmin && newCount > 0 && bulkState !== 'running' && (
+            <button
+              onClick={addAll}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg"
+            >
+              <Save className="w-3.5 h-3.5" /> Add All {newCount} New
+            </button>
+          )}
+          <button
+            onClick={() => { sessionStorage.removeItem(cacheKey); runLookup(); }}
+            disabled={bulkState === 'running'}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+          </button>
+        </div>
+      </div>
+
+      {bulkState === 'running' && (
+        <div className="px-5 py-4 border-b border-drug-border">
+          <div className="flex items-center gap-2 text-sm text-drug-text mb-2">
+            <RefreshCw className="w-4 h-4 text-violet-500 animate-spin flex-shrink-0" />
+            <span>Adding {bulkProgress.current} of {bulkProgress.total}…</span>
+          </div>
+          <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden">
+            <div className="h-full bg-violet-500 rounded-full transition-all"
+                 style={{ width: `${(bulkProgress.current / Math.max(bulkProgress.total, 1)) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      {bulkState === 'done' && bulkResults && (
+        <div className={`px-5 py-3 border-b border-drug-border text-sm ${bulkResults.errors.length > 0 ? 'bg-amber-50' : 'bg-green-50'}`}>
+          <div className={`flex items-center gap-2 font-semibold ${bulkResults.errors.length > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            Added {bulkResults.saved}{bulkResults.errors.length > 0 ? `, ${bulkResults.errors.length} failed` : ''}.
+          </div>
+        </div>
+      )}
+
+      {/* Clinical primer */}
+      <div className="px-5 py-4 space-y-4 border-b border-drug-border">
+        {insight.overview && (
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Overview</h3>
+            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.overview)}</div>
+          </div>
+        )}
+        {insight.etiology && (
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Etiology</h3>
+            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.etiology)}</div>
+          </div>
+        )}
+        {insight.pathophysiology && (
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Pathophysiology</h3>
+            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.pathophysiology)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Drug list */}
+      {items.length > 0 && (
+        <div>
+          <h3 className="px-5 pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-violet-600">Medications</h3>
+          <div>
+            {items.map((item, i) => {
+              const existing = existingByName.get(normalizeConditionDrugName(item.name));
+              const saved = itemState[item.name];
+              const isNew = !existing && saved !== 'saved';
+              return (
+                <div
+                  key={`${item.name}-${i}`}
+                  className={`flex items-center gap-3 px-5 py-3 ${i !== items.length - 1 ? 'border-b border-drug-border' : ''}`}
+                >
+                  <div className={`p-1.5 rounded-lg flex-shrink-0 ${isNew ? 'bg-violet-50' : 'bg-green-50'}`}>
+                    <Pill className={`w-4 h-4 ${isNew ? 'text-violet-500' : 'text-green-600'}`} />
+                  </div>
+                  <Link
+                    to={existing ? `/drug/${existing.id || existing.firestoreId}` : `/browse?q=${encodeURIComponent(item.name)}`}
+                    className="flex-1 min-w-0 hover:underline"
+                  >
+                    <div className="font-semibold text-sm truncate">{item.name}</div>
+                    <div className="text-xs text-drug-muted truncate">{item.subclass || item.note}</div>
+                  </Link>
+                  {isNew ? (
+                    isAdmin ? (
+                      saved === 'saving' ? (
+                        <span className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-violet-100 text-violet-700 flex items-center gap-1">
+                          <RefreshCw className="w-3 h-3 animate-spin" /> Adding…
+                        </span>
+                      ) : saved === 'error' ? (
+                        <button
+                          onClick={() => addOne(item)}
+                          className="text-xs font-bold px-2 py-1 rounded flex-shrink-0 bg-red-100 text-red-700 hover:bg-red-200"
+                        >
+                          Retry
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => addOne(item)}
+                          className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-violet-600 text-white hover:bg-violet-700"
+                        >
+                          <Save className="w-3 h-3" /> Add
+                        </button>
+                      )
+                    ) : (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 flex-shrink-0">AI</span>
+                    )
+                  ) : (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${existing && isDrugComplete(existing) ? 'bg-green-100 text-green-700' : 'bg-green-100 text-green-700'}`}>
+                      {saved === 'saved' ? 'Added' : existing && isDrugComplete(existing) ? 'In DB' : 'In DB (incomplete)'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="px-5 py-3 text-xs text-drug-muted leading-relaxed bg-gray-50">
+        AI-generated reference material — not a substitute for current clinical guidelines. Verify before applying to patient care.
+      </div>
+    </div>
+  );
+}
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 function AiSearchFallback({ searchQuery }) {
@@ -863,6 +1149,9 @@ export default function BrowsePage() {
           </select>
         </div>
       </div>
+
+      {/* AI condition insight — offered whenever there's an active search term */}
+      {searchQuery.trim() && <ConditionInsightCard searchQuery={searchQuery} existingDrugs={ALL_DRUGS} />}
 
       {/* Results — always instant */}
       {filteredDrugs.length === 0 ? (
