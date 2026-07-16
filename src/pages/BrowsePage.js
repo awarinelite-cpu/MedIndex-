@@ -1,16 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { searchDrugs } from '../utils/searchDrugs';
-import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, fetchConditionInsight } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, fetchConditionInsight, fetchConditionClassification, slugifyDrugName as slugifyDrugNameUtil } from '../utils/aiDrugSave';
 import { parseConditionInsight, isNotAConditionText } from '../utils/parseConditionInsight';
 import { logSearch } from '../utils/logSearch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
+import { SYSTEM_CONDITIONS } from '../data/systemConditions';
+import { useCustomConditions, normalizeConditionLabel, slugifyConditionLabel, addCustomConditions } from '../hooks/useCustomConditions';
 
 /* ── AI condition insight: intro/etiology/pathophysiology + drug list ────── */
 /* Shown above search results whenever there's an active search query, so a  */
@@ -23,6 +28,7 @@ function normalizeConditionDrugName(name) {
 function ConditionInsightCard({ searchQuery, existingDrugs }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
+  const { customConditionsBySystem } = useCustomConditions();
   const dbDrugs = useMemo(() => existingDrugs.filter(d => !d._seed), [existingDrugs]);
   const knownDrugNames = useMemo(() => dbDrugs.map(d => d.generic_name).filter(Boolean), [dbDrugs]);
   const existingByName = useMemo(() => {
@@ -32,6 +38,27 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
     });
     return map;
   }, [dbDrugs]);
+
+  // Flat index of EVERY condition already in the taxonomy (static seed +
+  // admin-added custom ones) across every system, so a searched condition
+  // can be matched against what already exists before deciding whether to
+  // create a new entry or just link drugs to the existing one.
+  const existingConditionIndex = useMemo(() => {
+    const list = [];
+    for (const system of ANATOMICAL_SYSTEMS) {
+      const base   = SYSTEM_CONDITIONS[system.id] || [];
+      const custom = customConditionsBySystem[system.id] || [];
+      for (const c of [...base, ...custom]) {
+        list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label });
+      }
+    }
+    return list;
+  }, [customConditionsBySystem]);
+
+  const existingMatch = useMemo(
+    () => existingConditionIndex.find(c => normalizeConditionLabel(c.label) === normalizeConditionLabel(searchQuery)),
+    [existingConditionIndex, searchQuery]
+  );
 
   const cacheKey = `ai_condition_insight_${searchQuery.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle'); // idle | loading | done | error
@@ -43,13 +70,48 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
   const [itemState, setItemState] = useState({}); // name -> 'saving' | 'saved' | 'error'
   const [bulkState, setBulkState] = useState('idle'); // idle | running | done
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
-  const [bulkResults, setBulkResults] = useState(null); // { saved, errors: [{name,message}] }
+  const [bulkResults, setBulkResults] = useState(null); // { saved, linked, errors: [{name,message}] }
+
+  // Resolves (once) where this condition lives in the systems taxonomy:
+  // reuse it if it already exists, or classify it into a system and create
+  // it if it doesn't. Cached in a ref so repeated add actions in the same
+  // session don't re-classify or re-create it.
+  const conditionTargetRef = React.useRef(null);
+  const [classifyState, setClassifyState] = useState('idle'); // idle | classifying | error
+  const [classifyError, setClassifyError] = useState('');
+
+  const ensureConditionTarget = async () => {
+    if (conditionTargetRef.current) return conditionTargetRef.current;
+    if (existingMatch) {
+      conditionTargetRef.current = { systemId: existingMatch.systemId, systemName: existingMatch.systemName, conditionId: existingMatch.id, isNew: false };
+      return conditionTargetRef.current;
+    }
+    setClassifyState('classifying');
+    setClassifyError('');
+    try {
+      const systemOptions = ANATOMICAL_SYSTEMS.map(s => ({ id: s.id, name: s.name }));
+      const { systemId, icon, keywords } = await fetchConditionClassification({
+        conditionLabel: searchQuery.trim(), systemOptions, endpoint: provider.endpoint,
+      });
+      const conditionId = slugifyConditionLabel(searchQuery.trim());
+      await addCustomConditions(systemId, [{ id: conditionId, label: searchQuery.trim(), icon, keywords }]);
+      const systemName = ANATOMICAL_SYSTEMS.find(s => s.id === systemId)?.name || systemId;
+      conditionTargetRef.current = { systemId, systemName, conditionId, isNew: true };
+      setClassifyState('idle');
+      return conditionTargetRef.current;
+    } catch (e) {
+      setClassifyState('error');
+      setClassifyError(e.message || 'Failed to classify this condition into a system.');
+      throw e;
+    }
+  };
 
   const runLookup = async () => {
     setState('loading');
     setError('');
     setText('');
     setQueriedFor(searchQuery);
+    conditionTargetRef.current = null;
     try {
       const full = await fetchConditionInsight({ conditionLabel: searchQuery.trim(), knownDrugNames, endpoint: provider.endpoint });
       setText(full);
@@ -65,11 +127,23 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
   const items   = state === 'done' ? parseAiDrugList(text) : [];
   const notACondition = state === 'done' && isNotAConditionText(text);
 
+  // Links an already-in-database drug to the resolved condition (idempotent
+  // — arrayUnion never creates duplicate tags).
+  const linkExistingDrug = async (existing, conditionId) => {
+    await updateDoc(doc(db, 'drugs', existing.id || existing.firestoreId || slugifyDrugNameUtil(existing.generic_name)), {
+      condition_tags: arrayUnion(conditionId),
+    });
+  };
+
   const addOne = async (item) => {
     setItemState(s => ({ ...s, [item.name]: 'saving' }));
     try {
+      const target = await ensureConditionTarget();
       const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
-      await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+      const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+      try {
+        await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId) });
+      } catch { /* tag is best-effort */ }
       setItemState(s => ({ ...s, [item.name]: 'saved' }));
     } catch (e) {
       setItemState(s => ({ ...s, [item.name]: 'error' }));
@@ -77,19 +151,46 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
   };
 
   const addAll = async () => {
-    const newItems = items.filter(item => !existingByName.has(normalizeConditionDrugName(item.name)) && itemState[item.name] !== 'saved');
-    if (newItems.length === 0) return;
     setBulkState('running');
     setBulkResults(null);
-    let saved = 0;
+    let target;
+    try {
+      target = await ensureConditionTarget();
+    } catch (e) {
+      setBulkState('idle');
+      return; // classifyError already surfaced in the UI
+    }
+
+    const newItems = items.filter(item => !existingByName.has(normalizeConditionDrugName(item.name)) && itemState[item.name] !== 'saved');
+    const existingItems = items.filter(item => existingByName.has(normalizeConditionDrugName(item.name)));
+
+    let saved = 0, linked = 0;
     const errors = [];
-    for (let i = 0; i < newItems.length; i++) {
-      const item = newItems[i];
-      setBulkProgress({ current: i + 1, total: newItems.length });
+    const total = newItems.length + existingItems.length;
+    let done = 0;
+
+    // Link already-in-database drugs first — quick, no AI calls needed.
+    for (const item of existingItems) {
+      const existing = existingByName.get(normalizeConditionDrugName(item.name));
+      setBulkProgress({ current: ++done, total });
+      try {
+        await linkExistingDrug(existing, target.conditionId);
+        linked++;
+        setItemState(s => ({ ...s, [item.name]: 'saved' }));
+      } catch (e) {
+        errors.push({ name: item.name, message: e.message || 'Failed to link.' });
+      }
+    }
+
+    for (const item of newItems) {
+      setBulkProgress({ current: ++done, total });
       setItemState(s => ({ ...s, [item.name]: 'saving' }));
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
-        await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+        const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
+        try {
+          await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId) });
+        } catch { /* tag is best-effort */ }
         setItemState(s => ({ ...s, [item.name]: 'saved' }));
         saved++;
       } catch (e) {
@@ -98,7 +199,8 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
       }
       await new Promise(r => setTimeout(r, 350));
     }
-    setBulkResults({ saved, errors });
+
+    setBulkResults({ saved, linked, errors });
     setBulkState('done');
   };
 
@@ -168,12 +270,13 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
           <h2 className="text-lg font-bold text-drug-text truncate">AI Insight: {queriedFor}</h2>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          {isAdmin && newCount > 0 && bulkState !== 'running' && (
+          {isAdmin && items.length > 0 && bulkState !== 'running' && (
             <button
               onClick={addAll}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg"
+              disabled={classifyState === 'classifying'}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
             >
-              <Save className="w-3.5 h-3.5" /> Add All {newCount} New
+              <Save className="w-3.5 h-3.5" /> {newCount > 0 ? `Add All ${newCount} New` : 'Link to Condition'}
             </button>
           )}
           <button
@@ -186,11 +289,27 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
         </div>
       </div>
 
+      {isAdmin && (
+        <div className="px-5 py-2 border-b border-drug-border text-xs text-drug-muted bg-gray-50">
+          {existingMatch ? (
+            <>📁 Already tracked as <strong>"{existingMatch.label}"</strong> under {existingMatch.systemName}. Adding drugs here links them to it — no duplicate condition will be created.</>
+          ) : (
+            <>🆕 "{queriedFor}" isn't in the systems taxonomy yet — adding drugs here will file it as a new condition under the best-matching system.</>
+          )}
+        </div>
+      )}
+
+      {classifyState === 'error' && (
+        <div className="px-5 py-3 border-b border-drug-border text-sm bg-red-50 text-red-700">
+          ⚠ {classifyError}
+        </div>
+      )}
+
       {bulkState === 'running' && (
         <div className="px-5 py-4 border-b border-drug-border">
           <div className="flex items-center gap-2 text-sm text-drug-text mb-2">
             <RefreshCw className="w-4 h-4 text-violet-500 animate-spin flex-shrink-0" />
-            <span>Adding {bulkProgress.current} of {bulkProgress.total}…</span>
+            <span>{classifyState === 'classifying' ? 'Filing condition into a system…' : `Adding ${bulkProgress.current} of ${bulkProgress.total}…`}</span>
           </div>
           <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden">
             <div className="h-full bg-violet-500 rounded-full transition-all"
@@ -203,7 +322,7 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
         <div className={`px-5 py-3 border-b border-drug-border text-sm ${bulkResults.errors.length > 0 ? 'bg-amber-50' : 'bg-green-50'}`}>
           <div className={`flex items-center gap-2 font-semibold ${bulkResults.errors.length > 0 ? 'text-amber-700' : 'text-green-700'}`}>
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            Added {bulkResults.saved}{bulkResults.errors.length > 0 ? `, ${bulkResults.errors.length} failed` : ''}.
+            Added {bulkResults.saved}{bulkResults.linked > 0 ? `, linked ${bulkResults.linked} existing` : ''}{bulkResults.errors.length > 0 ? `, ${bulkResults.errors.length} failed` : ''}.
           </div>
         </div>
       )}

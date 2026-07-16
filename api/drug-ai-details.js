@@ -172,6 +172,32 @@ List the medications (generic names) indicated for "${conditionLabel}", grouped 
 Include both medications likely already covered in a standard drug reference AND newer or less commonly listed agents that are still genuinely indicated — aim for a thorough, comprehensive list (roughly 15-30 medications). Every medication listed must be GENUINELY indicated for "${conditionLabel}" specifically; if you are not confident it treats this condition, leave it out rather than guessing.
 
 This is reference material only, not a substitute for current clinical guidelines — do not fabricate specific dosing figures, and do not add any text before "## Overview" or after the medication list.`;
+  } else if (mode === 'classify_condition') {
+    // Given a condition label the nurse searched (with no known category),
+    // picks which anatomical system it best belongs under, so it can be
+    // filed into the existing taxonomy instead of sitting unfiled. Kept
+    // deliberately tiny/cheap — one classification call, not a full lookup.
+    const { conditionLabel, systemOptions } = body || {};
+    if (!conditionLabel || typeof conditionLabel !== 'string') {
+      return new Response(JSON.stringify({ error: 'conditionLabel is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!Array.isArray(systemOptions) || systemOptions.length === 0) {
+      return new Response(JSON.stringify({ error: 'systemOptions is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const optionsList = systemOptions.map(s => `${s.id} (${s.name})`).join(', ');
+
+    prompt = `You are filing the clinical condition "${conditionLabel}" into a drug reference app's body-system taxonomy. Choose the ONE best-fitting system id from this exact list: ${optionsList}
+
+Reply with EXACTLY these three lines and nothing else:
+System: <the chosen system id, exactly as given above>
+Icon: <a single relevant emoji for this condition>
+Keywords: <6-10 comma-separated lowercase keyword phrases that would appear in a drug's indications text if it treats this condition>`;
   } else if (mode === 'system_conditions') {
     const { systemName: sysName, existingLabels } = body || {};
     if (!sysName || typeof sysName !== 'string') {
@@ -284,7 +310,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'condition_insight' ? 3800 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".

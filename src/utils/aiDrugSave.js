@@ -169,6 +169,49 @@ export async function fetchConditionDrugList({ conditionLabel, systemName, known
   return full;
 }
 
+// ── Classify a searched condition into the existing system taxonomy ────────
+// Returns { systemId, icon, keywords } parsed from the "System:/Icon:/
+// Keywords:" block the classify_condition AI mode replies with.
+export async function fetchConditionClassification({ conditionLabel, systemOptions, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'classify_condition', conditionLabel, systemOptions }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+
+  const systemMatch   = full.match(/System:\s*([a-z_]+)/i);
+  const iconMatch     = full.match(/Icon:\s*(\S+)/u);
+  const keywordsMatch = full.match(/Keywords:\s*(.+)/i);
+
+  const systemId = systemMatch ? systemMatch[1].trim().toLowerCase() : '';
+  if (!systemId || !Array.isArray(systemOptions) || !systemOptions.some(s => s.id === systemId)) {
+    throw new Error('AI could not confidently classify this condition into a system.');
+  }
+  return {
+    systemId,
+    icon: iconMatch ? iconMatch[1].trim() : '🩺',
+    keywords: keywordsMatch
+      ? keywordsMatch[1].split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+      : [conditionLabel.trim().toLowerCase()],
+  };
+}
+
 // ── Fetch AI clinical primer + drug list for a searched condition/indication ──
 // Used by BrowsePage's search-driven "condition insight" card. Same streaming
 // contract as fetchConditionDrugList — returns the full streamed text once

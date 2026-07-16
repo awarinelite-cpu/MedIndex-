@@ -53,6 +53,17 @@ export function buildPrompt(body) {
     };
   }
 
+  if (mode === 'classify_condition') {
+    const { systemOptions } = body || {};
+    if (!conditionLabel) throw { status: 400, error: 'conditionLabel is required.' };
+    if (!Array.isArray(systemOptions) || systemOptions.length === 0) throw { status: 400, error: 'systemOptions is required.' };
+    const optionsList = systemOptions.map(s => `${s.id} (${s.name})`).join(', ');
+    return {
+      maxTokens: 200,
+      prompt: `You are filing the clinical condition "${conditionLabel}" into a drug reference app's body-system taxonomy. Choose the ONE best-fitting system id from this exact list: ${optionsList}\n\nReply with EXACTLY these three lines and nothing else:\nSystem: <the chosen system id, exactly as given above>\nIcon: <a single relevant emoji for this condition>\nKeywords: <6-10 comma-separated lowercase keyword phrases that would appear in a drug's indications text if it treats this condition>`,
+    };
+  }
+
   if (mode === 'system_conditions') {
     if (!systemName) throw { status: 400, error: 'systemName is required.' };
     const knownList = Array.isArray(existingLabels) && existingLabels.length
