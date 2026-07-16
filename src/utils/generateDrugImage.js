@@ -10,6 +10,36 @@ async function getAuthUser() {
   return auth.currentUser;
 }
 
+// Looks for a real, freely-licensed image (Wikimedia Commons / openFDA)
+// before anyone resorts to an AI illustration. Returns null if nothing
+// licensed turns up — callers should fall back to generateDrugImage() in
+// that case, not to an unlicensed web image.
+export async function findRealDrugImage({ genericName }) {
+  const res = await fetch('/api/find-drug-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ genericName }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to search for an image.');
+  return data.found ? data : null;
+}
+
+// Saves a real image found via findRealDrugImage() onto the drug's Firestore
+// doc, along with its source/license/attribution so the UI can display them.
+export async function saveFoundDrugImage({ docId, found }) {
+  await getAuthUser();
+  await updateDoc(doc(db, 'drugs', docId), {
+    image_url:         found.imageUrl,
+    image_source:      found.source,
+    image_source_url:  found.sourcePageUrl,
+    image_license:     found.license,
+    image_attribution: found.attribution,
+    image_is_real:     true,
+    last_updated:      serverTimestamp(),
+  });
+}
+
 // Calls the Nano Banana (Gemini image) endpoint and returns a data: URL.
 export async function generateDrugImage({ genericName, drugClass, strength }) {
   const res = await fetch('/api/generate-drug-image', {

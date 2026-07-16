@@ -13,7 +13,10 @@ import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { needsStrengthOnly } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
-import { generateDrugImage, saveDrugImage, saveDrugImageUrl } from '../utils/generateDrugImage';
+import {
+  generateDrugImage, saveDrugImage, saveDrugImageUrl,
+  findRealDrugImage, saveFoundDrugImage,
+} from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
   serverTimestamp, query, orderBy,
@@ -299,6 +302,26 @@ function DrugImageCard({ drug }) {
   const [urlInput, setUrlInput] = useState('');
   const [urlState, setUrlState] = useState('idle'); // idle | saving | error
   const [showUrlField, setShowUrlField] = useState(false);
+  // idle | searching | not-found | error
+  const [findState, setFindState] = useState('idle');
+
+  const handleFindReal = async () => {
+    setFindState('searching');
+    setError('');
+    try {
+      const found = await findRealDrugImage({ genericName: drug.generic_name });
+      if (!found) {
+        setFindState('not-found');
+        return;
+      }
+      await saveFoundDrugImage({ docId: drug.firestoreId || drug.id, found });
+      // Live listener pushes drug.image_url etc. in automatically.
+      setFindState('idle');
+    } catch (e) {
+      setError(e.message || 'Failed to search for an image.');
+      setFindState('error');
+    }
+  };
 
   const handleGenerate = async () => {
     setState('generating');
@@ -361,12 +384,24 @@ function DrugImageCard({ drug }) {
         </div>
         <img
           src={drug.image_url}
-          alt={`AI-generated illustration of ${drug.generic_name}`}
+          alt={drug.image_is_real ? `${drug.generic_name}` : `AI-generated illustration of ${drug.generic_name}`}
           className="w-full max-w-sm mx-auto rounded-lg border border-drug-border"
         />
-        <p className="text-xs text-drug-muted mt-3 text-center">
-          AI-generated illustration for reference only — not the actual product packaging.
-        </p>
+        {drug.image_is_real ? (
+          <p className="text-xs text-drug-muted mt-3 text-center">
+            Source: {drug.image_source_url ? (
+              <a href={drug.image_source_url} target="_blank" rel="noopener noreferrer" className="underline">
+                {drug.image_source || 'external source'}
+              </a>
+            ) : (drug.image_source || 'external source')}
+            {drug.image_license ? ` · ${drug.image_license}` : ''}
+            {drug.image_attribution ? ` · ${drug.image_attribution}` : ''}
+          </p>
+        ) : (
+          <p className="text-xs text-drug-muted mt-3 text-center">
+            AI-generated illustration for reference only — not the actual product packaging.
+          </p>
+        )}
         {isAdmin && showUrlField && (
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
             <input
@@ -398,16 +433,34 @@ function DrugImageCard({ drug }) {
       <ImageIcon className="w-8 h-8 text-primary-400 mx-auto mb-3" />
       <p className="text-sm text-drug-muted mb-4">No image yet for {drug.generic_name}.</p>
       <button
-        onClick={handleGenerate}
-        disabled={state === 'generating'}
+        onClick={handleFindReal}
+        disabled={findState === 'searching'}
         className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
       >
-        {state === 'generating' ? (
-          <><RefreshCw className="w-4 h-4 animate-spin" /> Generating…</>
+        {findState === 'searching' ? (
+          <><RefreshCw className="w-4 h-4 animate-spin" /> Searching Wikimedia / openFDA…</>
         ) : (
-          <><Sparkles className="w-4 h-4" /> Generate AI Illustration</>
+          <><ImageIcon className="w-4 h-4" /> Find Real Image</>
         )}
       </button>
+      {findState === 'not-found' && (
+        <p className="text-xs text-drug-muted mt-2">
+          No freely-licensed photo found. Try an AI illustration instead:
+        </p>
+      )}
+      <div className="mt-3">
+        <button
+          onClick={handleGenerate}
+          disabled={state === 'generating'}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-xl font-semibold text-sm hover:bg-primary-50 transition-colors disabled:opacity-60"
+        >
+          {state === 'generating' ? (
+            <><RefreshCw className="w-4 h-4 animate-spin" /> Generating…</>
+          ) : (
+            <><Sparkles className="w-4 h-4" /> Generate AI Illustration</>
+          )}
+        </button>
+      </div>
       <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
         <div className="flex-1 h-px bg-drug-border" />
         <span className="text-xs text-drug-muted">or</span>
