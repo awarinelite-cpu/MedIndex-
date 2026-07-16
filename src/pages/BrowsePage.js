@@ -25,6 +25,52 @@ function normalizeConditionDrugName(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function conditionLabelTokens(label) {
+  return normalizeConditionLabel(label).split(' ').filter(Boolean);
+}
+
+// Fuzzy, keyword-overlap match against the existing condition taxonomy.
+// This is intentionally a *suggestion*, never an auto-merge: exact matches
+// are handled separately (existingMatch) and get linked with no admin
+// interaction. This fuzzy layer only flags conditions that share enough
+// vocabulary with the search query — via label words or the condition's own
+// keyword list — to be worth a human glance, e.g. "High Blood Pressure"
+// against the seeded "Hypertension" (keywords include "blood pressure").
+// A false positive here just means the admin dismisses the suggestion;
+// nothing is written until they explicitly confirm.
+function findFuzzyConditionMatch(searchQuery, existingConditionIndex) {
+  const queryTokens = conditionLabelTokens(searchQuery).filter(t => t.length >= 3);
+  if (queryTokens.length === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const c of existingConditionIndex) {
+    const candidateTokens = new Set([
+      ...conditionLabelTokens(c.label),
+      ...(c.keywords || []).flatMap(k => conditionLabelTokens(k)),
+    ]);
+    if (candidateTokens.size === 0) continue;
+
+    const overlap = queryTokens.filter(t => candidateTokens.has(t)).length;
+    if (overlap === 0) continue;
+
+    // Fraction of the query's meaningful words found in the candidate's
+    // label/keywords — simple, explainable, and biased toward not matching
+    // rather than over-matching (short generic queries need near-total
+    // overlap; longer queries just need most of their distinctive words).
+    const score = overlap / queryTokens.length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+
+  // Require at least half the query's words to overlap before it's worth
+  // surfacing at all — anything looser is noise, not a likely match.
+  return best && bestScore >= 0.5 ? { ...best, score: bestScore } : null;
+}
+
 function ConditionInsightCard({ searchQuery, existingDrugs }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
@@ -49,7 +95,7 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
       const base   = SYSTEM_CONDITIONS[system.id] || [];
       const custom = customConditionsBySystem[system.id] || [];
       for (const c of [...base, ...custom]) {
-        list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label });
+        list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label, keywords: c.keywords });
       }
     }
     return list;
@@ -59,6 +105,19 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
     () => existingConditionIndex.find(c => normalizeConditionLabel(c.label) === normalizeConditionLabel(searchQuery)),
     [existingConditionIndex, searchQuery]
   );
+
+  // Only computed when there's no exact match — a middle ground between
+  // silent auto-merge and forcing every near-duplicate to become a new
+  // condition. Surfaced as a dismissible suggestion; see addOne/addAll below
+  // for how the admin's decision gates which condition gets used.
+  const fuzzyMatch = useMemo(
+    () => (existingMatch ? null : findFuzzyConditionMatch(searchQuery, existingConditionIndex)),
+    [existingMatch, existingConditionIndex, searchQuery]
+  );
+  const [fuzzyDecision, setFuzzyDecision] = useState('pending'); // 'pending' | 'use' | 'new'
+  useEffect(() => {
+    setFuzzyDecision('pending');
+  }, [fuzzyMatch?.id, searchQuery]);
 
   const cacheKey = `ai_condition_insight_${searchQuery.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle'); // idle | loading | done | error
@@ -84,6 +143,12 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
     if (conditionTargetRef.current) return conditionTargetRef.current;
     if (existingMatch) {
       conditionTargetRef.current = { systemId: existingMatch.systemId, systemName: existingMatch.systemName, conditionId: existingMatch.id, isNew: false };
+      return conditionTargetRef.current;
+    }
+    // Admin explicitly confirmed the fuzzy suggestion ("use that instead?")
+    // — link to it exactly like an exact match, no new condition created.
+    if (fuzzyMatch && fuzzyDecision === 'use') {
+      conditionTargetRef.current = { systemId: fuzzyMatch.systemId, systemName: fuzzyMatch.systemName, conditionId: fuzzyMatch.id, isNew: false };
       return conditionTargetRef.current;
     }
     setClassifyState('classifying');
@@ -136,6 +201,7 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
   };
 
   const addOne = async (item) => {
+    if (fuzzyMatch && fuzzyDecision === 'pending') return; // resolve the suggestion banner first
     setItemState(s => ({ ...s, [item.name]: 'saving' }));
     try {
       const target = await ensureConditionTarget();
@@ -151,6 +217,7 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
   };
 
   const addAll = async () => {
+    if (fuzzyMatch && fuzzyDecision === 'pending') return; // resolve the suggestion banner first
     setBulkState('running');
     setBulkResults(null);
     let target;
@@ -273,7 +340,8 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
           {isAdmin && items.length > 0 && bulkState !== 'running' && (
             <button
               onClick={addAll}
-              disabled={classifyState === 'classifying'}
+              disabled={classifyState === 'classifying' || (fuzzyMatch && fuzzyDecision === 'pending')}
+              title={fuzzyMatch && fuzzyDecision === 'pending' ? 'Resolve the possible-match suggestion above first' : undefined}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" /> {newCount > 0 ? `Add All ${newCount} New` : 'Link to Condition'}
@@ -293,9 +361,41 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
         <div className="px-5 py-2 border-b border-drug-border text-xs text-drug-muted bg-gray-50">
           {existingMatch ? (
             <>📁 Already tracked as <strong>"{existingMatch.label}"</strong> under {existingMatch.systemName}. Adding drugs here links them to it — no duplicate condition will be created.</>
+          ) : fuzzyMatch ? (
+            <>🔎 No exact match, but "{queriedFor}" shares keywords with an existing condition — see the suggestion below.</>
           ) : (
             <>🆕 "{queriedFor}" isn't in the systems taxonomy yet — adding drugs here will file it as a new condition under the best-matching system.</>
           )}
+        </div>
+      )}
+
+      {isAdmin && fuzzyMatch && fuzzyDecision === 'pending' && (
+        <div className="px-5 py-3 border-b border-drug-border bg-amber-50 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <p className="text-sm text-drug-text">
+              This looks like it might be the same as <strong>"{fuzzyMatch.label}"</strong> ({fuzzyMatch.systemName}) — use that instead?
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setFuzzyDecision('use')}
+              className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700"
+            >
+              Yes, use it
+            </button>
+            <button
+              onClick={() => setFuzzyDecision('new')}
+              className="px-3 py-1.5 bg-white border border-amber-300 text-drug-text rounded-lg text-xs font-semibold hover:bg-amber-100"
+            >
+              No, keep separate
+            </button>
+          </div>
+        </div>
+      )}
+      {isAdmin && fuzzyMatch && fuzzyDecision === 'use' && (
+        <div className="px-5 py-2 border-b border-drug-border text-xs text-drug-muted bg-gray-50">
+          📁 Using <strong>"{fuzzyMatch.label}"</strong> under {fuzzyMatch.systemName} per your confirmation above.
         </div>
       )}
 
@@ -389,7 +489,9 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
                       ) : (
                         <button
                           onClick={() => addOne(item)}
-                          className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-violet-600 text-white hover:bg-violet-700"
+                          disabled={fuzzyMatch && fuzzyDecision === 'pending'}
+                          title={fuzzyMatch && fuzzyDecision === 'pending' ? 'Resolve the possible-match suggestion above first' : undefined}
+                          className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
                         >
                           <Save className="w-3 h-3" /> Add
                         </button>
