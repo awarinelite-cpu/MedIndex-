@@ -10,7 +10,7 @@ import {
   Shield, Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
-  Sparkles, ChevronRight, Zap, PlayCircle, Download,
+  Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
@@ -99,6 +99,8 @@ export default function AdminPage() {
   const {
     running: globalFixRunning, progress: globalFixProgress,
     startGlobalFix, stopGlobalFix, subscribeFix,
+    clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepEligibleCount,
+    startClinicalInfoSweep, stopClinicalInfoSweep,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
@@ -651,6 +653,27 @@ export default function AdminPage() {
               style={{background:'linear-gradient(135deg,#F59E0B,#B45309)'}}
             >
               <Sparkles className="w-4 h-4"/> General AI Insight{stats.incomplete>0?` (${stats.incomplete})`:''}
+            </button>
+          )}
+          {clinicalSweepRunning ? (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{border:'1.5px solid #BAE6FD', background:'#F0F9FF', color:'#0369A1'}}>
+              <RefreshCw className="w-4 h-4 animate-spin"/>
+              Clinical Info Sweep — {clinicalSweepIndex}/{clinicalSweepTotal}
+              <button onClick={stopClinicalInfoSweep} className="underline hover:no-underline">Stop</button>
+            </div>
+          ) : (
+            <button
+              onClick={()=>{
+                if (clinicalSweepEligibleCount === 0) { showToast('Nothing to do — every condition in every system already has clinical info.'); return; }
+                startClinicalInfoSweep(provider.endpoint);
+                showToast(`Clinical Info Sweep started — generating info for ${clinicalSweepEligibleCount} conditions across every system, in the background. Feel free to navigate away.`, 'info');
+              }}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+              style={{background:'linear-gradient(135deg,#0EA5E9,#0369A1)'}}
+              title="Generate the Introduction/Types/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/Management panel for every condition in every system that doesn't have one yet"
+            >
+              <BookOpen className="w-4 h-4"/> Clinical Info Sweep{clinicalSweepEligibleCount>0?` (${clinicalSweepEligibleCount})`:''}
             </button>
           )}
         </div>

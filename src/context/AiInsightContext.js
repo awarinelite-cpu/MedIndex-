@@ -6,10 +6,14 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
+import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo';
 import { useDrugs } from '../hooks/useDrugs';
-import { drugMatchesConditionKeywords } from '../data/systemConditions';
+import { useCustomConditions } from '../hooks/useCustomConditions';
+import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import { drugMatchesConditionKeywords, SYSTEM_CONDITIONS } from '../data/systemConditions';
+import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { GripHorizontal } from 'lucide-react';
 
 function isIncomplete(drug) {
@@ -41,6 +45,26 @@ function sameQueue(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
+}
+
+// ── Clinical Info Sweep checkpoint — same idea as the class sweep's, keyed
+// by condition id instead of class name so it's still valid even if new
+// conditions get added to earlier systems while paused (ids don't shift).
+const CLINICAL_SWEEP_CHECKPOINT_KEY = 'medindex_clinical_sweep_checkpoint_v1';
+
+function loadClinicalSweepCheckpoint() {
+  try {
+    const raw = localStorage.getItem(CLINICAL_SWEEP_CHECKPOINT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function saveClinicalSweepCheckpoint(queueIds, index) {
+  try {
+    localStorage.setItem(CLINICAL_SWEEP_CHECKPOINT_KEY, JSON.stringify({ queueIds, index }));
+  } catch { /* ignore quota/storage errors — worst case it just restarts */ }
+}
+function clearClinicalSweepCheckpoint() {
+  try { localStorage.removeItem(CLINICAL_SWEEP_CHECKPOINT_KEY); } catch {}
 }
 
 // Same name-normalisation used by SystemPage's condition matching, duplicated
@@ -411,6 +435,136 @@ export function AiInsightProvider({ children }) {
     classSweepJumpRef.current = direction === 'next' ? current0 + 1 : current0 - 1;
   }, []);
 
+  // ── Fourth, independent background job: "Clinical Info Sweep" — walks
+  // EVERY condition in EVERY anatomical system (static seed + admin-added
+  // custom conditions) and generates the Introduction/Types/Organ
+  // System/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/
+  // Medical Management panel for any that don't have one yet. Unlike
+  // SystemPage's per-system "Add Clinical Info to All" button (which only
+  // covers whichever system is currently open and dies if you navigate
+  // away), this one is a true "run it for everything" job that survives
+  // navigation exactly like the class sweep.
+  const { customConditionsBySystem } = useCustomConditions();
+  const { clinicalInfoByCondition }  = useConditionClinicalInfo();
+  const clinicalInfoRef = useRef({});
+  useEffect(() => { clinicalInfoRef.current = clinicalInfoByCondition; }, [clinicalInfoByCondition]);
+
+  // Flat index of every condition that exists anywhere, rebuilt whenever the
+  // custom-conditions doc changes (cheap — a few hundred entries at most).
+  const allConditionsIndex = React.useMemo(() => {
+    const list = [];
+    for (const system of ANATOMICAL_SYSTEMS) {
+      const base   = SYSTEM_CONDITIONS[system.id] || [];
+      const custom = customConditionsBySystem[system.id] || [];
+      for (const c of [...base, ...custom]) {
+        list.push({ id: c.id, label: c.label, systemName: system.name });
+      }
+    }
+    return list;
+  }, [customConditionsBySystem]);
+
+  // Live count of conditions still missing clinical info — lets the trigger
+  // button show an accurate "(N)" before the sweep even starts, and updates
+  // in real time if another admin fills some in concurrently.
+  const clinicalSweepEligibleCount = React.useMemo(
+    () => allConditionsIndex.filter(c => !clinicalInfoByCondition[c.id]).length,
+    [allConditionsIndex, clinicalInfoByCondition]
+  );
+  const clinicalSweepTotalConditions = allConditionsIndex.length;
+
+  const [clinicalSweepRunning,      setClinicalSweepRunning]      = useState(false);
+  const [clinicalSweepIndex,        setClinicalSweepIndex]        = useState(0); // 1-based, current/just-finished position in the queue
+  const [clinicalSweepTotal,        setClinicalSweepTotal]        = useState(0);
+  const [clinicalSweepCurrentLabel, setClinicalSweepCurrentLabel] = useState(null);
+  const [clinicalSweepSummary,      setClinicalSweepSummary]      = useState(null);
+  const [clinicalSweepResumed,      setClinicalSweepResumed]      = useState(false);
+  const clinicalSweepAbortRef    = useRef(false);
+  const clinicalSweepRunningRef  = useRef(false);
+  const clinicalSweepJumpRef     = useRef(null);
+  const clinicalSweepIndexRef    = useRef(0);
+  useEffect(() => { clinicalSweepIndexRef.current = clinicalSweepIndex; }, [clinicalSweepIndex]);
+
+  const startClinicalInfoSweep = useCallback(async (endpoint = '/api/drug-ai-details') => {
+    if (clinicalSweepRunningRef.current) return;
+    clinicalSweepRunningRef.current = true;
+    clinicalSweepAbortRef.current = false;
+    clinicalSweepJumpRef.current = null;
+    setClinicalSweepSummary(null);
+
+    // Snapshot the queue at start time — conditions already covered are
+    // filtered out now, and re-checked individually below in case another
+    // admin fills one in mid-sweep.
+    const queue = allConditionsIndex.filter(c => !clinicalInfoRef.current[c.id]);
+    if (queue.length === 0) {
+      clinicalSweepRunningRef.current = false;
+      setClinicalSweepTotal(0);
+      setClinicalSweepSummary({ generated: 0, failed: 0, skipped: 0, stopped: false, total: 0 });
+      return;
+    }
+    setClinicalSweepTotal(queue.length);
+
+    const queueIds = queue.map(c => c.id);
+    const checkpoint = loadClinicalSweepCheckpoint();
+    let startAt = (checkpoint && sameQueue(checkpoint.queueIds, queueIds) && checkpoint.index > 0 && checkpoint.index < queue.length)
+      ? checkpoint.index
+      : 0;
+
+    setClinicalSweepIndex(startAt);
+    setClinicalSweepResumed(startAt > 0);
+    setClinicalSweepRunning(true);
+
+    let generated = 0, failed = 0, skipped = 0;
+    let i = startAt;
+    while (i < queue.length) {
+      if (clinicalSweepAbortRef.current) break;
+      const c = queue[i];
+      setClinicalSweepIndex(i + 1);
+      setClinicalSweepCurrentLabel(c.label);
+
+      if (clinicalInfoRef.current[c.id]) {
+        // Filled in by someone else since the queue was built — no need to
+        // burn an AI call re-generating it.
+        skipped++;
+      } else {
+        try {
+          const full = await fetchConditionClinicalInfo({ conditionLabel: c.label, systemName: c.systemName, endpoint });
+          const parsed = parseConditionClinicalInfo(full);
+          await saveConditionClinicalInfo(c.id, parsed);
+          generated++;
+        } catch (e) {
+          failed++;
+        }
+        await new Promise(r => setTimeout(r, 350));
+      }
+
+      if (clinicalSweepJumpRef.current !== null) {
+        i = Math.max(0, clinicalSweepJumpRef.current);
+        clinicalSweepJumpRef.current = null;
+      } else {
+        i += 1;
+      }
+      saveClinicalSweepCheckpoint(queueIds, i);
+    }
+
+    const stopped = clinicalSweepAbortRef.current;
+    clinicalSweepRunningRef.current = false;
+    setClinicalSweepRunning(false);
+    setClinicalSweepCurrentLabel(null);
+    if (!stopped && i >= queue.length) clearClinicalSweepCheckpoint();
+    setClinicalSweepSummary({
+      generated, failed, skipped, stopped, total: queue.length,
+      resumedFrom: startAt > 0 ? startAt : null,
+    });
+  }, [allConditionsIndex]);
+
+  const stopClinicalInfoSweep      = useCallback(() => { clinicalSweepAbortRef.current = true; }, []);
+  const dismissClinicalSweepSummary = useCallback(() => setClinicalSweepSummary(null), []);
+  const jumpClinicalSweep = useCallback((direction) => {
+    if (!clinicalSweepRunningRef.current) return;
+    const current0 = clinicalSweepIndexRef.current - 1;
+    clinicalSweepJumpRef.current = direction === 'next' ? current0 + 1 : current0 - 1;
+  }, []);
+
   // ── Auto-fill queue: conditions that should be populated with drugs
   // automatically, no admin click needed. Two things feed this queue:
   //   1. SystemPage enqueues a condition the moment it's created (single
@@ -494,11 +648,15 @@ export function AiInsightProvider({ children }) {
       classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
       classSweepItemProgress, classSweepCurrentDrug, classSweepLog, classSweepSummary, classSweepResumed,
       startClassSweep, stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
+      clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
+      clinicalSweepSummary, clinicalSweepResumed, clinicalSweepEligibleCount, clinicalSweepTotalConditions,
+      startClinicalInfoSweep, stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
     }}>
       {children}
       <GlobalAiInsightWidget />
       <ConditionSaveWidget />
       <ClassSweepWidget />
+      <ClinicalInfoSweepWidget />
     </AiInsightContext.Provider>
   );
 }
@@ -600,7 +758,7 @@ function DraggableWidget({ id, defaultBottom = 20, defaultRight = 16, width = 30
 
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
-  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary, classSweepRunning, classSweepSummary } = useContext(AiInsightContext);
+  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary, classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary } = useContext(AiInsightContext);
   const [startTime] = React.useState(() => Date.now());
   const [now, setNow] = React.useState(Date.now());
 
@@ -615,7 +773,7 @@ function GlobalAiInsightWidget() {
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   // Shift up so it doesn't overlap whichever other widget(s) are showing —
   // each active widget below this one takes ~250px of vertical space.
-  const widgetsBelow = [conditionRunning || conditionSummary, classSweepRunning || classSweepSummary].filter(Boolean).length;
+  const widgetsBelow = [conditionRunning || conditionSummary, classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
   const stackedBelow = widgetsBelow > 0;
 
   // ETA calculation
@@ -713,16 +871,17 @@ function ConditionSaveWidget() {
   const {
     conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
     stopConditionSave, dismissConditionSummary,
-    classSweepRunning, classSweepSummary,
+    classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!conditionRunning && !conditionSummary) return null;
 
   const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
-  const stackedBelow = classSweepRunning || classSweepSummary;
+  const widgetsBelow = [classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
+  const stackedBelow = widgetsBelow > 0;
 
   return (
-    <DraggableWidget id="condition-save" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
+    <DraggableWidget id="condition-save" defaultBottom={stackedBelow ? 20 + widgetsBelow * 250 : 20} defaultRight={16} width={300}>
       {conditionRunning ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -808,14 +967,16 @@ function ClassSweepWidget() {
     classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
     classSweepItemProgress, classSweepCurrentDrug, classSweepSummary,
     stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
+    clinicalSweepRunning, clinicalSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!classSweepRunning && !classSweepSummary) return null;
 
   const itemPct  = classSweepItemProgress.total ? Math.round((classSweepItemProgress.done / classSweepItemProgress.total) * 100) : 0;
+  const stackedBelow = clinicalSweepRunning || clinicalSweepSummary;
 
   return (
-    <DraggableWidget id="class-sweep" defaultBottom={20} defaultRight={16} width={300}>
+    <DraggableWidget id="class-sweep" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
       {classSweepRunning ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -898,6 +1059,119 @@ function ClassSweepWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissClassSweepSummary}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </>
+      )}
+    </DraggableWidget>
+  );
+}
+
+// ── Floating widget for the "Clinical Info Sweep" job — walks every
+// condition in every system, generating its clinical info panel if it
+// doesn't have one yet. Base layer alongside ClassSweepWidget (both are
+// long-running full sweeps); see the stacking comments on the other
+// widgets for how they avoid overlapping when several run at once.
+function ClinicalInfoSweepWidget() {
+  const {
+    clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
+    clinicalSweepSummary, clinicalSweepResumed,
+    stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
+  } = useContext(AiInsightContext);
+
+  if (!clinicalSweepRunning && !clinicalSweepSummary) return null;
+
+  const pct = clinicalSweepTotal ? Math.round((clinicalSweepIndex / clinicalSweepTotal) * 100) : 0;
+
+  return (
+    <DraggableWidget id="clinical-sweep" defaultBottom={20} defaultRight={16} width={300}>
+      {clinicalSweepRunning ? (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0EA5E9', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontWeight: 700, fontSize: 13 }}>
+                {clinicalSweepResumed ? 'Clinical Info Sweep (resumed)…' : 'Clinical Info Sweep running…'}
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, flexShrink: 0 }}>{pct}%</span>
+          </div>
+
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg, #0EA5E9, #38BDF8)', borderRadius: 3, width: `${pct}%`, transition: 'width 0.5s ease' }} />
+          </div>
+
+          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>
+            {clinicalSweepIndex} / {clinicalSweepTotal} conditions
+          </div>
+
+          {clinicalSweepCurrentLabel && (
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              ⚡ {clinicalSweepCurrentLabel}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
+            Working through every system automatically — stop anytime, or it keeps going until it finishes or you log out.
+          </div>
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => jumpClinicalSweep('prev')}
+              disabled={clinicalSweepIndex <= 1}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: clinicalSweepIndex <= 1 ? 'default' : 'pointer', opacity: clinicalSweepIndex <= 1 ? 0.4 : 1 }}
+            >
+              ⏮ Prev
+            </button>
+            <button
+              onClick={() => jumpClinicalSweep('next')}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}
+            >
+              Next ⏭
+            </button>
+            <button
+              onClick={stopClinicalInfoSweep}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            >
+              ⏹ Stop
+            </button>
+          </div>
+        </>
+      ) : clinicalSweepSummary && (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
+            {clinicalSweepSummary.stopped ? '⏹ Clinical Info Sweep stopped' : '✅ Clinical Info Sweep complete'}
+          </div>
+          {clinicalSweepSummary.total === 0 ? (
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+              Every condition already has clinical info — nothing to do.
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+                {clinicalSweepSummary.generated + clinicalSweepSummary.failed + clinicalSweepSummary.skipped} of {clinicalSweepSummary.total} conditions covered
+              </div>
+              <div style={{ fontSize: 12, color: '#34D399', marginBottom: 4 }}>
+                ✓ {clinicalSweepSummary.generated} generated
+              </div>
+              {clinicalSweepSummary.skipped > 0 && (
+                <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
+                  ↷ {clinicalSweepSummary.skipped} already filled in by someone else
+                </div>
+              )}
+              {clinicalSweepSummary.failed > 0 && (
+                <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
+                  ✗ {clinicalSweepSummary.failed} failed
+                </div>
+              )}
+            </>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={dismissClinicalSweepSummary}
               style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
