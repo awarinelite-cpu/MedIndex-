@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
   Pill, ChevronRight, Grid3X3, List, ArrowLeft, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, Download,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, Download, BookOpen, Trash2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -16,8 +16,11 @@ import { getDrugsForSystem } from '../utils/systemMatch';
 import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
-import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList } from '../utils/aiDrugSave';
+import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
+import { parseConditionClinicalInfo, hasNoDistinctTypes } from '../utils/parseConditionClinicalInfo';
+import { renderAiText } from '../utils/renderAiText';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { useConditionClinicalInfo, saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, updateDoc, serverTimestamp, arrayRemove, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
@@ -253,8 +256,146 @@ function AiConditionFallback({ conditionId, conditionLabel, conditionKeywords, s
   );
 }
 
+/* ── Clinical info panel for a condition ──────────────────────────────────
+   Introduction / Types / Organ System / Etiology / Pathophysiology /
+   Clinical Manifestation / Diagnosis & Investigation / Medical Management.
+   Sits right below a condition's header, above its drug-class list — an
+   admin can generate it once with AI, everyone else just reads it once
+   it exists. Regenerate/Remove are admin-only. */
+function ConditionClinicalInfoPanel({ condition, systemName, info }) {
+  const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
+  const [localInfo, setLocalInfo] = useState(info || null);
+  useEffect(() => { if (info) setLocalInfo(info); }, [info]);
+
+  const [state, setState]       = useState('idle'); // idle | loading | error
+  const [error, setError]       = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const generate = async () => {
+    setState('loading');
+    setError('');
+    try {
+      const full = await fetchConditionClinicalInfo({ conditionLabel: condition.label, systemName, endpoint: provider.endpoint });
+      const parsed = parseConditionClinicalInfo(full);
+      await saveConditionClinicalInfo(condition.id, parsed);
+      setLocalInfo(parsed); // optimistic — Firestore listener will confirm shortly after
+      setState('idle');
+      setExpanded(true);
+    } catch (e) {
+      setError(e.message || 'Failed to generate clinical info.');
+      setState('error');
+    }
+  };
+
+  const remove = async () => {
+    if (removing) return;
+    setRemoving(true);
+    setError('');
+    try {
+      await removeConditionClinicalInfo(condition.id);
+      setLocalInfo(null);
+    } catch (e) {
+      setError(e.message || 'Failed to remove clinical info.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  if (!localInfo) {
+    if (!isAdmin) return null; // nothing generated yet, nothing for a non-admin to see
+    return (
+      <div className="px-5 py-3 border-b border-drug-border bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 text-sm text-drug-muted">
+          <BookOpen className="w-4 h-4 flex-shrink-0" />
+          No clinical info added for "{condition.label}" yet.
+        </div>
+        {state === 'loading' ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 flex-shrink-0">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating…
+          </span>
+        ) : (
+          <button
+            onClick={generate}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg flex-shrink-0"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Add Clinical Info
+          </button>
+        )}
+        {state === 'error' && (
+          <div className="w-full text-xs text-red-600">⚠ {error}</div>
+        )}
+      </div>
+    );
+  }
+
+  const noTypes = hasNoDistinctTypes(localInfo.types);
+
+  return (
+    <div className="border-b border-drug-border">
+      <button
+        onClick={() => setExpanded(o => !o)}
+        className="w-full flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0 text-sm font-semibold text-drug-text">
+          <BookOpen className="w-4 h-4 text-violet-500 flex-shrink-0" />
+          Clinical Info: {condition.label}
+        </div>
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-drug-muted flex-shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-5 py-4 space-y-4">
+          {isAdmin && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={(e) => { e.stopPropagation(); generate(); }}
+                disabled={state === 'loading'}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${state === 'loading' ? 'animate-spin' : ''}`} />
+                {state === 'loading' ? 'Regenerating…' : 'Regenerate'}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); remove(); }}
+                disabled={removing}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> {removing ? 'Removing…' : 'Remove'}
+              </button>
+            </div>
+          )}
+          {error && <div className="text-xs text-red-600">⚠ {error}</div>}
+
+          <ClinicalInfoSection title="Introduction" body={localInfo.introduction} />
+          {!noTypes && <ClinicalInfoSection title="Types" body={localInfo.types} />}
+          <ClinicalInfoSection title="Organ System Involved" body={localInfo.organRelated} />
+          <ClinicalInfoSection title="Etiology" body={localInfo.etiology} />
+          <ClinicalInfoSection title="Pathophysiology" body={localInfo.pathology} />
+          <ClinicalInfoSection title="Clinical Manifestation" body={localInfo.clinicalManifestation} />
+          <ClinicalInfoSection title="Diagnosis and Investigation" body={localInfo.diagnosis} />
+          <ClinicalInfoSection title="Medical Management" body={localInfo.management} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClinicalInfoSection({ title, body }) {
+  if (!body) return null;
+  return (
+    <div>
+      <h4 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">{title}</h4>
+      <div className="text-sm text-drug-text leading-relaxed">{renderAiText(body)}</div>
+    </div>
+  );
+}
+
 /* ── Collapsible condition section ──────────────────────────────────────── */
-function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved }) {
+function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
@@ -332,6 +473,8 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 
       {open && (
         <div className="border-t border-drug-border">
+          <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
+
           {isEmpty ? (
             <p className="px-5 pt-4 text-sm text-drug-muted">
               No drugs matched this condition yet. Use AI below to find and save some.
@@ -655,6 +798,7 @@ export default function SystemPage() {
   const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
+  const { clinicalInfoByCondition } = useConditionClinicalInfo();
   // Track drug↔condition links the admin just removed, so they disappear
   // immediately without waiting for a Firestore refetch. Keyed "drugId::condId".
   const [removedLinks, setRemovedLinks] = useState(() => new Set());
@@ -749,6 +893,44 @@ export default function SystemPage() {
     } finally {
       setRetryingEmpty(false);
     }
+  }
+
+  // ── Bulk clinical-info generation: fills in the Introduction/Types/
+  // Organ System/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/
+  // Medical Management panel for every condition in this system that
+  // doesn't have one yet. Runs sequentially (not queued into the global
+  // AiInsightContext job system, since this is scoped to whichever system
+  // page is open) with a small pacing delay between calls, matching the
+  // other bulk AI loops in this app.
+  const [clinicalSweep, setClinicalSweep] = useState({ running: false, done: 0, total: 0, errors: 0 });
+
+  const missingClinicalInfoCount = useMemo(
+    () => [...conditionGroups.values()].filter(e => !clinicalInfoByCondition[e.condition.id]).length,
+    [conditionGroups, clinicalInfoByCondition]
+  );
+
+  async function handleGenerateAllClinicalInfo() {
+    if (clinicalSweep.running) return;
+    const missing = [...conditionGroups.values()]
+      .map(e => e.condition)
+      .filter(c => !clinicalInfoByCondition[c.id]);
+    if (missing.length === 0) return;
+
+    setClinicalSweep({ running: true, done: 0, total: missing.length, errors: 0 });
+    let errors = 0;
+    for (const c of missing) {
+      try {
+        const full = await fetchConditionClinicalInfo({ conditionLabel: c.label, systemName: system.name, endpoint: provider.endpoint });
+        const parsed = parseConditionClinicalInfo(full);
+        await saveConditionClinicalInfo(c.id, parsed);
+      } catch (e) {
+        errors++;
+        console.warn('[clinical info sweep] failed for', c.label, e.message);
+      }
+      setClinicalSweep(s => ({ ...s, done: s.done + 1, errors }));
+      await new Promise(r => setTimeout(r, 350));
+    }
+    setClinicalSweep(s => ({ ...s, running: false }));
   }
 
   // ── Auto-fill sweep: any condition in THIS system that currently has zero
@@ -878,7 +1060,26 @@ export default function SystemPage() {
             {retryingEmpty ? 'Retrying…' : 'Retry empty conditions'}
           </button>
         )}
+        {isAdmin && !loading && (missingClinicalInfoCount > 0 || clinicalSweep.running) && (
+          <button
+            onClick={handleGenerateAllClinicalInfo}
+            disabled={clinicalSweep.running}
+            title="Generate the clinical info panel (introduction, types, organ system, etiology, pathophysiology, clinical manifestation, diagnosis, and management) for every condition here that doesn't have one yet"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50 flex-shrink-0"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            {clinicalSweep.running
+              ? `Adding Clinical Info ${clinicalSweep.done}/${clinicalSweep.total}…`
+              : `Add Clinical Info to All (${missingClinicalInfoCount})`}
+          </button>
+        )}
       </div>
+
+      {!clinicalSweep.running && clinicalSweep.total > 0 && clinicalSweep.errors > 0 && (
+        <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+          ⚠ Clinical info: {clinicalSweep.total - clinicalSweep.errors} of {clinicalSweep.total} generated successfully, {clinicalSweep.errors} failed — click "Add Clinical Info to All" again to retry the rest.
+        </div>
+      )}
 
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -962,6 +1163,7 @@ export default function SystemPage() {
                   onToggle={() => setOpenConditionId(o => o === entry.condition.id ? null : entry.condition.id)}
                   systemName={system.name}
                   onDrugRemoved={handleDrugRemoved}
+                  clinicalInfo={clinicalInfoByCondition[entry.condition.id]}
                 />
               ))}
             </div>

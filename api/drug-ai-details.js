@@ -172,6 +172,52 @@ List the medications (generic names) indicated for "${conditionLabel}", grouped 
 Include both medications likely already covered in a standard drug reference AND newer or less commonly listed agents that are still genuinely indicated — aim for a thorough, comprehensive list (roughly 15-30 medications). Every medication listed must be GENUINELY indicated for "${conditionLabel}" specifically; if you are not confident it treats this condition, leave it out rather than guessing.
 
 This is reference material only, not a substitute for current clinical guidelines — do not fabricate specific dosing figures, and do not add any text before "## Overview" or after the medication list.`;
+  } else if (mode === 'condition_clinical_info') {
+    // Powers the admin "Add Clinical Info" panel on SystemPage: a structured
+    // teaching summary for one condition, stored once in Firestore and
+    // reused thereafter (not regenerated on every page view). Deliberately
+    // asks for a "Types" section first so "Medical Management" can key its
+    // own sub-headers off the same type names when management genuinely
+    // differs by type (e.g. Diabetes Mellitus Type 1 vs Type 2) — and falls
+    // back to a single flat section when the condition has no meaningful
+    // subtypes (e.g. Hypertension).
+    const { conditionLabel, systemName } = body || {};
+    if (!conditionLabel || typeof conditionLabel !== 'string') {
+      return new Response(JSON.stringify({ error: 'conditionLabel is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    prompt = `You are assisting a licensed nurse and nurse educator using a clinical drug reference app in Nigeria. Provide a structured clinical teaching summary of the condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''}, suitable for nursing education and quick clinical reference.
+
+Respond with exactly these sections, using these exact markdown headers, in this order. Do not add any other sections, preamble, or closing text.
+
+## Introduction
+2-4 sentences: a clear definition of the condition and its clinical significance.
+
+## Types
+If "${conditionLabel}" has clinically distinct types, stages, or classifications, list each as a bullet point starting with the **type name in bold**, followed by a brief distinguishing note — for example "- **Type 1 Diabetes Mellitus** — autoimmune beta-cell destruction, absolute insulin deficiency, usually childhood/young-adult onset." If it does NOT have clinically distinct types, write exactly this line and nothing else: "No clinically distinct types — managed as a single clinical entity."
+
+## Organ System Involved
+The primary organ(s) or body system(s) affected, 1-2 sentences.
+
+## Etiology
+The causes and risk factors, as concise bullet points (lines starting with "- ").
+
+## Pathophysiology
+A short paragraph (3-6 sentences) explaining the underlying disease mechanism a nurse should understand.
+
+## Clinical Manifestation
+The signs and symptoms, as concise bullet points. If types were listed above and their manifestations meaningfully differ, group these under "### <Type Name>" sub-headers matching the type names used above exactly; otherwise give a single flat bullet list.
+
+## Diagnosis and Investigation
+The relevant history/examination findings, laboratory tests, and imaging or other investigations used to diagnose and work this condition up, as concise bullet points.
+
+## Medical Management
+The medical (pharmacological and general, non-surgical) management approach. If "${conditionLabel}" has clinically distinct types listed under ## Types that are genuinely managed differently, use a "### <Type Name>" sub-header for EACH type — matching the type names used above exactly — followed by that type's specific management as bullet points. If there are no clinically distinct types, or all types share essentially the same management approach, give a single flat bullet-point management section instead of sub-headers.
+
+Within each section, bold sub-labels using **double asterisks** where useful, and use bullet points (lines starting with "- ") for lists. Be precise, clinically accurate, and concise — this is educational/reference material only, not a substitute for current clinical guidelines. Do not fabricate specific numeric dosing; refer to drug classes or first-line agent names only, since detailed dosing lives in this app's separate drug records.`;
   } else if (mode === 'classify_condition') {
     // Given a condition label the nurse searched (with no known category),
     // picks which anatomical system it best belongs under, so it can be
@@ -310,7 +356,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".
