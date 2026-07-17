@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User } from 'lucide-react';
+import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import AiProviderDropdown from './AiProviderDropdown';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [searchQuery,     setSearchQuery]      = useState('');
   const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event
@@ -201,6 +203,15 @@ export default function Layout({ children }) {
                   Install
                 </button>
               )}
+              {/* Dark mode toggle */}
+              <button
+                onClick={toggleTheme}
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-white/80
+                           hover:text-white hover:bg-white/15 transition-colors flex-shrink-0"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
               {/* AI Provider selector */}
               {user && <AiProviderDropdown />}
 
@@ -275,6 +286,15 @@ export default function Layout({ children }) {
                   ← Admin Portal
                 </Link>
               )}
+              {/* Dark mode toggle — mobile */}
+              <button
+                onClick={toggleTheme}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold
+                           bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {isDark ? 'Light mode' : 'Dark mode'}
+              </button>
               {showInstall && !isInstalled && (
                 <button
                   onClick={() => { handleInstall(); setMobileMenuOpen(false); }}

@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
@@ -19,11 +20,11 @@ module.exports = {
           900: '#1e3a8a',
         },
         drug: {
-          bg: '#f8fafc',
-          card: '#ffffff',
-          border: '#e2e8f0',
-          text: '#1e293b',
-          muted: '#64748b',
+          bg: 'var(--drug-bg)',
+          card: 'var(--drug-card)',
+          border: 'var(--drug-border)',
+          text: 'var(--drug-text)',
+          muted: 'var(--drug-muted)',
           accent: '#dc2626',
           success: '#059669',
           warning: '#d97706',

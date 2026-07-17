@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon } from 'lucide-react';
+import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function AdminLayout({ children }) {
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -10,6 +11,7 @@ export default function AdminLayout({ children }) {
   const [showUpdate,    setShowUpdate]    = useState(false);
 
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const location  = useLocation();
   const navigate  = useNavigate();
 
@@ -65,7 +67,7 @@ export default function AdminLayout({ children }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#F0F4F8', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: isDark ? '#0f172a' : '#F0F4F8', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
       {/* ── SW Update Toast ──────────────────────────────────────────────── */}
       {showUpdate && (
@@ -139,6 +141,15 @@ export default function AdminLayout({ children }) {
                   <span className="hidden sm:inline">{link.label}</span>
                 </Link>
               ))}
+
+              {/* Dark mode toggle */}
+              <button
+                onClick={toggleTheme}
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-1"
+              >
+                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
 
               {/* Back to public site */}
               <Link

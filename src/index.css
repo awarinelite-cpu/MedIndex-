@@ -2,16 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --drug-bg: #f8fafc;
+  --drug-card: #ffffff;
+  --drug-border: #e2e8f0;
+  --drug-text: #1e293b;
+  --drug-muted: #64748b;
+  color-scheme: light;
+}
+
+.dark {
+  --drug-bg: #0f172a;
+  --drug-card: #1e293b;
+  --drug-border: #334155;
+  --drug-text: #f1f5f9;
+  --drug-muted: #94a3b8;
+  color-scheme: dark;
+}
+
 @layer base {
   body {
     @apply bg-drug-bg text-drug-text antialiased;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   code {
     @apply font-mono text-sm;
   }
 }
+
+/* ── Dark-mode overrides for raw Tailwind color utilities ───────────────────
+   Most surfaces use the drug-* / primary-* tokens above and flip for free via
+   the CSS variables. These handle the remaining literal Tailwind classes
+   (bg-white, bg-gray-50, text-red-600, etc.) used directly across the pages,
+   so existing components don't each need per-class dark: variants added. */
+.dark .bg-white           { background-color: var(--drug-card); }
+.dark .bg-gray-50         { background-color: #1e293b; }
+.dark .bg-gray-100        { background-color: #263449; }
+.dark .bg-gray-200        { background-color: #334155; }
+.dark .bg-gray-900        { background-color: #0b1220; }
+.dark .bg-gray-950        { background-color: #060a12; }
+
+.dark .text-gray-300      { color: #cbd5e1; }
+.dark .text-gray-400      { color: #94a3b8; }
+.dark .text-gray-500      { color: #94a3b8; }
+.dark .text-gray-600      { color: #cbd5e1; }
+.dark .text-gray-700      { color: #e2e8f0; }
+.dark .text-gray-800      { color: #f1f5f9; }
+.dark .text-gray-900      { color: #f8fafc; }
+
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .border-gray-200    { border-color: #334155; }
+
+.dark .bg-primary-50      { background-color: rgba(59, 130, 246, 0.12); }
+.dark .bg-primary-100     { background-color: rgba(59, 130, 246, 0.18); }
+.dark .border-primary-200 { border-color: rgba(59, 130, 246, 0.35); }
+
+.dark .bg-red-50          { background-color: rgba(220, 38, 38, 0.12); }
+.dark .bg-red-100         { background-color: rgba(220, 38, 38, 0.18); }
+.dark .border-red-200     { border-color: rgba(220, 38, 38, 0.35); }
+.dark .border-red-500     { border-color: rgba(248, 113, 113, 0.6); }
+.dark .text-red-600,
+.dark .text-red-700       { color: #f87171; }
+
+.dark .bg-green-50        { background-color: rgba(5, 150, 105, 0.14); }
+.dark .bg-green-100       { background-color: rgba(5, 150, 105, 0.2); }
+.dark .text-green-600,
+.dark .text-green-700     { color: #34d399; }
+
+.dark .bg-amber-50,
+.dark .bg-yellow-50       { background-color: rgba(217, 119, 6, 0.14); }
+.dark .bg-amber-100,
+.dark .bg-yellow-100      { background-color: rgba(217, 119, 6, 0.2); }
+.dark .text-amber-600,
+.dark .text-yellow-700    { color: #fbbf24; }
+
+.dark .shadow-md,
+.dark .shadow-lg          { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
 
 @layer components {
   .section-card {
@@ -71,6 +140,18 @@
     @apply text-primary-500 font-bold flex-shrink-0;
   }
 }
+
+/* Dark overrides for the @apply-based component classes above — @apply bakes
+   in literal color values at build time, so these need their own dark rules
+   rather than being caught by the raw-utility overrides further up. */
+.dark .section-card       { background-color: var(--drug-card); }
+.dark .btn-secondary      { background-color: var(--drug-card); }
+.dark .btn-secondary:hover{ background-color: #263449; }
+.dark .tag-optional       { background-color: #334155; color: #cbd5e1; }
+.dark .field-row          { border-color: #334155; }
+.dark .field-row:hover    { background-color: #1e293b; }
+.dark .field-info         { background-color: #1e293b; border-color: #334155; }
+.dark .black-box-warning  { background-color: rgba(220, 38, 38, 0.14); border-color: #f87171; color: #fca5a5; }
 
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AiInsightProvider } from './context/AiInsightContext';
 import { AiProviderProvider } from './context/AiProviderContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
@@ -26,6 +27,7 @@ import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <AiProviderProvider>
       <AiInsightProvider>
@@ -125,6 +127,7 @@ function App() {
       </AiInsightProvider>
       </AiProviderProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 
