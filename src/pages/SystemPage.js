@@ -917,17 +917,17 @@ export default function SystemPage() {
     if (missing.length === 0) return;
 
     setClinicalSweep({ running: true, done: 0, total: missing.length, errors: 0 });
-    let errors = 0;
     for (const c of missing) {
+      let failed = false;
       try {
         const full = await fetchConditionClinicalInfo({ conditionLabel: c.label, systemName: system.name, endpoint: provider.endpoint });
         const parsed = parseConditionClinicalInfo(full);
         await saveConditionClinicalInfo(c.id, parsed);
       } catch (e) {
-        errors++;
+        failed = true;
         console.warn('[clinical info sweep] failed for', c.label, e.message);
       }
-      setClinicalSweep(s => ({ ...s, done: s.done + 1, errors }));
+      setClinicalSweep(s => ({ ...s, done: s.done + 1, errors: s.errors + (failed ? 1 : 0) }));
       await new Promise(r => setTimeout(r, 350));
     }
     setClinicalSweep(s => ({ ...s, running: false }));
