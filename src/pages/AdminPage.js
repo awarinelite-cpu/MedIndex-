@@ -32,7 +32,7 @@ function isIncomplete(drug) {
 // so filled-in rows will update the existing incomplete record rather than
 // create a duplicate.
 const CSV_EXPORT_HEADERS = [
-  'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
+  'generic_name','pronunciation','drug_class','drug_subclass','prescription_status','nafdac_no',
   'overview','strength','indications','therapeutic_note',
   'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
   'pharmacology','advice_to_patients','contraindications','precautions',
@@ -64,6 +64,7 @@ function downloadIncompleteCSV(incompleteDrugs, showToast) {
 // ── Editable fields ────────────────────────────────────────────────────────
 const EDITABLE_FIELDS = [
   { key: 'generic_name',          label: 'Generic Name',          type: 'text',     required: true  },
+  { key: 'pronunciation',         label: 'Pronunciation (e.g. am-ox-i-SIL-in)', type: 'text', required: false },
   { key: 'drug_class',            label: 'Drug Class',            type: 'text',     required: true  },
   { key: 'drug_subclass',         label: 'Drug Subclass',         type: 'text',     required: false },
   { key: 'prescription_status',   label: 'Prescription Status',   type: 'select',   required: true,

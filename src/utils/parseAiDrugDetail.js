@@ -6,6 +6,7 @@
 
 const HEADER_FIELD_MAP = [
   [/^overview$/,                                   'overview'],
+  [/^pronunciation$/,                              'pronunciation'],
   [/^indications$/,                                'indications'],
   [/^strength$/,                                    'strength'],
   [/^therapeutic note$/,                           'therapeutic_note'],

@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
-  Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon,
+  Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
-import { needsStrengthOnly } from '../utils/aiDrugSave';
+import { needsStrengthOnly, fetchPronunciationText, savePronunciation } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
@@ -280,6 +280,71 @@ function AiSectionFill({ drug, tabId, onFilled }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Name Pronunciation: speaker button (always available, free, uses the
+   device's own text-to-speech) + AI-generated phonetic spelling (e.g.
+   "am-ox-i-SIL-in"), fetched on demand and cached on the drug record. Kept
+   fully separate from REQUIRED_FIELD_GROUPS/isDrugComplete — this is a nice-
+   to-have, not something that should ever flag existing drugs as incomplete. */
+function speakDrugName(name) {
+  if (!name || typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel(); // stop anything already playing
+  const utterance = new SpeechSynthesisUtterance(name);
+  utterance.lang = 'en-US';
+  utterance.rate = 0.85; // a little slower than default for clarity
+  window.speechSynthesis.speak(utterance);
+}
+
+function NamePronunciation({ drug, onFilled }) {
+  const { provider } = useAiProvider();
+  const [state, setState] = useState('idle'); // idle | generating | error
+  const [error, setError] = useState('');
+  const supportsSpeech = typeof window !== 'undefined' && !!window.speechSynthesis;
+
+  const handleGeneratePronunciation = async () => {
+    setState('generating');
+    setError('');
+    try {
+      const text = await fetchPronunciationText({ genericName: drug.generic_name, endpoint: provider.endpoint });
+      await savePronunciation({ drug, pronunciation: text });
+      onFilled({ pronunciation: text });
+      setState('idle');
+    } catch (e) {
+      setError(e.message || 'Failed to generate pronunciation.');
+      setState('error');
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap mt-1">
+      {supportsSpeech && (
+        <button
+          onClick={() => speakDrugName(drug.generic_name)}
+          title={`Hear "${drug.generic_name}" pronounced`}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors flex-shrink-0"
+        >
+          <Volume2 className="w-4 h-4" />
+        </button>
+      )}
+
+      {drug.pronunciation ? (
+        <span className="text-sm text-drug-muted italic">/{drug.pronunciation}/</span>
+      ) : state === 'generating' ? (
+        <span className="text-xs text-drug-muted inline-flex items-center gap-1">
+          <RefreshCw className="w-3 h-3 animate-spin" /> Generating pronunciation…
+        </span>
+      ) : (
+        <button
+          onClick={handleGeneratePronunciation}
+          className="text-xs font-semibold text-primary-600 hover:text-primary-800 inline-flex items-center gap-1"
+        >
+          <Sparkles className="w-3 h-3" /> {state === 'error' ? 'Try again' : 'Add pronunciation'}
+        </button>
+      )}
+      {state === 'error' && <span className="text-xs text-red-600">{error}</span>}
     </div>
   );
 }
@@ -1019,6 +1084,7 @@ export default function DrugDetailPage() {
           )}
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
+        <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
         <p className="text-lg text-primary-600 font-medium mt-1">
           <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="hover:underline">
             {getDisplayDrugClass(drug)}

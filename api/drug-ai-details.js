@@ -100,6 +100,22 @@ IV: 500mg/100mL
 Susp: 125mg/5mL
 
 List every commonly available formulation/route. Do not add headers, bullets, explanations, or any other text — only the strength lines themselves. If you are not confident of exact figures, give the most commonly cited strength(s) and do not fabricate implausible values.`;
+  } else if (mode === 'pronunciation') {
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'genericName is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide ONLY a simple phonetic pronunciation guide for the medication name below, the way a nurse would sound it out loud.
+
+Drug: ${genericName}
+
+Reply with nothing but the phonetic spelling itself — syllables separated by hyphens, with the stressed syllable in CAPITAL letters. For example, for "amoxicillin" reply exactly:
+am-ox-i-SIL-in
+
+No headers, no quotes, no explanation, no IPA symbols — just the hyphenated phonetic line.`;
   } else if (mode === 'condition') {
     const { conditionLabel, systemName } = body || {};
     if (!conditionLabel || typeof conditionLabel !== 'string') {
@@ -309,6 +325,7 @@ ${knownData ? `\nExisting reference data already shown to the nurse (do not simp
 
 Structure your response with these sections, using clear markdown headers (##):
 - Overview (concise summary of what the drug is and its place in therapy)
+- Pronunciation (simple phonetic spelling, syllables separated by hyphens with the stressed syllable in CAPITALS — e.g. "am-ox-i-SIL-in" — no IPA symbols)
 - Drug Class & Subclass
 - Strength (the formulation strength(s) each dosage form usually comes in — e.g. "Tab: 500mg", "IV: 500mg/100mL", "Susp: 125mg/5mL" — list each route/form on its own line if there's more than one; this is about product strength, not the dosing regimen)
 - Indications (primary approved uses)
@@ -356,7 +373,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : mode === 'strength' ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".

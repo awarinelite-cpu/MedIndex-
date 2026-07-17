@@ -123,6 +123,53 @@ export async function fetchStrengthText({ genericName, drugClass, endpoint = '/a
   return full;
 }
 
+// ── Fast, minimal-token pronunciation-only lookup ─────────────────────────
+// Mirrors fetchStrengthText — a single short phonetic-spelling line, not
+// part of REQUIRED_FIELD_GROUPS, so it never affects a drug's "complete" status.
+export async function fetchPronunciationText({ genericName, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'pronunciation', genericName }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+  // Guard against a stray header/quotes/bullet the model might still add.
+  full = full.trim().replace(/^#{1,6}\s*/, '').replace(/^["'*-]+\s*/, '').replace(/["'*]+$/, '');
+  if (!full) throw new Error('AI returned an empty response.');
+  return full;
+}
+
+// Saves just the pronunciation field onto an existing drug record (or
+// creates one, same fallback as fillTabWithAi, if this drug only exists
+// as a local seed entry so far). Any signed-in user may call this — same
+// permission model as the per-tab AI fill.
+export async function savePronunciation({ drug, pronunciation }) {
+  await getAuthUser();
+  await setDoc(doc(db, 'drugs', drug.id), {
+    pronunciation,
+    generic_name: drug.generic_name,
+    drug_class:   drug.drug_class || 'Unknown',
+    source:       drug.source || 'AI Generated',
+    status:       drug.status || 'Active',
+    last_updated: serverTimestamp(),
+  }, { merge: true });
+}
+
 // A drug only needs the fast strength-only path if every other required
 // field is already complete and strength itself is still missing.
 export function needsStrengthOnly(data) {
