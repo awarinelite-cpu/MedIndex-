@@ -45,7 +45,7 @@ export default async function handler(req) {
   const {
     mode = 'drug',
     genericName, brandNames, drugClass, knownData, notInDatabase,
-    className, knownDrugNames,
+    className, parentClassName, knownDrugNames,
     sectionHeaders, sectionLabel,
   } = body || {};
 
@@ -294,9 +294,21 @@ Suggest around 5-10 additional conditions if the system reasonably supports that
       ? `\nMedications already in the app's database for this class (do not repeat these — focus on other medications in the same class and its subclasses):\n${knownDrugNames.join(', ')}\n`
       : '';
 
-    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is browsing the drug class "${className}" and wants a broader list of medications within this class and its subclasses beyond what's currently in the app's database.
+    // When this call is for a single subclass, its bare name is often
+    // ambiguous on its own (e.g. "Alcohols" as a subclass of "Disinfectants
+    // and Antiseptics" means topical/antiseptic alcohols — not medications
+    // used for alcohol dependence, and not every drug with "alcohol" in its
+    // name or description). Naming the parent chapter here disambiguates
+    // that up front, before the strict-indication rule below reinforces it.
+    const classLabel = parentClassName && typeof parentClassName === 'string' && parentClassName.trim()
+      ? `the subclass "${className}" under the drug class "${parentClassName.trim()}"`
+      : `the drug class "${className}"`;
+
+    prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is browsing ${classLabel} and wants a broader list of medications within it beyond what's currently in the app's database.
 ${knownList}
-List medications (generic names) that genuinely belong under "${className}" or one of its recognized subclasses. The test for including a medication is its INDICATION: include it only if it is actually used to treat, prevent, or manage a condition that falls under "${className}" (or one of its subclasses) — not just because its name or pharmacological label superficially resembles the class name. A medication can be indicated for conditions in more than one drug class; if so, it is correct for it to appear here as long as one of its real indications belongs under "${className}", even if its primary/best-known use lies in a different class elsewhere in the formulary.
+List medications (generic names) that genuinely belong under ${classLabel}. The test for including a medication is its INDICATION: include it only if it is actually used to treat, prevent, or manage a condition that this specific class/subclass covers. Do NOT include a medication just because its generic name, brand name, or drug-class label happens to share a word with "${className}" — lexical overlap is not evidence of membership. For example, if the class/subclass is "Alcohols" under "Disinfectants and Antiseptics" (i.e. alcohols used topically as antiseptics, like isopropyl alcohol or ethanol swabs), do NOT include medications used to treat alcohol dependence/alcohol use disorder (e.g. disulfiram, acamprosate, naltrexone) — those belong to a completely different class and condition, despite the word "alcohol" appearing in both. Apply that same discipline to every class: match on real clinical indication, never on name resemblance.
+
+A medication can legitimately be indicated for conditions in more than one drug class; if so, it is correct for it to appear here as long as one of its real indications belongs under ${classLabel}, even if its primary/best-known use lies in a different class elsewhere in the formulary.
 
 Group them by subclass using ## markdown headers where subclasses exist (e.g. "## Beta-1 Selective Beta-Blockers"), otherwise use a single "## ${className}" header.
 

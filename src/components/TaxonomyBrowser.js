@@ -41,7 +41,7 @@ function DrugRow({ drug }) {
 // subclass starts closed; nothing auto-opens itself just because it has
 // drugs in it (the AI-insight panel each one carries would otherwise all
 // mount at once, which is both noisy and wasteful).
-function SubclassSection({ subclass, drugs, isOpen, onToggle }) {
+function SubclassSection({ subclass, drugs, isOpen, onToggle, parentClassName }) {
   return (
     <div className="border-t border-drug-border first:border-t-0">
       <button
@@ -64,7 +64,7 @@ function SubclassSection({ subclass, drugs, isOpen, onToggle }) {
             </div>
           )}
           <div className="mt-2 px-1">
-            <AiClassInsight className={subclass.name} existingDrugs={drugs} />
+            <AiClassInsight className={subclass.name} existingDrugs={drugs} parentClassName={parentClassName} />
           </div>
         </div>
       )}
@@ -116,6 +116,7 @@ function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle }) {
               drugs={drugs}
               isOpen={openSubclassId === subclass.id}
               onToggle={() => setOpenSubclassId(id => (id === subclass.id ? null : subclass.id))}
+              parentClassName={classDef.name}
             />
           ))}
           <div className="border-t border-drug-border px-4 pb-4">

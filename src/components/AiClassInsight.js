@@ -23,7 +23,7 @@ function normalizeDrugName(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function AiClassFallback({ className, existingDrugs }) {
+function AiClassFallback({ className, existingDrugs, parentClassName }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   // IMPORTANT: drugs flagged _seed come from the bundled local seed file and
@@ -40,7 +40,7 @@ function AiClassFallback({ className, existingDrugs }) {
     return map;
   }, [dbDrugs]);
 
-  const cacheKey = `ai_class_${className.trim().toLowerCase()}`;
+  const cacheKey = `ai_class_${(parentClassName ? parentClassName.trim().toLowerCase() + '::' : '')}${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
   const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError] = useState('');
@@ -129,7 +129,12 @@ function AiClassFallback({ className, existingDrugs }) {
       const res = await fetch(provider.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'class', className: className.trim(), knownDrugNames }),
+        body: JSON.stringify({
+          mode: 'class',
+          className: className.trim(),
+          parentClassName: parentClassName ? parentClassName.trim() : undefined,
+          knownDrugNames,
+        }),
       });
 
       if (!res.ok || !res.body) {
