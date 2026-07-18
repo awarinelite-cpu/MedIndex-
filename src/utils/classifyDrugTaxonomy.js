@@ -249,3 +249,55 @@ export function classifyDrugTaxonomy(drug) {
 
   return { classId: UNCLASSIFIED_BUCKET.id, subclassId: UNCLASSIFIED_BUCKET.subclasses[0].id };
 }
+
+// ── Multi-placement classification ──────────────────────────────────────
+// A drug's pharmacological identity (drug_class/drug_subclass) puts it in
+// exactly one "home" bucket via classifyDrugTaxonomy above. But a single
+// drug can be *indicated* for conditions that belong to several different
+// formulary chapters (e.g. a corticosteroid also indicated for a
+// dermatological condition, or an NSAID also indicated for migraine).
+// This scans the drug's own indications text — independently of its
+// declared class — against every RULES pattern, so it only ever adds a
+// chapter/subclass the drug is actually indicated for, and it naturally
+// lets the same drug surface in every subclass its indications support.
+function indicationMatches(drug) {
+  const indicationText = [drug.indications, drug.primary_indications]
+    .filter(Boolean)
+    .join(' | ')
+    .toLowerCase();
+  if (!indicationText) return [];
+
+  const hits = [];
+  const seen = new Set();
+  for (const [pattern, classId, subclassId] of RULES) {
+    if (pattern.test(indicationText)) {
+      const key = `${classId}::${subclassId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        hits.push({ classId, subclassId });
+      }
+    }
+  }
+  return hits;
+}
+
+// Returns every { classId, subclassId } pair a drug should appear under:
+// its primary (pharmacological) placement plus any additional chapters its
+// stated indications match. Always includes at least the primary pair.
+export function classifyDrugTaxonomyAll(drug) {
+  const primary = classifyDrugTaxonomy(drug);
+  if (!drug) return [primary];
+
+  const all = [primary];
+  const seen = new Set([`${primary.classId}::${primary.subclassId}`]);
+
+  for (const hit of indicationMatches(drug)) {
+    const key = `${hit.classId}::${hit.subclassId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      all.push(hit);
+    }
+  }
+
+  return all;
+}

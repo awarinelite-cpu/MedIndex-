@@ -296,9 +296,11 @@ Suggest around 5-10 additional conditions if the system reasonably supports that
 
     prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The nurse is browsing the drug class "${className}" and wants a broader list of medications within this class and its subclasses beyond what's currently in the app's database.
 ${knownList}
-List commonly used medications (generic names) that belong to the drug class "${className}" or its recognized subclasses. Group them by subclass using ## markdown headers where subclasses exist (e.g. "## Beta-1 Selective Beta-Blockers"), otherwise use a single "## ${className}" header.
+List medications (generic names) that genuinely belong under "${className}" or one of its recognized subclasses. The test for including a medication is its INDICATION: include it only if it is actually used to treat, prevent, or manage a condition that falls under "${className}" (or one of its subclasses) — not just because its name or pharmacological label superficially resembles the class name. A medication can be indicated for conditions in more than one drug class; if so, it is correct for it to appear here as long as one of its real indications belongs under "${className}", even if its primary/best-known use lies in a different class elsewhere in the formulary.
 
-For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: primary indication, typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), and any notable distinguishing feature versus others in the same subclass. Example format:
+Group them by subclass using ## markdown headers where subclasses exist (e.g. "## Beta-1 Selective Beta-Blockers"), otherwise use a single "## ${className}" header.
+
+For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: the specific indication that justifies its inclusion in this class/subclass, typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), and any notable distinguishing feature versus others in the same subclass. Example format:
 - **Metoprolol** — Beta-1 selective; PO/IV; hypertension, angina, arrhythmia; less bronchospasm risk than non-selective agents.
 
 Aim for a reasonably thorough list (roughly 10-25 medications depending on how broad the class is) so the nurse gets real coverage of the class, not just one or two examples. If "${className}" is not a recognized drug class or you're not confident it's real, say so clearly instead of inventing medications.
