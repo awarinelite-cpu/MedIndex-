@@ -975,7 +975,7 @@ export default function BrowsePage() {
             : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
       ) : (
-        <TaxonomyBrowser drugs={filteredDrugs} activeQuery={searchQuery || filterClass || filterStatus} />
+        <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
       )}
 
       {/* AI expansion — always show when browsing a specific class */}

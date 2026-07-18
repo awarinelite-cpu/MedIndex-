@@ -41,7 +41,7 @@ function DrugRow({ drug }) {
 // subclass starts closed; nothing auto-opens itself just because it has
 // drugs in it (the AI-insight panel each one carries would otherwise all
 // mount at once, which is both noisy and wasteful).
-function SubclassSection({ subclass, drugs, isOpen, onToggle, parentClassName }) {
+function SubclassSection({ subclass, drugs, isOpen, onToggle, parentClassName, databaseDrugs }) {
   return (
     <div className="border-t border-drug-border first:border-t-0">
       <button
@@ -64,7 +64,12 @@ function SubclassSection({ subclass, drugs, isOpen, onToggle, parentClassName })
             </div>
           )}
           <div className="mt-2 px-1">
-            <AiClassInsight className={subclass.name} existingDrugs={drugs} parentClassName={parentClassName} />
+            <AiClassInsight
+              className={subclass.name}
+              existingDrugs={drugs}
+              parentClassName={parentClassName}
+              databaseDrugs={databaseDrugs}
+            />
           </div>
         </div>
       )}
@@ -77,7 +82,7 @@ function SubclassSection({ subclass, drugs, isOpen, onToggle, parentClassName })
 // default; opening one class closes whichever other class was open, and
 // opening a class does not imply any of its subclasses are open too — those
 // each start closed until tapped, one at a time, same as the class level.
-function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle }) {
+function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle, databaseDrugs }) {
   const [openSubclassId, setOpenSubclassId] = useState(null);
 
   // Every drug across this class's subclasses — used so the class-level AI
@@ -117,10 +122,11 @@ function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle }) {
               isOpen={openSubclassId === subclass.id}
               onToggle={() => setOpenSubclassId(id => (id === subclass.id ? null : subclass.id))}
               parentClassName={classDef.name}
+              databaseDrugs={databaseDrugs}
             />
           ))}
           <div className="border-t border-drug-border px-4 pb-4">
-            <AiClassInsight className={classDef.name} existingDrugs={allClassDrugs} />
+            <AiClassInsight className={classDef.name} existingDrugs={allClassDrugs} databaseDrugs={databaseDrugs} />
           </div>
         </div>
       )}
@@ -137,7 +143,15 @@ function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle }) {
 // just its single "home" pharmacological class — see
 // classifyDrugTaxonomyAll — so a drug indicated for conditions spanning
 // more than one chapter shows up in each one it's actually indicated for.
-export default function TaxonomyBrowser({ drugs }) {
+//
+// `allDrugs` — when provided — is the full, unfiltered database (independent
+// of any active search/status/class filter) used only for the AI insight
+// panels' "already in database" dedup, so that check isn't limited by
+// whatever's currently visible, or by which class/subclass the local
+// taxonomy happened to file a drug under. Falls back to `drugs` when not
+// supplied.
+export default function TaxonomyBrowser({ drugs, allDrugs }) {
+  const databaseDrugs = allDrugs || drugs;
   const grouped = useMemo(() => {
     const bySubclass = new Map(); // `${classId}::${subclassId}` -> drugs[]
     for (const drug of drugs) {
@@ -180,6 +194,7 @@ export default function TaxonomyBrowser({ drugs }) {
           total={total}
           isOpen={openClassId === classDef.id}
           onToggle={() => setOpenClassId(id => (id === classDef.id ? null : classDef.id))}
+          databaseDrugs={databaseDrugs}
         />
       ))}
     </div>

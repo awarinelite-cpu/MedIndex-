@@ -23,22 +23,38 @@ function normalizeDrugName(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function AiClassFallback({ className, existingDrugs, parentClassName }) {
+function AiClassFallback({ className, existingDrugs, parentClassName, databaseDrugs }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   // IMPORTANT: drugs flagged _seed come from the bundled local seed file and
   // do NOT exist in Firestore. They must never count as "already in database" —
   // that was falsely blocking AI saves for drugs that were never actually saved.
   const dbDrugs = useMemo(() => existingDrugs.filter(d => !d._seed), [existingDrugs]);
-  const knownDrugNames = useMemo(() => dbDrugs.map(d => d.generic_name).filter(Boolean), [dbDrugs]);
   const incompleteExisting = useMemo(() => dbDrugs.filter(d => !isDrugComplete(d)), [dbDrugs]);
+
+  // "Already in database" has to mean *anywhere* in the app's database, not
+  // just "already filed under this exact class/subclass bucket" — a drug's
+  // local taxonomy placement (via classifyDrugTaxonomyAll) can easily miss a
+  // subclass that has no matching rule yet (e.g. a subclass with zero RULES
+  // entries always looks empty), which previously made every AI suggestion
+  // for that subclass look "new" even when the drug already existed in the
+  // database under a different subclass. databaseDrugs — when supplied — is
+  // the app's full unscoped drug list, so this check isn't limited by how
+  // well the local taxonomy classified things. Falls back to the
+  // class/subclass-scoped list when no global list was passed in (keeps the
+  // original behavior for callers that don't supply one).
+  const dedupSourceDrugs = useMemo(
+    () => (databaseDrugs && databaseDrugs.length ? databaseDrugs.filter(d => !d._seed) : dbDrugs),
+    [databaseDrugs, dbDrugs]
+  );
+  const knownDrugNames = useMemo(() => dedupSourceDrugs.map(d => d.generic_name).filter(Boolean), [dedupSourceDrugs]);
   const existingByName = useMemo(() => {
     const map = new Map();
-    dbDrugs.forEach(d => {
+    dedupSourceDrugs.forEach(d => {
       if (d.generic_name) map.set(normalizeDrugName(d.generic_name), d);
     });
     return map;
-  }, [dbDrugs]);
+  }, [dedupSourceDrugs]);
 
   const cacheKey = `ai_class_${(parentClassName ? parentClassName.trim().toLowerCase() + '::' : '')}${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
