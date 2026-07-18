@@ -11,19 +11,45 @@
 // top filter dropdown.
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Pill, ChevronRight, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
-import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete } from '../utils/aiDrugSave';
+import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, slugifyDrugName } from '../utils/aiDrugSave';
 
 /* ── AI fallback for sparse class/subclass results ───────────────────────── */
 function normalizeDrugName(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function AiClassFallback({ className, existingDrugs, parentClassName, databaseDrugs }) {
+// Best-effort match of a free-text subclass name (as returned by the AI, or
+// as passed in verbatim when this panel IS a specific subclass) against a
+// list of { id, name } taxonomy subclasses. Tries an exact case-insensitive
+// match first, then falls back to token overlap so close AI phrasing (e.g.
+// slightly different wording of the same subclass) still resolves.
+function resolveSubclassId(nameGuess, subclasses) {
+  if (!nameGuess || !subclasses || !subclasses.length) return null;
+  const norm = s => (s || '').trim().toLowerCase();
+  const target = norm(nameGuess);
+  const exact = subclasses.find(s => norm(s.name) === target);
+  if (exact) return exact.id;
+
+  const tokenize = s => norm(s).replace(/[(),./-]/g, ' ').split(/\s+/).filter(t => t.length >= 4);
+  const targetTokens = new Set(tokenize(nameGuess));
+  if (targetTokens.size === 0) return null;
+  let best = null, bestScore = 0;
+  for (const s of subclasses) {
+    const tokens = tokenize(s.name);
+    const overlap = tokens.filter(t => targetTokens.has(t)).length;
+    if (overlap > bestScore) { bestScore = overlap; best = s; }
+  }
+  return bestScore >= 1 ? best.id : null;
+}
+
+function AiClassFallback({ className, existingDrugs, parentClassName, databaseDrugs, classId, subclassId, subclasses }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   // IMPORTANT: drugs flagged _seed come from the bundled local seed file and
@@ -70,21 +96,52 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
   const [fixProgress, setFixProgress] = useState({ current: 0, total: 0, currentName: '' });
   const [fixResults, setFixResults]   = useState(null); // { fixed, errors: [{name, message}] }
 
+  // Adds an already-in-database drug into this class/subclass bucket without
+  // touching its saved record — just an arrayUnion tag, so it's idempotent
+  // and never creates a duplicate drug or overwrites existing data. Only
+  // works when this panel knows a concrete subclass to link into; see
+  // targetSubclassId below.
+  const linkExistingDrug = async (existing, targetClassId, targetSubclassId) => {
+    const docId = existing.id || existing.firestoreId || slugifyDrugName(existing.generic_name);
+    await updateDoc(doc(db, 'drugs', docId), {
+      extra_subclasses: arrayUnion(`${targetClassId}::${targetSubclassId}`),
+    });
+  };
+
   const saveAllToDatabase = async (items) => {
     setBulkState('running');
     setBulkResults(null);
-    let saved = 0, incomplete = 0;
+    let saved = 0, incomplete = 0, linked = 0;
     const errors = [];
 
-    // Upload every item the AI listed, overwriting whatever's already saved
-    // under that name (if anything) with this fresh data — the local
-    // "existing in this class" check is only used for the badges shown
-    // above, not to silently skip saving here. overwrite: true is required
-    // below — without it, saveAiDrugToDatabase's own internal existence
-    // check (independent of class) would still silently skip.
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      setBulkProgress({ current: i + 1, total: items.length, currentName: item.name });
+    // Drugs already in the database (anywhere) just need linking into this
+    // subclass bucket, not a fresh AI fetch + overwrite of their whole
+    // record. Drugs genuinely new to the database still get the full
+    // fetch + save so a real record gets created for them.
+    const existingItems = items.filter(item => existingByName.has(normalizeDrugName(item.name)));
+    const newItems = items.filter(item => !existingByName.has(normalizeDrugName(item.name)));
+    const total = existingItems.length + newItems.length;
+    let done = 0;
+
+    for (const item of existingItems) {
+      setBulkProgress({ current: ++done, total, currentName: item.name });
+      const existing = existingByName.get(normalizeDrugName(item.name));
+      const targetSubclassId = subclassId || resolveSubclassId(item.subclass || className, subclasses);
+      const targetClassId = classId;
+      if (targetClassId && targetSubclassId) {
+        try {
+          await linkExistingDrug(existing, targetClassId, targetSubclassId);
+          linked += 1;
+        } catch (e) {
+          errors.push({ name: item.name, message: e.message || 'Failed to link.' });
+        }
+      }
+      // No resolvable subclass target — nothing to do for a drug that's
+      // already saved elsewhere; leave it alone rather than guessing.
+    }
+
+    for (const item of newItems) {
+      setBulkProgress({ current: ++done, total, currentName: item.name });
       const drugClassForItem = item.subclass || className;
       try {
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint: provider.endpoint });
@@ -102,7 +159,7 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
       await new Promise(r => setTimeout(r, 350));
     }
 
-    setBulkResults({ saved, skipped: incomplete, errors });
+    setBulkResults({ saved, skipped: incomplete, linked, errors });
     setBulkState('done');
   };
 
@@ -327,7 +384,8 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
             bulkResults.errors.length > 0 ? 'text-amber-700' : 'text-green-700'
           }`}>
             <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            Saved {bulkResults.saved}{bulkResults.skipped > 0 ? `, skipped ${bulkResults.skipped} (already in database)` : ''}
+            Saved {bulkResults.saved} new{bulkResults.linked > 0 ? `, linked ${bulkResults.linked} existing to this subclass` : ''}
+            {bulkResults.skipped > 0 ? `, ${bulkResults.skipped} incomplete` : ''}
             {bulkResults.errors.length > 0 ? `, ${bulkResults.errors.length} failed` : ''}.
           </div>
           {bulkResults.errors.length > 0 && (

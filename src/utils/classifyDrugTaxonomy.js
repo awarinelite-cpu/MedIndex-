@@ -284,6 +284,19 @@ function indicationMatches(drug) {
 // Returns every { classId, subclassId } pair a drug should appear under:
 // its primary (pharmacological) placement plus any additional chapters its
 // stated indications match. Always includes at least the primary pair.
+//
+// A drug can also carry an `extra_subclasses` field: an array of
+// "classId::subclassId" strings written by the AI class/subclass insight
+// panel's "Save All to Database" / "Add" actions when an admin confirms an
+// *already-in-database* drug also belongs to a subclass being browsed.
+// This exists because RULES-based matching (above) only covers subclasses
+// that have an explicit keyword rule — a subclass with none (e.g. one added
+// to the taxonomy without ever getting a RULES entry) can never be reached
+// by classifyDrugTaxonomy/indicationMatches no matter what the drug's own
+// text says, so there has to be a way to place a drug there directly. It's
+// additive only — never overrides or removes the primary/indication-based
+// placements above — and duplicate-safe since it's merged through the same
+// `seen` dedup as everything else here.
 export function classifyDrugTaxonomyAll(drug) {
   const primary = classifyDrugTaxonomy(drug);
   if (!drug) return [primary];
@@ -296,6 +309,19 @@ export function classifyDrugTaxonomyAll(drug) {
     if (!seen.has(key)) {
       seen.add(key);
       all.push(hit);
+    }
+  }
+
+  if (Array.isArray(drug.extra_subclasses)) {
+    for (const entry of drug.extra_subclasses) {
+      if (typeof entry !== 'string' || !entry.includes('::')) continue;
+      const [classId, subclassId] = entry.split('::');
+      if (!classId || !subclassId) continue;
+      const key = `${classId}::${subclassId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        all.push({ classId, subclassId });
+      }
     }
   }
 
