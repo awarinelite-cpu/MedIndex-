@@ -1,7 +1,5 @@
 // src/data/systemConditions.js
 //
-import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
-
 // Defines clinical conditions for each anatomical system.
 // Each condition has a set of keyword patterns matched (case-insensitive,
 // substring) against a drug's indications, primary_indications, overview,
@@ -624,47 +622,6 @@ export const SYSTEM_CONDITIONS = {
 
 };
 
-// ── Keep this system/condition matching aligned with the formulary
-// taxonomy (src/data/drugClassTaxonomy.js) ─────────────────────────────
-// This file's keyword lists were built and are maintained completely
-// independently of classifyDrugTaxonomy.js's RULES. That let the two
-// disagree — e.g. the systems/conditions keyword scan suggesting a drug
-// belongs to a condition whose system contradicts the formulary chapter
-// the same drug is actually filed under, which is what made the Resync
-// tool want to move drugs away from where the taxonomy correctly places
-// them. This mapping ties each anatomical system to the formulary
-// class(es) it corresponds to, so a condition tag is only ever suggested
-// (by the backfill, the resync, or the AI auto-tag job) when the drug's
-// own taxonomy placement — classifyDrugTaxonomyAll, which already
-// includes extra_subclasses links — agrees with the system being
-// evaluated. A system left out of this map is never blocked (falls back
-// to keyword-only matching), so adding a new system/condition here is
-// opt-in, not something that has to be done all at once.
-const SYSTEM_TO_TAXONOMY_CLASSES = {
-  cardiovascular: ['cardiovascular'],
-  respiratory:    ['respiratory'],
-  gastrointestinal: ['gastrointestinal'],
-  renal:          ['reproductive-urinary', 'blood-nutrition', 'anti-infective'],
-  endocrine:      ['endocrine'],
-  neurological:   ['cns'],
-  psychiatric:    ['cns'],
-  musculoskeletal:['musculoskeletal'],
-  dermatological: ['dermatological'],
-  hematological:  ['blood-nutrition'],
-  infectious:     ['anti-infective', 'immunological'],
-  reproductive:   ['reproductive-urinary'],
-  sensory:        ['ophthalmological', 'ent'],
-  nutritional:    ['blood-nutrition', 'natural-health'],
-  pain:           ['cns', 'anaesthesia', 'dental'],
-};
-
-function drugAgreesWithSystemTaxonomy(drug, systemId) {
-  const allowedClasses = SYSTEM_TO_TAXONOMY_CLASSES[systemId];
-  if (!allowedClasses) return true; // no mapping defined for this system yet — don't block
-  const drugClassIds = classifyDrugTaxonomyAll(drug).map(t => t.classId);
-  return drugClassIds.some(c => allowedClasses.includes(c));
-}
-
 /**
  * Given a drug and a system ID, returns the list of condition labels
  * that the drug matches within that system. A drug can match multiple conditions.
@@ -706,7 +663,6 @@ export function drugMatchesConditionKeywords(drug, keywords) {
 // rule above. Used by the admin backfill to seed condition_tags. Returns an
 // array of condition ids.
 export function suggestConditionTagsForDrug(drug, systemId, extraConditions = []) {
-  if (!drugAgreesWithSystemTaxonomy(drug, systemId)) return [];
   const conditions = [...(SYSTEM_CONDITIONS[systemId] || []), ...extraConditions];
   return conditions.filter(cond => matchesConditionByKeyword(drug, cond)).map(c => c.id);
 }
