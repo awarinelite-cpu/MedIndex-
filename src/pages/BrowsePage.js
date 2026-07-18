@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Pill, ChevronRight, Grid3X3, List, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { Pill, ChevronRight, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useDrugs } from '../hooks/useDrugs';
@@ -12,10 +12,10 @@ import { searchDrugs } from '../utils/searchDrugs';
 import { fetchAiDrugText, saveAiDrugToDatabase, fetchStrengthText, saveStrengthOnly, needsStrengthOnly, isDrugComplete, isDrugNotFoundText, fetchConditionInsight, fetchConditionClassification, slugifyDrugName as slugifyDrugNameUtil } from '../utils/aiDrugSave';
 import { parseConditionInsight, isNotAConditionText } from '../utils/parseConditionInsight';
 import { logSearch } from '../utils/logSearch';
-import { getDisplayDrugClass } from '../utils/drugCategory';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { useCustomConditions, normalizeConditionLabel, slugifyConditionLabel, addCustomConditions } from '../hooks/useCustomConditions';
+import TaxonomyBrowser from '../components/TaxonomyBrowser';
 
 /* ── AI condition insight: intro/etiology/pathophysiology + drug list ────── */
 /* Shown above search results whenever there's an active search query, so a  */
@@ -1235,12 +1235,9 @@ export default function BrowsePage() {
   const initialQ                  = searchParams.get('q') || condition || '';
   const initialClass              = searchParams.get('class') || '';
   const initialStatus             = searchParams.get('status') || '';
-  const initialView               = searchParams.get('view') || 'grid';
-
   const [searchQuery,  setSearchQuery]  = useState(initialQ);
   const [filterClass,  setFilterClass]  = useState(initialClass);
   const [filterStatus, setFilterStatus] = useState(initialStatus);
-  const [viewMode,     setViewMode]     = useState(initialView);
 
   // Restore scroll position when returning via Back button
   const SCROLL_KEY = 'browse_scroll_y';
@@ -1271,10 +1268,9 @@ export default function BrowsePage() {
     if (searchQuery)  next.set('q', searchQuery);
     if (filterClass)  next.set('class', filterClass);
     if (filterStatus) next.set('status', filterStatus);
-    if (viewMode !== 'grid') next.set('view', viewMode);
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, filterClass, filterStatus, viewMode]);
+  }, [searchQuery, filterClass, filterStatus]);
 
   const filteredDrugs = useMemo(() => {
     const fc = filterClass.trim().toLowerCase();
@@ -1326,18 +1322,6 @@ export default function BrowsePage() {
           <h1 className="text-2xl font-bold">Browse Medications</h1>
           <p className="text-drug-muted mt-1">{loading ? 'Loading…' : `${filteredDrugs.length} of ${ALL_DRUGS.length} drugs`}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex bg-white border border-drug-border rounded-lg p-1">
-            <button onClick={() => setViewMode('grid')}
-                    className={`p-2 rounded ${viewMode === 'grid' ? 'bg-primary-100 text-primary-700' : 'text-drug-muted'}`}>
-              <Grid3X3 className="w-4 h-4" />
-            </button>
-            <button onClick={() => setViewMode('list')}
-                    className={`p-2 rounded ${viewMode === 'list' ? 'bg-primary-100 text-primary-700' : 'text-drug-muted'}`}>
-              <List className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Filters */}
@@ -1374,7 +1358,7 @@ export default function BrowsePage() {
       {/* AI condition insight — offered whenever there's an active search term */}
       {searchQuery.trim() && <ConditionInsightCard searchQuery={searchQuery} existingDrugs={ALL_DRUGS} />}
 
-      {/* Results — always instant */}
+      {/* Results — grouped into the 21 formulary classes & their subclasses */}
       {filteredDrugs.length === 0 ? (
         <div className="text-center py-20">
           <Pill className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -1387,71 +1371,8 @@ export default function BrowsePage() {
             ? <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
             : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDrugs.map(drug => (
-            <Link key={drug.id} to={`/drug/${drug.id}`}
-                  className="group bg-white border border-drug-border rounded-xl p-5 hover:border-primary-300 hover:shadow-lg transition-all">
-              <div className="flex items-start justify-between mb-3">
-                <div className="p-2 bg-primary-50 rounded-lg">
-                  <Pill className="w-5 h-5 text-primary-600" />
-                </div>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${
-                  drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                  drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                               'bg-blue-100 text-blue-700'
-                }`}>
-                  {drug.prescription_status}
-                </span>
-              </div>
-              <h3 className="text-lg font-bold group-hover:text-primary-700 transition-colors">{drug.generic_name}</h3>
-              <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>
-
-              {/* Show WHY this drug appeared when searching by indication */}
-              {drug._matchType === 'indication' && drug._matchSnippet ? (
-                <div className="mt-2">
-                  <span className="inline-block text-xs font-bold px-2 py-0.5 bg-teal-50 text-teal-700 rounded mb-1">
-                    ✓ Indicated for
-                  </span>
-                  <p className="text-sm text-drug-muted line-clamp-2 italic">"{drug._matchSnippet}"</p>
-                </div>
-              ) : (
-                <p className="text-sm text-drug-muted mt-2 line-clamp-2">
-                  {drug.indications || drug.primary_indications}
-                </p>
-              )}
-            </Link>
-          ))}
-        </div>
       ) : (
-        <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-          {filteredDrugs.map((drug, i) => (
-            <Link key={drug.id} to={`/drug/${drug.id}`}
-                  className={`flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors ${
-                    i !== filteredDrugs.length - 1 ? 'border-b border-drug-border' : ''
-                  }`}>
-              <div className="p-2 bg-primary-50 rounded-lg">
-                <Pill className="w-5 h-5 text-primary-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold truncate">{drug.generic_name}</h3>
-                {drug._matchType === 'indication' && drug._matchSnippet ? (
-                  <p className="text-sm text-teal-600 truncate">✓ {drug._matchSnippet}</p>
-                ) : (
-                  <p className="text-sm text-primary-600 truncate">{getDisplayDrugClass(drug)}</p>
-                )}
-              </div>
-              <span className={`text-xs font-bold px-2 py-1 rounded flex-shrink-0 ${
-                drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                             'bg-blue-100 text-blue-700'
-              }`}>
-                {drug.prescription_status}
-              </span>
-              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
-            </Link>
-          ))}
-        </div>
+        <TaxonomyBrowser drugs={filteredDrugs} activeQuery={searchQuery || filterClass || filterStatus} />
       )}
 
       {/* AI expansion — always show when browsing a specific class */}
