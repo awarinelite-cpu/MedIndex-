@@ -16,7 +16,6 @@ import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider } from '../context/AiProviderContext';
-import ConditionTagBackfill from '../components/ConditionTagBackfill';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -896,8 +895,6 @@ export default function AdminPage() {
       {/* ═══════════════════════ AI GENERATE TAB ══════════════════════════ */}
       {activeTab === 'ai' && (
         <div className="space-y-4">
-
-          <ConditionTagBackfill />
 
           {/* Intro banner */}
           <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">
