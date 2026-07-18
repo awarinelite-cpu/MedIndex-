@@ -12,7 +12,7 @@
 // whose pattern matches wins. Anything that matches nothing at all falls
 // into the UNCLASSIFIED_BUCKET rather than being guessed at.
 
-import { UNCLASSIFIED_BUCKET } from '../data/drugClassTaxonomy';
+import { DRUG_CLASS_TAXONOMY, UNCLASSIFIED_BUCKET } from '../data/drugClassTaxonomy';
 
 // Each rule tests against a single combined lowercase string built from
 // drug_class + drug_subclass (+ indications as a last-resort signal).
@@ -49,6 +49,7 @@ const RULES = [
   [/direct vasodilator/, 'cardiovascular', 'cv-antihypertensive'],
   [/beta-blocker|beta[- ]adrenoceptor/, 'cardiovascular', 'cv-antihypertensive'],
   [/thiazide|loop diuretic|potassium-sparing diuretic|osmotic diuretic|mineralocorticoid receptor antagonist/, 'cardiovascular', 'cv-diuretics'],
+  [/\bdiuretic\b/, 'cardiovascular', 'cv-diuretics'],
   [/sglt2 inhibitor.*heart failure|heart failure/, 'cardiovascular', 'cv-heart-failure'],
   [/antiarrhythmic/, 'cardiovascular', 'cv-antiarrhythmic'],
   [/nitrate\b|anti-?anginal/, 'cardiovascular', 'cv-antianginal'],
@@ -83,7 +84,7 @@ const RULES = [
   [/antiemetic|prokinetic/, 'gastrointestinal', 'gi-antiemetic'],
   [/laxative/, 'gastrointestinal', 'gi-laxatives'],
   [/antidiarrhoeal|antidiarrheal/, 'gastrointestinal', 'gi-diarrhoea'],
-  [/antispasmodic/, 'gastrointestinal', 'gi-antispasmodic'],
+  [/antispasmodic|spasmolytic/, 'gastrointestinal', 'gi-antispasmodic'],
 
   // ── 6: Drugs affecting blood and nutrition ──────────────────────────
   [/iron-deficiency|antianemic|antianaemic|haematinic|haematopoietic growth factor|erythropoietin/, 'blood-nutrition', 'bn-antianemic'],
@@ -93,12 +94,29 @@ const RULES = [
 
   // ── 7: Drugs acting on the respiratory tract ────────────────────────
   [/anticholinergic \(inhaled\)|lama\b|laba\b|bronchodilator|beta-2 agonist|leukotriene receptor antagonist|corticosteroid.*inhaled/, 'respiratory', 'resp-asthma-copd'],
-  [/expectorant|mucolytic|cough suppressant/, 'respiratory', 'resp-expectorants'],
+  [/expectorant|mucolytic|cough suppressant|antitussive/, 'respiratory', 'resp-expectorants'],
+  [/decongestant/, 'ent', 'ent-nasal'],
 
   // ── 8: Antiallergics and drugs used in anaphylaxis ──────────────────
   [/antihistamine/, 'antiallergics', 'allergy-antihistamines'],
 
   // ── 10: Endocrine system drugs ──────────────────────────────────────
+  // ── Site-specific corticosteroids — must precede the generic
+  // "corticosteroid" → systemic (endocrine) rule below, since a topical,
+  // intranasal, inhaled, or ophthalmic corticosteroid belongs to that
+  // site's own chapter, not chapter 10:3. ─────────────────────────────
+  [/intranasal corticosteroid|nasal corticosteroid/, 'ent', 'ent-nasal'],
+  [/ophthalmic corticosteroid|corticosteroid.*eye/, 'ophthalmological', 'eye-antiinflam-antiallergic'],
+  [/topical corticosteroid|dermatological corticosteroid/, 'dermatological', 'derm-antiinflam-antipruritic'],
+
+  // ── 15: Dermatological drugs (site-specific skin conditions) ────────
+  [/scabicide|pediculicide/, 'dermatological', 'derm-antiinfective'],
+  [/topical antifungal|dermatophyte/, 'dermatological', 'derm-antiinfective'],
+  [/\bwart\b/, 'dermatological', 'derm-warts'],
+  [/psoriasis/, 'dermatological', 'derm-psoriasis'],
+  [/\bacne\b/, 'dermatological', 'derm-acne'],
+  [/actinic keratosis/, 'dermatological', 'derm-actinic-keratosis'],
+
   [/insulin|sulfonylurea|sulphonylurea|biguanide|thiazolidinedione|dpp-4|sglt2 inhibitor|alpha glucosidase|antidiabetic/, 'endocrine', 'endo-antidiabetic'],
   [/antithyroid|thyroid hormone/, 'endocrine', 'endo-thyroid'],
   [/corticosteroid/, 'endocrine', 'endo-corticosteroids'],
@@ -117,7 +135,7 @@ const RULES = [
 
   // ── 13: Ophthalmological preparations ────────────────────────────────
   [/anticholinergic \(ophthalmic\)|mydriatic|cycloplegic/, 'ophthalmological', 'eye-mydriatics'],
-  [/antiglaucoma/, 'ophthalmological', 'eye-antiglaucoma'],
+  [/antiglaucoma|\bmiotic\b/, 'ophthalmological', 'eye-antiglaucoma'],
 
   // ── 17: Immunological products and vaccines ─────────────────────────
   [/vaccine/, 'immunological', 'immuno-vaccines'],
@@ -129,6 +147,14 @@ const RULES = [
   // ── 2: Musculoskeletal and joint diseases ───────────────────────────
   [/nsaid.*antirheumatic|dmard|antirheumatic/, 'musculoskeletal', 'msk-antirheumatic'],
   [/gout|hyperuricemia/, 'musculoskeletal', 'msk-gout'],
+
+  // ── 15: Dermatological drugs ─────────────────────────────────────────
+  [/wound dressing/, 'dermatological', 'derm-wound-dressings'],
+  [/ultraviolet blocking|sunscreen/, 'dermatological', 'derm-uv-blocking'],
+  [/skin antiseptic|astringent/, 'dermatological', 'derm-astringents'],
+
+  // ── 20: Diagnostic agents, medical consumables & equipment ──────────
+  [/radiocontrast|contrast media/, 'diagnostic-equipment', 'diag-agents'],
 
   // ── 21: Natural health products ─────────────────────────────────────
   [/herbal/, 'natural-health', 'nhp-herbal'],
@@ -146,8 +172,62 @@ function buildHaystack(drug) {
     .toLowerCase();
 }
 
+// ── Fallback layer: generic token-overlap match against the taxonomy's
+// own subclass (and parent class) names ─────────────────────────────
+// The explicit RULES above cover the pharmacological terms actually seen
+// in this app's drug_class/drug_subclass data. But new drugs — especially
+// ones added later through the CSV import pipeline — may already carry a
+// drug_class/drug_subclass string that closely resembles an EMDEX
+// subclass name itself (e.g. "Beta-adrenoceptor blockers, Selective",
+// "Osmotic laxatives", "Nasal decongestants"). Rather than requiring a
+// hand-written rule for every such phrase, this pass tokenizes the
+// drug's class/subclass text and the taxonomy's own subclass/class
+// names, and picks whichever subclass shares the most meaningful words.
+// It only runs when nothing in RULES matched, and only commits to a
+// match when there's at least one real (non-generic) word in common.
+const STOPWORDS = new Set([
+  'and', 'or', 'the', 'of', 'a', 'an', 'for', 'used', 'in', 'drugs', 'drug',
+  'agents', 'agent', 'preparation', 'preparations', 'other', 'with',
+  'without', 'system', 'disorders', 'disorder', 'products', 'product',
+]);
+
+function tokenize(str) {
+  return (str || '')
+    .toLowerCase()
+    .replace(/[(),./-]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+// Built once at module load: every subclass paired with the token set of
+// its own name plus its parent chapter's name.
+const SUBCLASS_TOKEN_INDEX = DRUG_CLASS_TAXONOMY.flatMap(cls =>
+  cls.subclasses.map(sub => ({
+    classId: cls.id,
+    subclassId: sub.id,
+    tokens: new Set([...tokenize(sub.name), ...tokenize(cls.name)]),
+  }))
+);
+
+function fuzzyClassify(haystack) {
+  const drugTokens = tokenize(haystack);
+  if (drugTokens.length === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+  for (const entry of SUBCLASS_TOKEN_INDEX) {
+    let overlap = 0;
+    for (const t of drugTokens) if (entry.tokens.has(t)) overlap++;
+    if (overlap > bestScore) {
+      bestScore = overlap;
+      best = entry;
+    }
+  }
+  return bestScore >= 1 ? best : null;
+}
+
 // Returns { classId, subclassId } for a given drug — always a valid pair,
-// falling back to UNCLASSIFIED_BUCKET when nothing matches.
+// falling back to UNCLASSIFIED_BUCKET only when nothing matches at all.
 export function classifyDrugTaxonomy(drug) {
   if (!drug) return { classId: UNCLASSIFIED_BUCKET.id, subclassId: UNCLASSIFIED_BUCKET.subclasses[0].id };
   const haystack = buildHaystack(drug);
@@ -156,5 +236,16 @@ export function classifyDrugTaxonomy(drug) {
   for (const [pattern, classId, subclassId] of RULES) {
     if (pattern.test(haystack)) return { classId, subclassId };
   }
+
+  // Nothing in the explicit rule list matched — try the generic
+  // subclass-name fuzzy match, preferring the most specific field
+  // (drug_subclass, then drug_class) before falling back to everything
+  // combined (indications included).
+  const fuzzy =
+    fuzzyClassify((drug.drug_subclass || '').toLowerCase()) ||
+    fuzzyClassify((drug.drug_class || '').toLowerCase()) ||
+    fuzzyClassify(haystack);
+  if (fuzzy) return { classId: fuzzy.classId, subclassId: fuzzy.subclassId };
+
   return { classId: UNCLASSIFIED_BUCKET.id, subclassId: UNCLASSIFIED_BUCKET.subclasses[0].id };
 }
