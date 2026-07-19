@@ -460,6 +460,7 @@ export function AiInsightProvider({ children }) {
         list.push({ id: c.id, label: c.label, systemName: system.name });
       }
     }
+    list.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
     return list;
   }, [customConditionsBySystem]);
 

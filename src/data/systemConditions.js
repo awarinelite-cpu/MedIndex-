@@ -700,6 +700,10 @@ export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
     conditions.push(cond);
   }
 
+  // Alphabetical by label so newly added custom/admin conditions slot in
+  // next to the seeded ones instead of always trailing at the end.
+  conditions.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
+
   const grouped = new Map();
   const uncategorised = [];
 

@@ -99,6 +99,7 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
         list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label, keywords: c.keywords });
       }
     }
+    list.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
     return list;
   }, [customConditionsBySystem]);
 
