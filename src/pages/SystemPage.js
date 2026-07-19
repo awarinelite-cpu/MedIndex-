@@ -11,9 +11,9 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { useAiInsight } from '../context/AiInsightContext';
-import { getSystemById } from '../data/anatomicalSystems';
+import { getSystemById, ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { getDrugsForSystem } from '../utils/systemMatch';
-import { groupDrugsByCondition, getDrugConditions } from '../data/systemConditions';
+import { groupDrugsByCondition, getDrugConditions, SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
@@ -821,8 +821,59 @@ function downloadCSV(csvContent, filename) {
   link.click();
 }
 
+// Maps common alternate/source-material system names to this app's actual
+// system ids (e.g. a nursing-textbook export saying "hematologic" instead
+// of this app's "hematological").
+const SYSTEM_ALIASES = {
+  hematologic: 'hematological',
+  integumentary: 'dermatological',
+  renal_urinary: 'renal',
+  urinary: 'renal',
+  ent: 'sensory',
+  ophthalmologic: 'sensory',
+  ophthalmic: 'sensory',
+  cardiac: 'cardiovascular',
+  gi: 'gastrointestinal',
+  neuro: 'neurological',
+  psych: 'psychiatric',
+  derm: 'dermatological',
+  heme: 'hematological',
+  gu: 'renal',
+};
+
+// "oncologic", "immunologic", and "general_surgical" have no dedicated
+// system in this app — nursing texts group cancers/immune conditions by
+// specialty, this app groups by body system. Best-effort content match so
+// most of these still land somewhere sensible; anything unmatched falls
+// back to a manual per-row dropdown instead of a wrong guess.
+const LABEL_SYSTEM_HINTS = [
+  [/bladder|kidney|renal/i, 'renal'],
+  [/breast|cervix|endometri|ovary|prostate|testis|vagina|vulva/i, 'reproductive'],
+  [/colon|rectum|colorectal|esophagus|liver|stomach|gastric|oral cavity|pancrea/i, 'gastrointestinal'],
+  [/larynx|pharynx/i, 'sensory'],
+  [/lung|bronchogenic/i, 'respiratory'],
+  [/\bskin\b|melanoma/i, 'dermatological'],
+  [/thyroid/i, 'endocrine'],
+  [/hodgkin|kaposi|multiple myeloma/i, 'hematological'],
+  [/\bhiv\b|septic/i, 'infectious'],
+  [/lupus/i, 'musculoskeletal'],
+];
+
+const VALID_SYSTEM_IDS = new Set(ANATOMICAL_SYSTEMS.map(s => s.id));
+
+function resolveSystemId(rawSystem, label) {
+  const s = String(rawSystem || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (VALID_SYSTEM_IDS.has(s)) return s;
+  if (SYSTEM_ALIASES[s]) return SYSTEM_ALIASES[s];
+  for (const [re, sys] of LABEL_SYSTEM_HINTS) {
+    if (re.test(label)) return sys;
+  }
+  return null; // needs a manual pick
+}
+
 function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
   const { isAdmin } = useAuth();
+  const { customConditionsBySystem } = useCustomConditions();
 
   const [rows, setRows] = useState([]);      // parsed + validated preview rows
   const [fileName, setFileName] = useState('');
@@ -830,19 +881,94 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
   const [saveError, setSaveError] = useState('');
   const [saveState, setSaveState] = useState('idle'); // idle | saving | done
 
-  const existingLabelSet = useMemo(
-    () => new Set(existingLabels.map(normalizeConditionLabel)),
-    [existingLabels]
-  );
+  // Existing labels per resolved target system, for cross-system dedup
+  // (the "current page" system uses the live existingLabels prop, which
+  // already reflects any conditions added earlier in this session).
+  const existingLabelSetFor = useMemo(() => {
+    const cache = {};
+    return (targetSystemId) => {
+      if (!targetSystemId) return new Set();
+      if (cache[targetSystemId]) return cache[targetSystemId];
+      const labels = targetSystemId === systemId
+        ? existingLabels
+        : [...(SYSTEM_CONDITIONS[targetSystemId] || []), ...(customConditionsBySystem[targetSystemId] || [])].map(c => c.label);
+      const set = new Set(labels.map(normalizeConditionLabel));
+      cache[targetSystemId] = set;
+      return set;
+    };
+  }, [systemId, existingLabels, customConditionsBySystem]);
 
   if (!isAdmin) return null; // only admins can bulk-curate the condition taxonomy
 
   const downloadTemplate = () => {
     const csv = Papa.unparse([
-      { name: 'Hypertension' },
-      { name: 'Example Condition' },
+      { system: systemId, label: 'Hypertension', id: '', icon: '🩺', keywords: 'hypertension, high blood pressure' },
+      { system: systemId, label: 'Example Condition', id: '', icon: '', keywords: '' },
     ]);
-    downloadCSV(csv, `${systemId}_conditions_template.csv`);
+    downloadCSV(csv, `conditions_bulk_template.csv`);
+  };
+
+  const evaluateRow = (raw, idx, seenNorm, seenKey) => {
+    const label = String(raw.label || '').trim();
+    if (!label) {
+      return { rowNum: idx + 2, label: raw.label || '', status: 'invalid', reason: 'Missing label' };
+    }
+
+    const targetSystemId = resolveSystemId(raw.system, label);
+    const providedId = String(raw.id || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const id = providedId || slugifyConditionLabel(label);
+    const normLabel = normalizeConditionLabel(label);
+    const icon = String(raw.icon || '').trim() || '🩺';
+    const keywordsRaw = String(raw.keywords || '').trim();
+    const keywords = keywordsRaw
+      ? Array.from(new Set(keywordsRaw.split(/[,|]/).map(k => k.trim().toLowerCase()).filter(Boolean)))
+      : deriveKeywordsFromLabel(label);
+
+    const dedupeKey = `${targetSystemId || '?'}::${normLabel}`;
+    let status = 'new';
+    let reason = '';
+    if (!targetSystemId) {
+      status = 'needs_system';
+      reason = `Unrecognized system "${raw.system || ''}" — pick one`;
+    } else if (existingLabelSetFor(targetSystemId).has(normLabel)) {
+      status = 'duplicate';
+      reason = 'Already exists in that system';
+    } else if (seenNorm.has(dedupeKey) || seenKey.has(`${targetSystemId}::${id}`)) {
+      status = 'duplicate';
+      reason = 'Duplicate row in this file';
+    }
+    seenNorm.add(dedupeKey);
+    if (targetSystemId) seenKey.add(`${targetSystemId}::${id}`);
+
+    return { rowNum: idx + 2, id, label, icon, keywords, targetSystemId, rawSystem: raw.system, status, reason };
+  };
+
+  const revalidateRows = (builtRows) => {
+    // Re-run dedup across the whole set after a manual system pick, so a
+    // row that now collides with another (or with an existing condition)
+    // gets flagged instead of silently double-added.
+    const seenNorm = new Set();
+    const seenKey = new Set();
+    return builtRows.map((r, idx) => {
+      if (r.status === 'invalid') return r;
+      const normLabel = normalizeConditionLabel(r.label);
+      const dedupeKey = `${r.targetSystemId || '?'}::${normLabel}`;
+      let status = 'new';
+      let reason = '';
+      if (!r.targetSystemId) {
+        status = 'needs_system';
+        reason = `Unrecognized system "${r.rawSystem || ''}" — pick one`;
+      } else if (existingLabelSetFor(r.targetSystemId).has(normLabel)) {
+        status = 'duplicate';
+        reason = 'Already exists in that system';
+      } else if (seenNorm.has(dedupeKey) || seenKey.has(`${r.targetSystemId}::${r.id}`)) {
+        status = 'duplicate';
+        reason = 'Duplicate row in this file';
+      }
+      seenNorm.add(dedupeKey);
+      if (r.targetSystemId) seenKey.add(`${r.targetSystemId}::${r.id}`);
+      return { ...r, status, reason };
+    });
   };
 
   const handleFile = (file) => {
@@ -855,40 +981,15 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
       skipEmptyLines: true,
       transformHeader: (h) => h.trim().toLowerCase(),
       complete: (results) => {
-        // Accept "name" (preferred) or "label" as the column header.
         const fields = results.meta.fields || [];
-        const nameField = fields.includes('name') ? 'name' : (fields.includes('label') ? 'label' : null);
-        if (!nameField) {
-          setParseError('CSV must have a single "name" column with one condition per row.');
+        if (!fields.includes('label')) {
+          setParseError('CSV must include a "label" column (system, id, icon, keywords are optional).');
           setRows([]);
           return;
         }
         const seenNorm = new Set();
-        const seenId = new Set();
-        const built = results.data.map((raw, idx) => {
-          const label = String(raw[nameField] || '').trim();
-          if (!label) {
-            return { rowNum: idx + 2, label: raw[nameField] || '', status: 'invalid', reason: 'Empty row' };
-          }
-          const id = slugifyConditionLabel(label);
-          const normLabel = normalizeConditionLabel(label);
-          const icon = '🩺';
-          const keywords = deriveKeywordsFromLabel(label);
-
-          let status = 'new';
-          let reason = '';
-          if (existingLabelSet.has(normLabel)) {
-            status = 'duplicate';
-            reason = 'Already exists in this system';
-          } else if (seenNorm.has(normLabel) || seenId.has(id)) {
-            status = 'duplicate';
-            reason = 'Duplicate row in this file';
-          }
-          seenNorm.add(normLabel);
-          seenId.add(id);
-
-          return { rowNum: idx + 2, id, label, icon, keywords, status, reason };
-        });
+        const seenKey = new Set();
+        const built = results.data.map((raw, idx) => evaluateRow(raw, idx, seenNorm, seenKey));
         setRows(built);
       },
       error: (err) => {
@@ -898,15 +999,29 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
     });
   };
 
+  const handlePickSystem = (rowIdx, newSystemId) => {
+    setRows(prev => revalidateRows(
+      prev.map((r, i) => i === rowIdx ? { ...r, targetSystemId: newSystemId || null } : r)
+    ));
+  };
+
   const newRows = rows.filter(r => r.status === 'new');
+  const needsSystemCount = rows.filter(r => r.status === 'needs_system').length;
 
   const handleSaveAll = async () => {
     if (newRows.length === 0) return;
     setSaveState('saving');
     setSaveError('');
     try {
-      const toAdd = newRows.map(r => ({ id: r.id, label: r.label, icon: r.icon, keywords: r.keywords }));
-      await addCustomConditions(systemId, toAdd);
+      // Group by target system since addCustomConditions saves one system at a time.
+      const bySystem = new Map();
+      for (const r of newRows) {
+        if (!bySystem.has(r.targetSystemId)) bySystem.set(r.targetSystemId, []);
+        bySystem.get(r.targetSystemId).push({ id: r.id, label: r.label, icon: r.icon, keywords: r.keywords });
+      }
+      for (const [sysId, items] of bySystem.entries()) {
+        await addCustomConditions(sysId, items);
+      }
       setSaveState('done');
       // No AI auto-fill here — drugs and clinical info are added manually
       // afterward, so this just creates the empty condition cards.
@@ -951,8 +1066,10 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
       </div>
 
       <div className="px-5 py-2 text-xs text-drug-muted bg-blue-50/50 border-t border-blue-100">
-        One column: <strong>name</strong>, one condition per row. Rows already in this system, or repeated within
-        the file, are flagged and skipped automatically. Add drugs and clinical info afterward.
+        Columns: <strong>label</strong> (required), <strong>system</strong>, <strong>id</strong>, <strong>icon</strong>,{' '}
+        <strong>keywords</strong> (all optional). Rows can target any system, not just this one — conditions are
+        routed to the system named in each row. Rows already existing, repeated in the file, or naming a system this
+        app doesn't recognize are flagged so nothing gets silently duplicated or mis-filed.
       </div>
 
       {parseError && (
@@ -984,7 +1101,12 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
                 ⚠️ {saveError}
               </div>
             )}
-            <div className="max-h-80 overflow-y-auto">
+            {needsSystemCount > 0 && (
+              <div className="mx-4 mt-3 mb-1 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">
+                {needsSystemCount} row{needsSystemCount === 1 ? '' : 's'} need a system picked before they can be added.
+              </div>
+            )}
+            <div className="max-h-96 overflow-y-auto">
               {rows.map((r, i) => (
                 <div
                   key={i}
@@ -998,14 +1120,31 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
                       <div className="text-xs text-drug-muted truncate">{r.keywords.slice(0, 4).join(', ')}</div>
                     )}
                   </div>
-                  {r.status === 'new' && (
-                    <span className="text-xs font-bold text-green-600 flex-shrink-0">New</span>
-                  )}
-                  {r.status === 'duplicate' && (
-                    <span className="text-xs font-semibold text-drug-muted flex-shrink-0" title={r.reason}>Skipped: {r.reason}</span>
-                  )}
-                  {r.status === 'invalid' && (
-                    <span className="text-xs font-semibold text-red-500 flex-shrink-0" title={r.reason}>{r.reason}</span>
+                  {r.status === 'needs_system' ? (
+                    <select
+                      value={r.targetSystemId || ''}
+                      onChange={(e) => handlePickSystem(i, e.target.value)}
+                      className="text-xs border border-amber-300 rounded-lg px-2 py-1 bg-white flex-shrink-0"
+                    >
+                      <option value="">Pick system…</option>
+                      {ANATOMICAL_SYSTEMS.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      {r.status === 'new' && (
+                        <span className="text-xs font-bold text-green-600 flex-shrink-0">
+                          New{r.targetSystemId !== systemId ? ` → ${getSystemById(r.targetSystemId)?.name || r.targetSystemId}` : ''}
+                        </span>
+                      )}
+                      {r.status === 'duplicate' && (
+                        <span className="text-xs font-semibold text-drug-muted flex-shrink-0" title={r.reason}>Skipped: {r.reason}</span>
+                      )}
+                      {r.status === 'invalid' && (
+                        <span className="text-xs font-semibold text-red-500 flex-shrink-0" title={r.reason}>{r.reason}</span>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
