@@ -75,7 +75,7 @@ function findFuzzyConditionMatch(searchQuery, existingConditionIndex) {
 function ConditionInsightCard({ searchQuery, existingDrugs }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
-  const { customConditionsBySystem } = useCustomConditions();
+  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
   const dbDrugs = useMemo(() => existingDrugs.filter(d => !d._seed), [existingDrugs]);
   const knownDrugNames = useMemo(() => dbDrugs.map(d => d.generic_name).filter(Boolean), [dbDrugs]);
   const existingByName = useMemo(() => {
@@ -95,13 +95,15 @@ function ConditionInsightCard({ searchQuery, existingDrugs }) {
     for (const system of ANATOMICAL_SYSTEMS) {
       const base   = SYSTEM_CONDITIONS[system.id] || [];
       const custom = customConditionsBySystem[system.id] || [];
+      const hidden = new Set(hiddenConditionIdsBySystem[system.id] || []);
       for (const c of [...base, ...custom]) {
+        if (hidden.has(c.id)) continue;
         list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label, keywords: c.keywords });
       }
     }
     list.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
     return list;
-  }, [customConditionsBySystem]);
+  }, [customConditionsBySystem, hiddenConditionIdsBySystem]);
 
   const existingMatch = useMemo(
     () => existingConditionIndex.find(c => normalizeConditionLabel(c.label) === normalizeConditionLabel(searchQuery)),

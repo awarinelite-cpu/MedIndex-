@@ -19,7 +19,7 @@ import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { fetchConditionDrugList, isDrugComplete, fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { parseConditionClinicalInfo, hasNoDistinctTypes } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
-import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { useCustomConditions, addCustomConditions, removeCondition, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo, saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, updateDoc, serverTimestamp, arrayRemove, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -395,7 +395,7 @@ function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo }) {
+function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
@@ -466,9 +466,24 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
             </div>
           </div>
         </div>
-        {open
-          ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
-          : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isAdmin && condition.id !== '_other' && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={`Delete ${condition.label}`}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!isDeleting) onDeleteCondition(condition); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); if (!isDeleting) onDeleteCondition(condition); } }}
+              className={`p-1.5 rounded-lg hover:bg-red-50 ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Delete condition"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+            </span>
+          )}
+          {open
+            ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
+            : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />}
+        </div>
       </button>
 
       {open && (
@@ -797,7 +812,7 @@ export default function SystemPage() {
   const { provider }  = useAiProvider();
   const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
-  const { customConditionsBySystem } = useCustomConditions();
+  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
   const { clinicalInfoByCondition } = useConditionClinicalInfo();
   // Track drug↔condition links the admin just removed, so they disappear
   // immediately without waiting for a Firestore refetch. Keyed "drugId::condId".
@@ -805,6 +820,22 @@ export default function SystemPage() {
   const handleDrugRemoved = (drugId, condId) => {
     setRemovedLinks(prev => new Set(prev).add(`${drugId}::${condId}`));
     invalidateCache();
+  };
+  const [deletingConditionId, setDeletingConditionId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const handleDeleteCondition = async (condition) => {
+    if (!window.confirm(`Delete "${condition.label}"? This removes the condition card and unlinks its drugs. This cannot be undone.`)) return;
+    setDeletingConditionId(condition.id);
+    setDeleteError('');
+    try {
+      await removeCondition(systemId, condition.id);
+      // No manual state update needed — the live useCustomConditions()
+      // listener picks up the Firestore change and re-renders automatically.
+    } catch (err) {
+      setDeleteError(`DELETE FAILED: ${err.code ? `[${err.code}] ` : ''}${err.message || 'Unknown error'}`);
+    } finally {
+      setDeletingConditionId(null);
+    }
   };
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
@@ -819,6 +850,10 @@ export default function SystemPage() {
   const extraConditions = useMemo(
     () => customConditionsBySystem[systemId] || [],
     [customConditionsBySystem, systemId]
+  );
+  const hiddenIds = useMemo(
+    () => hiddenConditionIdsBySystem[systemId] || [],
+    [hiddenConditionIdsBySystem, systemId]
   );
 
   // All drugs in this system. A drug qualifies either by its drug_class
@@ -842,8 +877,8 @@ export default function SystemPage() {
 
   // Group by condition
   const conditionGroups = useMemo(
-    () => groupDrugsByCondition(drugs, systemId, extraConditions),
-    [drugs, systemId, extraConditions]
+    () => groupDrugsByCondition(drugs, systemId, extraConditions, hiddenIds),
+    [drugs, systemId, extraConditions, hiddenIds]
   );
 
   const [retryingEmpty, setRetryingEmpty] = useState(false);
@@ -1164,9 +1199,14 @@ export default function SystemPage() {
                   systemName={system.name}
                   onDrugRemoved={handleDrugRemoved}
                   clinicalInfo={clinicalInfoByCondition[entry.condition.id]}
+                  onDeleteCondition={handleDeleteCondition}
+                  isDeleting={deletingConditionId === entry.condition.id}
                 />
               ))}
             </div>
+          )}
+          {deleteError && (
+            <p className="mt-3 text-xs text-red-600 font-medium">{deleteError}</p>
           )}
 
           <AiSystemConditionsFallback

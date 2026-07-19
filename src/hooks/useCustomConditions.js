@@ -18,17 +18,32 @@ function notifyAll(data) {
   subscribers.forEach(fn => fn(data));
 }
 
+// Same live-listener pattern as above, but for the "hidden" map — seeded
+// (static) conditions an admin has deleted. Since the seeded list lives in
+// systemConditions.js and can't be mutated at runtime, deleting one of those
+// just records its id here so every consumer filters it out.
+let liveHidden        = null;
+let unsubscribeHidden = null; // reserved for symmetry; both maps share one Firestore doc/listener
+const hiddenSubscribers = new Set();
+
+function notifyAllHidden(data) {
+  liveHidden = data;
+  hiddenSubscribers.forEach(fn => fn(data));
+}
+
 function ensureListener() {
   if (unsubscribe) return;
   unsubscribe = onSnapshot(
     doc(db, ...DOC_REF_PATH),
     (snap) => {
-      const val = snap.exists() ? (snap.data().systems || {}) : {};
-      notifyAll(val);
+      const data = snap.exists() ? snap.data() : {};
+      notifyAll(data.systems || {});
+      notifyAllHidden(data.hidden || {});
     },
     (err) => {
       console.error('[useCustomConditions] listen error:', err.code, err.message);
       notifyAll(liveData || {});
+      notifyAllHidden(liveHidden || {});
     }
   );
 }
@@ -48,29 +63,35 @@ export function normalizeConditionLabel(label) {
     .replace(/\s+/g, ' ');
 }
 
-// Returns { customConditionsBySystem: { [systemId]: [{id,label,icon,keywords}] }, loading }
+// Returns { customConditionsBySystem: { [systemId]: [{id,label,icon,keywords}] },
+//           hiddenConditionIdsBySystem: { [systemId]: [id, ...] }, loading }
 export function useCustomConditions() {
-  const [data, setData]       = useState(liveData || {});
-  const [loading, setLoading] = useState(!liveData);
+  const [data, setData]           = useState(liveData || {});
+  const [hidden, setHidden]       = useState(liveHidden || {});
+  const [loading, setLoading]     = useState(!liveData);
 
   useEffect(() => {
     ensureListener();
     if (liveData) setLoading(false);
 
     const setter = (d) => { setData(d); setLoading(false); };
+    const hiddenSetter = (h) => setHidden(h);
     subscribers.add(setter);
+    hiddenSubscribers.add(hiddenSetter);
 
     return () => {
       subscribers.delete(setter);
+      hiddenSubscribers.delete(hiddenSetter);
       if (subscribers.size === 0 && unsubscribe) {
         unsubscribe();
         unsubscribe = null;
         liveData = null;
+        liveHidden = null;
       }
     };
   }, []);
 
-  return { customConditionsBySystem: data, loading };
+  return { customConditionsBySystem: data, hiddenConditionIdsBySystem: hidden, loading };
 }
 
 export function slugifyConditionLabel(label) {
@@ -135,6 +156,61 @@ export async function addCustomConditions(systemId, newConditions) {
     return merged;
   } catch (err) {
     console.error('[addCustomConditions] ❌ Firestore error:', err.code, err.message);
+    throw err;
+  }
+}
+
+// Deletes a condition from a system's taxonomy.
+//   - If it's a custom (admin/AI-added) condition, it's removed outright
+//     from the Firestore "systems" list.
+//   - If it's one of the seeded conditions from systemConditions.js (which
+//     can't be mutated at runtime), its id is instead recorded in a
+//     Firestore "hidden" list for that system, so every consumer filters
+//     it out of display, matching, and the clinical-info sweep.
+// Either way this only affects the taxonomy entry itself — drugs keep their
+// condition_tags untouched, so nothing is silently lost if the condition is
+// ever un-hidden or re-added later.
+export async function removeCondition(systemId, conditionId) {
+  await auth.authStateReady();
+
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Not signed in. Please sign in as admin and try again.');
+  }
+
+  const ref = doc(db, ...DOC_REF_PATH);
+
+  try {
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? snap.data() : {};
+    const systems = current.systems || {};
+    const hidden  = current.hidden  || {};
+
+    const existingForSystem = systems[systemId] || [];
+    const isCustom = existingForSystem.some(c => c.id === conditionId);
+
+    const update = {};
+    if (isCustom) {
+      update.systems = {
+        ...systems,
+        [systemId]: existingForSystem.filter(c => c.id !== conditionId),
+      };
+    } else {
+      const existingHidden = hidden[systemId] || [];
+      if (!existingHidden.includes(conditionId)) {
+        update.hidden = {
+          ...hidden,
+          [systemId]: [...existingHidden, conditionId],
+        };
+      }
+    }
+
+    if (Object.keys(update).length === 0) return; // nothing to change
+
+    await setDoc(ref, { ...update, last_updated: serverTimestamp() }, { merge: true });
+    console.log('[removeCondition] ✅ removed', conditionId, 'from', systemId, isCustom ? '(custom, deleted)' : '(seeded, hidden)');
+  } catch (err) {
+    console.error('[removeCondition] ❌ Firestore error:', err.code, err.message);
     throw err;
   }
 }

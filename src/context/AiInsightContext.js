@@ -444,7 +444,7 @@ export function AiInsightProvider({ children }) {
   // covers whichever system is currently open and dies if you navigate
   // away), this one is a true "run it for everything" job that survives
   // navigation exactly like the class sweep.
-  const { customConditionsBySystem } = useCustomConditions();
+  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
   const { clinicalInfoByCondition }  = useConditionClinicalInfo();
   const clinicalInfoRef = useRef({});
   useEffect(() => { clinicalInfoRef.current = clinicalInfoByCondition; }, [clinicalInfoByCondition]);
@@ -456,13 +456,15 @@ export function AiInsightProvider({ children }) {
     for (const system of ANATOMICAL_SYSTEMS) {
       const base   = SYSTEM_CONDITIONS[system.id] || [];
       const custom = customConditionsBySystem[system.id] || [];
+      const hidden = new Set(hiddenConditionIdsBySystem[system.id] || []);
       for (const c of [...base, ...custom]) {
+        if (hidden.has(c.id)) continue;
         list.push({ id: c.id, label: c.label, systemName: system.name });
       }
     }
     list.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
     return list;
-  }, [customConditionsBySystem]);
+  }, [customConditionsBySystem, hiddenConditionIdsBySystem]);
 
   // Live count of conditions still missing clinical info — lets the trigger
   // button show an accurate "(N)" before the sweep even starts, and updates

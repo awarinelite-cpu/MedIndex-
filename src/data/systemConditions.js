@@ -680,9 +680,10 @@ export function getDrugConditions(drug, systemId, extraConditions = []) {
  * Returns: Map<conditionId, { condition, drugs[] }>
  * A drug can appear in multiple conditions.
  */
-export function groupDrugsByCondition(drugs, systemId, extraConditions = []) {
+export function groupDrugsByCondition(drugs, systemId, extraConditions = [], hiddenIds = []) {
   const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
-  const rawConditions = [...baseConditions, ...extraConditions];
+  const hidden = new Set(hiddenIds);
+  const rawConditions = [...baseConditions, ...extraConditions].filter(c => !hidden.has(c.id));
   if (rawConditions.length === 0) return new Map();
 
   // Defensively dedupe the condition list itself — by id first, then by
