@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
+import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider } from '../context/AiProviderContext';
 
@@ -733,6 +734,20 @@ export default function AdminPage() {
       {/* ═══════════════════════ DRUG LIST TAB ════════════════════════════ */}
       {activeTab === 'drugs' && (
         <>
+          <div className="mb-4">
+            <DuplicateDrugsPanel
+              drugs={drugs}
+              showToast={showToast}
+              onCleaned={(deletedIds) => {
+                setDrugs(prev => prev.filter(d => !deletedIds.has(d.firestoreId)));
+                setSelectedIds(prev => {
+                  const n = new Set(prev);
+                  deletedIds.forEach(id => n.delete(id));
+                  return n;
+                });
+              }}
+            />
+          </div>
           {/* Search + Filter Bar */}
           <div className="bg-white border border-drug-border rounded-xl p-4 mb-4 space-y-3">
             <div className="flex flex-col sm:flex-row gap-3">
