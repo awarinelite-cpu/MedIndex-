@@ -23,7 +23,6 @@ function notifyAll(data) {
 // systemConditions.js and can't be mutated at runtime, deleting one of those
 // just records its id here so every consumer filters it out.
 let liveHidden        = null;
-let unsubscribeHidden = null; // reserved for symmetry; both maps share one Firestore doc/listener
 const hiddenSubscribers = new Set();
 
 function notifyAllHidden(data) {
