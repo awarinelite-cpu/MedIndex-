@@ -12,27 +12,38 @@
 import React, { useEffect, useState } from 'react';
 import { doc, getDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { AlertTriangle, ArrowRight, RefreshCw, CheckCircle } from 'lucide-react';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { LEGACY_DOC_REF_PATH } from '../hooks/useConditionClinicalInfo';
 
 const NEW_COLLECTION = 'condition_clinical_info';
 
 export default function ClinicalInfoMigration({ showToast }) {
-  const [legacyCount, setLegacyCount] = useState(null); // null = still checking, 0/undefined = nothing to migrate
+  const [legacyCount, setLegacyCount] = useState(null); // null = still checking
+  const [checkError, setCheckError] = useState('');
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
+        await auth.authStateReady();
         const snap = await getDoc(doc(db, ...LEGACY_DOC_REF_PATH));
         const conditions = snap.exists() ? (snap.data().conditions || {}) : {};
         setLegacyCount(Object.keys(conditions).length);
-      } catch {
-        setLegacyCount(0); // can't check — don't block the admin page over this
+      } catch (err) {
+        console.error('[ClinicalInfoMigration] check failed:', err.code, err.message);
+        setCheckError(err.message || 'Could not check.');
+        setLegacyCount(0);
       }
     })();
   }, []);
+
+  if (checkError) return (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-sm text-red-800 mb-4">
+      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+      Couldn't check for old clinical info data ({checkError}).
+    </div>
+  );
 
   if (legacyCount === null || legacyCount === 0) return done ? (
     <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-2 text-sm text-green-800 mb-4">
