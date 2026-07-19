@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
   Pill, ChevronRight, Grid3X3, List, ArrowLeft, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, Download, BookOpen, Trash2,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, Download, Upload, BookOpen, Trash2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -805,6 +805,235 @@ function AiSystemConditionsFallback({ systemId, systemName, existingLabels }) {
   );
 }
 
+/* ── Bulk-add conditions from a CSV file ─────────────────────────────────── */
+function deriveKeywordsFromLabel(label) {
+  const norm = String(label || '').toLowerCase().trim();
+  const stopwords = new Set(['and', 'the', 'of', 'with', 'a', 'an', 'in', 'on', 'to']);
+  const words = norm.split(/\s+/).filter(w => w.length > 2 && !stopwords.has(w));
+  return Array.from(new Set([norm, ...words]));
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+
+function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
+  const { isAdmin } = useAuth();
+  const { provider } = useAiProvider();
+  const { enqueueAutoFillCondition } = useAiInsight();
+
+  const [rows, setRows] = useState([]);      // parsed + validated preview rows
+  const [fileName, setFileName] = useState('');
+  const [parseError, setParseError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | done
+
+  const existingLabelSet = useMemo(
+    () => new Set(existingLabels.map(normalizeConditionLabel)),
+    [existingLabels]
+  );
+
+  if (!isAdmin) return null; // only admins can bulk-curate the condition taxonomy
+
+  const downloadTemplate = () => {
+    const csv = Papa.unparse([
+      { label: 'Hypertension', icon: '🩺', keywords: 'hypertension, high blood pressure, antihypertensive' },
+      { label: 'Example Condition', icon: '', keywords: '' },
+    ]);
+    downloadCSV(csv, `${systemId}_conditions_template.csv`);
+  };
+
+  const handleFile = (file) => {
+    setFileName(file.name);
+    setParseError('');
+    setSaveError('');
+    setSaveState('idle');
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim().toLowerCase(),
+      complete: (results) => {
+        if (!results.meta.fields || !results.meta.fields.includes('label')) {
+          setParseError('CSV must include a "label" column (icon and keywords are optional).');
+          setRows([]);
+          return;
+        }
+        const seenInFile = new Set();
+        const built = results.data.map((raw, idx) => {
+          const label = String(raw.label || '').trim();
+          if (!label) {
+            return { rowNum: idx + 2, label: raw.label || '', status: 'invalid', reason: 'Missing label' };
+          }
+          const id = slugifyConditionLabel(label);
+          const normLabel = normalizeConditionLabel(label);
+          const icon = String(raw.icon || '').trim() || '🩺';
+          const keywordsRaw = String(raw.keywords || '').trim();
+          const keywords = keywordsRaw
+            ? keywordsRaw.split(/[,|]/).map(k => k.trim().toLowerCase()).filter(Boolean)
+            : deriveKeywordsFromLabel(label);
+
+          let status = 'new';
+          let reason = '';
+          if (existingLabelSet.has(normLabel)) {
+            status = 'duplicate';
+            reason = 'Already exists in this system';
+          } else if (seenInFile.has(normLabel)) {
+            status = 'duplicate';
+            reason = 'Duplicate row in this file';
+          }
+          seenInFile.add(normLabel);
+
+          return { rowNum: idx + 2, id, label, icon, keywords, status, reason };
+        });
+        setRows(built);
+      },
+      error: (err) => {
+        setParseError(err.message || 'Failed to parse CSV file.');
+        setRows([]);
+      },
+    });
+  };
+
+  const newRows = rows.filter(r => r.status === 'new');
+
+  const handleSaveAll = async () => {
+    if (newRows.length === 0) return;
+    setSaveState('saving');
+    setSaveError('');
+    try {
+      const toAdd = newRows.map(r => ({ id: r.id, label: r.label, icon: r.icon, keywords: r.keywords }));
+      await addCustomConditions(systemId, toAdd);
+      setSaveState('done');
+      // Auto-fill each newly created condition with drugs, same as the
+      // single-condition AI tool above — no manual step needed per row.
+      toAdd.forEach(c => enqueueAutoFillCondition({ conditionId: c.id, label: c.label, conditionKeywords: c.keywords, systemName, endpoint: provider.endpoint }));
+    } catch (e) {
+      setSaveError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
+      setSaveState('idle');
+    }
+  };
+
+  const reset = () => {
+    setRows([]);
+    setFileName('');
+    setParseError('');
+    setSaveError('');
+    setSaveState('idle');
+  };
+
+  return (
+    <div className="mt-4 bg-white border border-drug-border rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-5 py-4 bg-blue-50 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <Upload className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <span className="font-bold text-drug-text truncate">Bulk add conditions from CSV</span>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={downloadTemplate}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900"
+          >
+            <Download className="w-3.5 h-3.5" /> Template CSV
+          </button>
+          <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg cursor-pointer">
+            <Upload className="w-3.5 h-3.5" /> Choose CSV
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="px-5 py-2 text-xs text-drug-muted bg-blue-50/50 border-t border-blue-100">
+        Columns: <strong>label</strong> (required), <strong>icon</strong> (optional emoji, defaults to 🩺),{' '}
+        <strong>keywords</strong> (optional, comma or pipe separated — auto-derived from the label if left blank).
+      </div>
+
+      {parseError && (
+        <div className="p-5 text-center">
+          <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+          <p className="text-sm text-red-600">{parseError}</p>
+        </div>
+      )}
+
+      {fileName && !parseError && rows.length > 0 && (
+        saveState === 'done' ? (
+          <div className="p-5 text-center text-sm text-green-700 bg-green-50">
+            ✓ Added {newRows.length} condition{newRows.length === 1 ? '' : 's'} from {fileName} — refreshing to show the new cards…
+          </div>
+        ) : (
+          <div>
+            {saveError && (
+              <div style={{
+                margin: '12px 16px',
+                padding: '14px 16px',
+                background: '#FEF2F2',
+                border: '2px solid #EF4444',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#991B1B',
+                lineHeight: 1.5,
+              }}>
+                ⚠️ {saveError}
+              </div>
+            )}
+            <div className="max-h-80 overflow-y-auto">
+              {rows.map((r, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 px-5 py-2.5 ${i !== rows.length - 1 ? 'border-b border-drug-border' : ''}`}
+                >
+                  <span className="text-xs text-drug-muted w-8 flex-shrink-0">#{r.rowNum}</span>
+                  <span className="text-lg flex-shrink-0">{r.icon || '—'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{r.label || '(missing label)'}</div>
+                    {r.keywords && (
+                      <div className="text-xs text-drug-muted truncate">{r.keywords.slice(0, 4).join(', ')}</div>
+                    )}
+                  </div>
+                  {r.status === 'new' && (
+                    <span className="text-xs font-bold text-green-600 flex-shrink-0">New</span>
+                  )}
+                  {r.status === 'duplicate' && (
+                    <span className="text-xs font-semibold text-drug-muted flex-shrink-0" title={r.reason}>Skipped: {r.reason}</span>
+                  )}
+                  {r.status === 'invalid' && (
+                    <span className="text-xs font-semibold text-red-500 flex-shrink-0" title={r.reason}>{r.reason}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 px-5 py-3 bg-drug-bg/50 border-t border-drug-border">
+              <button
+                onClick={handleSaveAll}
+                disabled={newRows.length === 0 || saveState === 'saving'}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {saveState === 'saving' ? 'Saving…' : `Add ${newRows.length} new condition${newRows.length === 1 ? '' : 's'}`}
+              </button>
+              <button
+                onClick={reset}
+                className="text-xs font-semibold text-drug-muted hover:text-drug-text"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
@@ -1210,6 +1439,12 @@ export default function SystemPage() {
           )}
 
           <AiSystemConditionsFallback
+            systemId={systemId}
+            systemName={system.name}
+            existingLabels={[...conditionGroups.values()].map(e => e.condition.label)}
+          />
+
+          <BulkAddConditionsCsv
             systemId={systemId}
             systemName={system.name}
             existingLabels={[...conditionGroups.values()].map(e => e.condition.label)}
