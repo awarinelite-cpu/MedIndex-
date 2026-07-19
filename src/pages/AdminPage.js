@@ -15,6 +15,7 @@ import {
 import seedDrugs from '../data/seedDrugs.json';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
+import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider } from '../context/AiProviderContext';
 
@@ -910,6 +911,8 @@ export default function AdminPage() {
       {/* ═══════════════════════ AI GENERATE TAB ══════════════════════════ */}
       {activeTab === 'ai' && (
         <div className="space-y-4">
+
+          <ClinicalInfoMigration showToast={showToast} />
 
           {/* Intro banner */}
           <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">

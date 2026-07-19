@@ -93,6 +93,14 @@ export function findDuplicateDrugGroups(drugs) {
   // length (avoids "B" matching "Bendroflumethiazide") and requires a
   // small edit distance relative to length so short names need a near
   // perfect match while long names tolerate a couple of character diffs.
+  // Two guards keep this from flagging genuinely different products that
+  // just happen to read similarly:
+  //   - if either name contains a number and the numbers differ (e.g.
+  //     "Amoxicillin 250" vs "Amoxicillin 500"), it's a different
+  //     strength/product, not a spelling duplicate — skip.
+  //   - names longer than 16 characters are only compared as exact-tier;
+  //     at that length, similar-but-different text is far more likely a
+  //     different brand/combination product than a typo of the same one.
   const singles = list.filter(d => byKey.get(normalizeDrugKey(d.generic_name))?.length === 1);
   const reviewed = new Set();
   const review = [];
@@ -100,15 +108,18 @@ export function findDuplicateDrugGroups(drugs) {
     if (reviewed.has(i)) continue;
     const a = singles[i];
     const keyA = normalizeDrugKey(a.generic_name);
+    const numsA = (keyA.match(/\d+/g) || []).join(',');
     let cluster = null;
     for (let j = i + 1; j < singles.length; j++) {
       if (reviewed.has(j)) continue;
       const b = singles[j];
       const keyB = normalizeDrugKey(b.generic_name);
       const maxLen = Math.max(keyA.length, keyB.length);
-      if (maxLen < 5) continue; // too short to compare safely
+      if (maxLen < 5 || maxLen > 16) continue; // too short to compare safely, or too long to trust a fuzzy match
+      const numsB = (keyB.match(/\d+/g) || []).join(',');
+      if (numsA !== numsB) continue; // different strength/quantity — different product, not a duplicate
       const dist = levenshtein(keyA, keyB);
-      const threshold = maxLen <= 8 ? 1 : maxLen <= 14 ? 2 : 3;
+      const threshold = maxLen <= 8 ? 1 : 2;
       if (dist > 0 && dist <= threshold) {
         if (!cluster) cluster = { key: keyA, drugs: [a], reason: 'Similar spelling' };
         cluster.drugs.push(b);
@@ -118,6 +129,7 @@ export function findDuplicateDrugGroups(drugs) {
     if (cluster) {
       reviewed.add(i);
       cluster.drugs = sortByKeepPriority(cluster.drugs);
+      cluster.dismissKey = cluster.drugs.map(d => d.firestoreId || d.id).sort().join('|');
       review.push(cluster);
     }
   }

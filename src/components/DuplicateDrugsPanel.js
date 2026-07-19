@@ -1,7 +1,7 @@
 // src/components/DuplicateDrugsPanel.js
 import React, { useState, useMemo } from 'react';
-import { doc, writeBatch, arrayUnion } from 'firebase/firestore';
-import { Copy, ChevronDown, ChevronRight, AlertTriangle, Check, Trash2, RefreshCw } from 'lucide-react';
+import { doc, getDoc, setDoc, writeBatch, arrayUnion } from 'firebase/firestore';
+import { Copy, ChevronDown, ChevronRight, AlertTriangle, Check, Trash2, RefreshCw, X } from 'lucide-react';
 import { db } from '../firebase';
 import { findDuplicateDrugGroups } from '../utils/findDuplicateDrugs';
 
@@ -38,7 +38,7 @@ function DrugRow({ drug, isKeeper, willDelete, onMakeKeeper, onToggleDelete }) {
   );
 }
 
-function GroupCard({ group, tier, selection, setSelection }) {
+function GroupCard({ group, tier, selection, setSelection, onDismiss }) {
   const [open, setOpen] = useState(false);
   const sel = selection[group.key] || { keeperId: group.drugs[0].firestoreId, deleteIds: new Set() };
   const deleteCount = sel.deleteIds.size;
@@ -58,12 +58,23 @@ function GroupCard({ group, tier, selection, setSelection }) {
 
   return (
     <div className="border border-drug-border rounded-lg overflow-hidden">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-gray-50 text-left">
-        {open ? <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />}
-        <span className="font-medium text-drug-text truncate flex-1">{group.drugs[0].generic_name}</span>
-        <span className="text-xs text-drug-muted flex-shrink-0">{group.drugs.length} records</span>
-        {deleteCount > 0 && <span className="text-xs font-semibold text-red-600 flex-shrink-0">−{deleteCount}</span>}
-      </button>
+      <div className="w-full flex items-center gap-2 px-3 py-2.5 bg-white hover:bg-gray-50">
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+          {open ? <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+          <span className="font-medium text-drug-text truncate">{group.drugs[0].generic_name}</span>
+          <span className="text-xs text-drug-muted flex-shrink-0">{group.drugs.length} records</span>
+          {deleteCount > 0 && <span className="text-xs font-semibold text-red-600 flex-shrink-0">−{deleteCount}</span>}
+        </button>
+        {tier === 'review' && onDismiss && (
+          <button
+            onClick={() => onDismiss(group)}
+            title="Not a duplicate — different products, don't flag again"
+            className="flex-shrink-0 flex items-center gap-1 text-xs text-drug-muted hover:text-drug-text px-2 py-1 rounded hover:bg-gray-100"
+          >
+            <X className="w-3.5 h-3.5" /> Not a duplicate
+          </button>
+        )}
+      </div>
       {open && (
         <div className="p-2 space-y-1.5 border-t border-drug-border bg-gray-50/50">
           {tier === 'review' && group.reason && (
@@ -85,6 +96,12 @@ function GroupCard({ group, tier, selection, setSelection }) {
   );
 }
 
+// Persisted so a group of similarly-named-but-different products (e.g.
+// different brands, or different strengths that slipped past the numeric
+// guard) doesn't get flagged again on every future scan once an admin has
+// confirmed it isn't a duplicate.
+const DISMISS_DOC = ['admin_settings', 'duplicate_review_dismissals'];
+
 export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
   const [expanded, setExpanded] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -93,8 +110,15 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
   const [selection, setSelection] = useState({}); // key -> { keeperId, deleteIds: Set }
   const [applying, setApplying] = useState(false);
 
-  const scan = () => {
-    const { exact: e, review: r } = findDuplicateDrugGroups(drugs);
+  const scan = async () => {
+    const { exact: e, review: rAll } = findDuplicateDrugGroups(drugs);
+    let dismissedKeys = new Set();
+    try {
+      const snap = await getDoc(doc(db, ...DISMISS_DOC));
+      if (snap.exists() && Array.isArray(snap.data().keys)) dismissedKeys = new Set(snap.data().keys);
+    } catch { /* if this fails, just show everything — no harm done */ }
+    const r = rAll.filter(g => !dismissedKeys.has(g.dismissKey));
+
     setExact(e);
     setReview(r);
     // Pre-select every non-keeper as "delete" for exact matches only.
@@ -108,6 +132,16 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
     }
     setSelection(initial);
     setScanned(true);
+  };
+
+  const dismiss = async (group) => {
+    setReview(prev => prev.filter(g => g.dismissKey !== group.dismissKey));
+    setSelection(prev => { const n = { ...prev }; delete n[group.key]; return n; });
+    try {
+      await setDoc(doc(db, ...DISMISS_DOC), { keys: arrayUnion(group.dismissKey) }, { merge: true });
+    } catch (err) {
+      showToast && showToast('Could not save that as "not a duplicate" — it may reappear on the next scan.', 'error');
+    }
   };
 
   const totalToDelete = useMemo(
@@ -210,7 +244,7 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
                     <AlertTriangle className="w-4 h-4" /> Needs review — {review.length} group{review.length === 1 ? '' : 's'}
                   </h4>
                   <div className="space-y-2">
-                    {review.map(g => <GroupCard key={g.key} group={g} tier="review" selection={selection} setSelection={setSelection} />)}
+                    {review.map(g => <GroupCard key={g.key} group={g} tier="review" selection={selection} setSelection={setSelection} onDismiss={dismiss} />)}
                   </div>
                 </div>
               )}

@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { doc, setDoc, updateDoc, deleteField, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
-const DOC_REF_PATH = ['app_config', 'condition_clinical_info'];
+// One document per condition (doc ID = conditionId), NOT one giant document
+// holding every condition as a map field. The old shape — a single
+// app_config/condition_clinical_info doc with a `conditions` map — hit
+// Firestore's 1 MB per-document limit once enough conditions had clinical
+// info generated for them. See migrateConditionClinicalInfo() below for the
+// one-time move of whatever made it into that old doc before it started
+// failing.
+const COLLECTION_PATH = 'condition_clinical_info';
+export const LEGACY_DOC_REF_PATH = ['app_config', 'condition_clinical_info'];
 
 // Live-listener singleton, same pattern as useCustomConditions.js — one
 // admin generating clinical info on one device shows up for everyone else
@@ -19,9 +27,10 @@ function notifyAll(data) {
 function ensureListener() {
   if (unsubscribe) return;
   unsubscribe = onSnapshot(
-    doc(db, ...DOC_REF_PATH),
+    collection(db, COLLECTION_PATH),
     (snap) => {
-      const val = snap.exists() ? (snap.data().conditions || {}) : {};
+      const val = {};
+      snap.forEach(d => { val[d.id] = d.data(); });
       notifyAll(val);
     },
     (err) => {
@@ -58,28 +67,28 @@ export function useConditionClinicalInfo() {
   return { clinicalInfoByCondition: data, loading };
 }
 
-// Saves (or overwrites, on regenerate) clinical info for one condition.
+// Saves (or overwrites, on regenerate) clinical info for one condition —
+// its own document, so it's nowhere near the 1 MB limit regardless of how
+// many other conditions have clinical info saved.
 export async function saveConditionClinicalInfo(conditionId, info) {
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in. Please sign in as admin and try again.');
 
-  const ref = doc(db, ...DOC_REF_PATH);
-  await setDoc(ref, {
-    conditions: { [conditionId]: { ...info, generatedAt: serverTimestamp() } },
-  }, { merge: true });
+  const ref = doc(db, COLLECTION_PATH, conditionId);
+  await setDoc(ref, { ...info, generatedAt: serverTimestamp() });
 }
 
 // Removes clinical info for one condition — best-effort; a no-op if the
-// doc or field doesn't exist yet.
+// document doesn't exist.
 export async function removeConditionClinicalInfo(conditionId) {
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user) throw new Error('Not signed in. Please sign in as admin and try again.');
 
-  const ref = doc(db, ...DOC_REF_PATH);
+  const ref = doc(db, COLLECTION_PATH, conditionId);
   try {
-    await updateDoc(ref, { [`conditions.${conditionId}`]: deleteField() });
+    await deleteDoc(ref);
   } catch {
     // Doc doesn't exist yet — nothing to remove.
   }
