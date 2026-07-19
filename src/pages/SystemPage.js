@@ -823,8 +823,6 @@ function downloadCSV(csvContent, filename) {
 
 function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
   const { isAdmin } = useAuth();
-  const { provider } = useAiProvider();
-  const { enqueueAutoFillCondition } = useAiInsight();
 
   const [rows, setRows] = useState([]);      // parsed + validated preview rows
   const [fileName, setFileName] = useState('');
@@ -841,8 +839,8 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
 
   const downloadTemplate = () => {
     const csv = Papa.unparse([
-      { label: 'Hypertension', icon: '🩺', keywords: 'hypertension, high blood pressure, antihypertensive' },
-      { label: 'Example Condition', icon: '', keywords: '' },
+      { name: 'Hypertension' },
+      { name: 'Example Condition' },
     ]);
     downloadCSV(csv, `${systemId}_conditions_template.csv`);
   };
@@ -857,35 +855,37 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
       skipEmptyLines: true,
       transformHeader: (h) => h.trim().toLowerCase(),
       complete: (results) => {
-        if (!results.meta.fields || !results.meta.fields.includes('label')) {
-          setParseError('CSV must include a "label" column (icon and keywords are optional).');
+        // Accept "name" (preferred) or "label" as the column header.
+        const fields = results.meta.fields || [];
+        const nameField = fields.includes('name') ? 'name' : (fields.includes('label') ? 'label' : null);
+        if (!nameField) {
+          setParseError('CSV must have a single "name" column with one condition per row.');
           setRows([]);
           return;
         }
-        const seenInFile = new Set();
+        const seenNorm = new Set();
+        const seenId = new Set();
         const built = results.data.map((raw, idx) => {
-          const label = String(raw.label || '').trim();
+          const label = String(raw[nameField] || '').trim();
           if (!label) {
-            return { rowNum: idx + 2, label: raw.label || '', status: 'invalid', reason: 'Missing label' };
+            return { rowNum: idx + 2, label: raw[nameField] || '', status: 'invalid', reason: 'Empty row' };
           }
           const id = slugifyConditionLabel(label);
           const normLabel = normalizeConditionLabel(label);
-          const icon = String(raw.icon || '').trim() || '🩺';
-          const keywordsRaw = String(raw.keywords || '').trim();
-          const keywords = keywordsRaw
-            ? keywordsRaw.split(/[,|]/).map(k => k.trim().toLowerCase()).filter(Boolean)
-            : deriveKeywordsFromLabel(label);
+          const icon = '🩺';
+          const keywords = deriveKeywordsFromLabel(label);
 
           let status = 'new';
           let reason = '';
           if (existingLabelSet.has(normLabel)) {
             status = 'duplicate';
             reason = 'Already exists in this system';
-          } else if (seenInFile.has(normLabel)) {
+          } else if (seenNorm.has(normLabel) || seenId.has(id)) {
             status = 'duplicate';
             reason = 'Duplicate row in this file';
           }
-          seenInFile.add(normLabel);
+          seenNorm.add(normLabel);
+          seenId.add(id);
 
           return { rowNum: idx + 2, id, label, icon, keywords, status, reason };
         });
@@ -908,9 +908,8 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
       const toAdd = newRows.map(r => ({ id: r.id, label: r.label, icon: r.icon, keywords: r.keywords }));
       await addCustomConditions(systemId, toAdd);
       setSaveState('done');
-      // Auto-fill each newly created condition with drugs, same as the
-      // single-condition AI tool above — no manual step needed per row.
-      toAdd.forEach(c => enqueueAutoFillCondition({ conditionId: c.id, label: c.label, conditionKeywords: c.keywords, systemName, endpoint: provider.endpoint }));
+      // No AI auto-fill here — drugs and clinical info are added manually
+      // afterward, so this just creates the empty condition cards.
     } catch (e) {
       setSaveError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
       setSaveState('idle');
@@ -952,8 +951,8 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
       </div>
 
       <div className="px-5 py-2 text-xs text-drug-muted bg-blue-50/50 border-t border-blue-100">
-        Columns: <strong>label</strong> (required), <strong>icon</strong> (optional emoji, defaults to 🩺),{' '}
-        <strong>keywords</strong> (optional, comma or pipe separated — auto-derived from the label if left blank).
+        One column: <strong>name</strong>, one condition per row. Rows already in this system, or repeated within
+        the file, are flagged and skipped automatically. Add drugs and clinical info afterward.
       </div>
 
       {parseError && (
