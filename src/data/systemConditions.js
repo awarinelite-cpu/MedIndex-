@@ -13,16 +13,10 @@ export const SYSTEM_CONDITIONS = {
 
   cardiovascular: [
     {
-      id: 'hypertension',
-      label: 'Hypertension',
-      icon: '🩺',
-      keywords: ['hypertension', 'blood pressure', 'antihypertensive', 'high bp'],
-    },
-    {
-      id: 'heart_failure',
-      label: 'Heart Failure',
-      icon: '❤️',
-      keywords: ['heart failure', 'cardiac failure', 'hf with', 'systolic dysfunction', 'diastolic dysfunction', 'reduced ef', 'preserved ef', 'chf'],
+      id: 'angina',
+      label: 'Angina & Ischaemic Heart Disease',
+      icon: '💔',
+      keywords: ['angina', 'ischaemic', 'ischemic', 'coronary', 'acute coronary', 'acs', 'myocardial infarction', 'mi ', ' mi,', 'nstemi', 'stemi', 'antianginal'],
     },
     {
       id: 'arrhythmia',
@@ -31,22 +25,28 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['arrhythmia', 'atrial fibrillation', 'atrial flutter', 'ventricular', 'tachycardia', 'bradycardia', 'rate control', 'antiarrhythmic', 'af ', ' af,', 'svt'],
     },
     {
-      id: 'angina',
-      label: 'Angina & Ischaemic Heart Disease',
-      icon: '💔',
-      keywords: ['angina', 'ischaemic', 'ischemic', 'coronary', 'acute coronary', 'acs', 'myocardial infarction', 'mi ', ' mi,', 'nstemi', 'stemi', 'antianginal'],
-    },
-    {
       id: 'dyslipidaemia',
       label: 'Dyslipidaemia / High Cholesterol',
       icon: '🧪',
       keywords: ['cholesterol', 'lipid', 'dyslipid', 'statin', 'triglyceride', 'ldl', 'hdl', 'antilipemic', 'hyperlipid'],
     },
     {
-      id: 'thromboembolism',
-      label: 'Thromboembolism & Clotting',
-      icon: '🔴',
-      keywords: ['thrombosis', 'thromboembolic', 'dvt', 'pulmonary embolism', 'pe ', 'anticoagulant', 'antiplatelet', 'stroke prevention', 'clot', 'thrombolytic', 'venous thromboembolism'],
+      id: 'heart_failure',
+      label: 'Heart Failure',
+      icon: '❤️',
+      keywords: ['heart failure', 'cardiac failure', 'hf with', 'systolic dysfunction', 'diastolic dysfunction', 'reduced ef', 'preserved ef', 'chf'],
+    },
+    {
+      id: 'hypertension',
+      label: 'Hypertension',
+      icon: '🩺',
+      keywords: ['hypertension', 'blood pressure', 'antihypertensive', 'high bp'],
+    },
+    {
+      id: 'oedema',
+      label: 'Oedema & Fluid Overload',
+      icon: '💧',
+      keywords: ['oedema', 'edema', 'fluid overload', 'diuretic', 'ascites', 'pulmonary oedema', 'loop diuretic'],
     },
     {
       id: 'shock',
@@ -55,14 +55,20 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['shock', 'inotrope', 'vasopressor', 'haemodynamic', 'hemodynamic', 'cardiac output', 'dopamine', 'noradrenaline', 'norepinephrine', 'cardiogenic'],
     },
     {
-      id: 'oedema',
-      label: 'Oedema & Fluid Overload',
-      icon: '💧',
-      keywords: ['oedema', 'edema', 'fluid overload', 'diuretic', 'ascites', 'pulmonary oedema', 'loop diuretic'],
+      id: 'thromboembolism',
+      label: 'Thromboembolism & Clotting',
+      icon: '🔴',
+      keywords: ['thrombosis', 'thromboembolic', 'dvt', 'pulmonary embolism', 'pe ', 'anticoagulant', 'antiplatelet', 'stroke prevention', 'clot', 'thrombolytic', 'venous thromboembolism'],
     },
   ],
 
   respiratory: [
+    {
+      id: 'allergy',
+      label: 'Allergy & Rhinitis',
+      icon: '🌿',
+      keywords: ['allergy', 'allergic rhinitis', 'hay fever', 'antihistamine', 'leukotriene', 'anaphylaxis'],
+    },
     {
       id: 'asthma',
       label: 'Asthma',
@@ -82,12 +88,6 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['cough', 'antitussive', 'expectorant', 'mucolytic', 'upper respiratory', 'nasal congestion', 'decongestant', 'rhinitis', 'sinusitis'],
     },
     {
-      id: 'allergy',
-      label: 'Allergy & Rhinitis',
-      icon: '🌿',
-      keywords: ['allergy', 'allergic rhinitis', 'hay fever', 'antihistamine', 'leukotriene', 'anaphylaxis'],
-    },
-    {
       id: 'pulmonary_hypertension',
       label: 'Pulmonary Hypertension',
       icon: '💨',
@@ -103,18 +103,6 @@ export const SYSTEM_CONDITIONS = {
 
   gastrointestinal: [
     {
-      id: 'peptic_ulcer',
-      label: 'Peptic Ulcer & GERD',
-      icon: '🔥',
-      keywords: ['peptic ulcer', 'gerd', 'gastro-oesophageal', 'gastroesophageal', 'reflux', 'antacid', 'proton pump', 'h2 blocker', 'h2-receptor', 'h2 receptor', 'antiulcer', 'helicobacter', 'h. pylori'],
-    },
-    {
-      id: 'nausea',
-      label: 'Nausea & Vomiting',
-      icon: '🤢',
-      keywords: ['nausea', 'vomiting', 'antiemetic', 'chemotherapy-induced', 'motion sickness', 'morning sickness', 'postoperative nausea'],
-    },
-    {
       id: 'constipation',
       label: 'Constipation',
       icon: '⏳',
@@ -127,10 +115,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['diarrhoea', 'diarrhea', 'antidiarrheal', 'ibs', 'irritable bowel', 'infectious diarrhoea', 'inflammatory bowel'],
     },
     {
+      id: 'motility',
+      label: 'GI Motility Disorders',
+      icon: '🔄',
+      keywords: ['motility', 'prokinetic', 'gastroparesis', 'antispasmodic', 'spasm'],
+    },
+    {
       id: 'ibd',
-      label: 'IBD (Crohn\'s & Ulcerative Colitis)',
+      label: "IBD (Crohn's & Ulcerative Colitis)",
       icon: '🩺',
-      keywords: ["crohn", 'ulcerative colitis', 'inflammatory bowel disease', 'ibd'],
+      keywords: ['crohn', 'ulcerative colitis', 'inflammatory bowel disease', 'ibd'],
     },
     {
       id: 'liver',
@@ -139,19 +133,25 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['hepatic', 'liver disease', 'cirrhosis', 'hepatitis', 'hepatoprotective', 'liver failure'],
     },
     {
-      id: 'motility',
-      label: 'GI Motility Disorders',
-      icon: '🔄',
-      keywords: ['motility', 'prokinetic', 'gastroparesis', 'antispasmodic', 'spasm'],
+      id: 'nausea',
+      label: 'Nausea & Vomiting',
+      icon: '🤢',
+      keywords: ['nausea', 'vomiting', 'antiemetic', 'chemotherapy-induced', 'motion sickness', 'morning sickness', 'postoperative nausea'],
+    },
+    {
+      id: 'peptic_ulcer',
+      label: 'Peptic Ulcer & GERD',
+      icon: '🔥',
+      keywords: ['peptic ulcer', 'gerd', 'gastro-oesophageal', 'gastroesophageal', 'reflux', 'antacid', 'proton pump', 'h2 blocker', 'h2-receptor', 'h2 receptor', 'antiulcer', 'helicobacter', 'h. pylori'],
     },
   ],
 
   renal: [
     {
-      id: 'uti',
-      label: 'Urinary Tract Infection',
-      icon: '🦠',
-      keywords: ['urinary tract infection', 'uti', 'cystitis', 'pyelonephritis', 'urinary infection'],
+      id: 'bph',
+      label: 'Benign Prostatic Hyperplasia',
+      icon: '👨',
+      keywords: ['bph', 'benign prostatic', 'prostate', '5-alpha reductase', 'alpha-blocker'],
     },
     {
       id: 'ckd',
@@ -160,16 +160,10 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['chronic kidney', 'ckd', 'renal failure', 'renal insufficiency', 'kidney disease', 'phosphate binder', 'renal anaemia'],
     },
     {
-      id: 'bph',
-      label: 'Benign Prostatic Hyperplasia',
-      icon: '👨',
-      keywords: ['bph', 'benign prostatic', 'prostate', '5-alpha reductase', 'alpha-blocker'],
-    },
-    {
-      id: 'overactive_bladder',
-      label: 'Overactive Bladder & Incontinence',
-      icon: '💧',
-      keywords: ['overactive bladder', 'incontinence', 'urge incontinence', 'urinary frequency'],
+      id: 'fluid_electrolyte',
+      label: 'Fluid & Electrolyte Balance',
+      icon: '⚖️',
+      keywords: ['electrolyte', 'hyponatraemia', 'hypokalaemia', 'hyperkalaemia', 'diuresis', 'fluid balance'],
     },
     {
       id: 'nephrotic',
@@ -178,37 +172,31 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['nephrotic', 'nephritic', 'proteinuria', 'glomerulo'],
     },
     {
-      id: 'fluid_electrolyte',
-      label: 'Fluid & Electrolyte Balance',
-      icon: '⚖️',
-      keywords: ['electrolyte', 'hyponatraemia', 'hypokalaemia', 'hyperkalaemia', 'diuresis', 'fluid balance'],
+      id: 'overactive_bladder',
+      label: 'Overactive Bladder & Incontinence',
+      icon: '💧',
+      keywords: ['overactive bladder', 'incontinence', 'urge incontinence', 'urinary frequency'],
+    },
+    {
+      id: 'uti',
+      label: 'Urinary Tract Infection',
+      icon: '🦠',
+      keywords: ['urinary tract infection', 'uti', 'cystitis', 'pyelonephritis', 'urinary infection'],
     },
   ],
 
   endocrine: [
     {
+      id: 'adrenal',
+      label: 'Adrenal & Corticosteroids',
+      icon: '⚗️',
+      keywords: ['addison', 'adrenal insufficiency', 'cushing', 'corticosteroid', 'glucocorticoid', 'mineralocorticoid', 'steroid replacement'],
+    },
+    {
       id: 'diabetes',
       label: 'Diabetes Mellitus',
       icon: '🩸',
       keywords: ['diabetes', 'type 2 diabetes', 'type 1 diabetes', 'antidiabetic', 'insulin', 'hyperglycaemia', 'hyperglycemia', 'hypoglycaemia', 'sulfonylurea', 'biguanide', 'sglt2', 'dpp-4', 'glp-1', 'thiazolidinedione'],
-    },
-    {
-      id: 'thyroid',
-      label: 'Thyroid Disorders',
-      icon: '🦋',
-      keywords: ['thyroid', 'hypothyroidism', 'hyperthyroidism', 'thyrotoxicosis', 'graves', 'goitre', 'antithyroid'],
-    },
-    {
-      id: 'adrenal',
-      label: 'Adrenal & Corticosteroids',
-      icon: '⚗️',
-      keywords: ["addison", 'adrenal insufficiency', 'cushing', 'corticosteroid', 'glucocorticoid', 'mineralocorticoid', 'steroid replacement'],
-    },
-    {
-      id: 'osteoporosis',
-      label: 'Osteoporosis & Calcium Metabolism',
-      icon: '🦴',
-      keywords: ['osteoporosis', 'calcium', 'bisphosphonate', 'vitamin d', 'parathyroid', 'paget'],
     },
     {
       id: 'obesity',
@@ -217,14 +205,32 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['obesity', 'weight loss', 'anti-obesity', 'metabolic syndrome', 'glp-1'],
     },
     {
+      id: 'osteoporosis',
+      label: 'Osteoporosis & Calcium Metabolism',
+      icon: '🦴',
+      keywords: ['osteoporosis', 'calcium', 'bisphosphonate', 'vitamin d', 'parathyroid', 'paget'],
+    },
+    {
       id: 'pituitary',
       label: 'Pituitary & Growth Disorders',
       icon: '🧠',
       keywords: ['acromegaly', 'growth hormone', 'pituitary', 'prolactin', 'hyperprolactinaemia'],
     },
+    {
+      id: 'thyroid',
+      label: 'Thyroid Disorders',
+      icon: '🦋',
+      keywords: ['thyroid', 'hypothyroidism', 'hyperthyroidism', 'thyrotoxicosis', 'graves', 'goitre', 'antithyroid'],
+    },
   ],
 
   neurological: [
+    {
+      id: 'dementia',
+      label: "Dementia & Alzheimer's",
+      icon: '🧠',
+      keywords: ['dementia', 'alzheimer', 'cognitive impairment', 'cholinesterase inhibitor', 'memantine', 'nootropic'],
+    },
     {
       id: 'epilepsy',
       label: 'Epilepsy & Seizures',
@@ -232,28 +238,10 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['epilep', 'seizure', 'anticonvulsant', 'antiepileptic', 'status epilepticus', 'absence seizure', 'tonic-clonic'],
     },
     {
-      id: 'parkinsons',
-      label: "Parkinson's Disease",
-      icon: '🤲',
-      keywords: ["parkinson", 'antiparkinson', 'dopaminergic', 'levodopa', 'dopamine agonist'],
-    },
-    {
       id: 'migraine',
       label: 'Migraine & Headache',
       icon: '🤕',
       keywords: ['migraine', 'headache', 'triptan', 'cluster headache', 'preventive migraine'],
-    },
-    {
-      id: 'dementia',
-      label: 'Dementia & Alzheimer\'s',
-      icon: '🧠',
-      keywords: ['dementia', "alzheimer", 'cognitive impairment', 'cholinesterase inhibitor', 'memantine', 'nootropic'],
-    },
-    {
-      id: 'stroke',
-      label: 'Stroke & Cerebrovascular',
-      icon: '🩺',
-      keywords: ['stroke', 'cerebrovascular', 'tia', 'transient ischaemic', 'cerebral', 'neuroprotect'],
     },
     {
       id: 'ms',
@@ -268,25 +256,37 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['neuropathic', 'neuralgia', 'trigeminal', 'diabetic neuropathy', 'peripheral neuropathy'],
     },
     {
+      id: 'parkinsons',
+      label: "Parkinson's Disease",
+      icon: '🤲',
+      keywords: ['parkinson', 'antiparkinson', 'dopaminergic', 'levodopa', 'dopamine agonist'],
+    },
+    {
       id: 'sleep',
       label: 'Sleep Disorders & Insomnia',
       icon: '😴',
       keywords: ['insomnia', 'sleep disorder', 'hypnotic', 'sedative', 'sleep onset', 'zolpidem', 'z-drug'],
     },
+    {
+      id: 'stroke',
+      label: 'Stroke & Cerebrovascular',
+      icon: '🩺',
+      keywords: ['stroke', 'cerebrovascular', 'tia', 'transient ischaemic', 'cerebral', 'neuroprotect'],
+    },
   ],
 
   musculoskeletal: [
-    {
-      id: 'pain_inflammation',
-      label: 'Pain & Inflammation',
-      icon: '🔥',
-      keywords: ['pain', 'inflammation', 'nsaid', 'anti-inflammatory', 'analgesic', 'antipyretic'],
-    },
     {
       id: 'arthritis',
       label: 'Arthritis (OA & RA)',
       icon: '🦴',
       keywords: ['arthritis', 'osteoarthritis', 'rheumatoid', 'dmard', 'antirheumatic', 'joint pain'],
+    },
+    {
+      id: 'fibromyalgia',
+      label: 'Fibromyalgia & Chronic Pain',
+      icon: '😣',
+      keywords: ['fibromyalgia', 'chronic pain', 'chronic widespread pain'],
     },
     {
       id: 'gout',
@@ -307,37 +307,19 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['osteoporosis', 'bisphosphonate', 'bone density', 'fracture prevention'],
     },
     {
-      id: 'fibromyalgia',
-      label: 'Fibromyalgia & Chronic Pain',
-      icon: '😣',
-      keywords: ['fibromyalgia', 'chronic pain', 'chronic widespread pain'],
+      id: 'pain_inflammation',
+      label: 'Pain & Inflammation',
+      icon: '🔥',
+      keywords: ['pain', 'inflammation', 'nsaid', 'anti-inflammatory', 'analgesic', 'antipyretic'],
     },
   ],
 
   psychiatric: [
     {
-      id: 'depression',
-      label: 'Depression',
-      icon: '😔',
-      keywords: ['depression', 'major depressive', 'antidepressant', 'ssri', 'snri', 'tricyclic', 'maoi', 'dysthymia'],
-    },
-    {
-      id: 'anxiety',
-      label: 'Anxiety Disorders',
-      icon: '😟',
-      keywords: ['anxiety', 'generalised anxiety', 'panic disorder', 'social anxiety', 'phobia', 'anxiolytic', 'gad', 'ptsd'],
-    },
-    {
-      id: 'schizophrenia',
-      label: 'Schizophrenia & Psychosis',
-      icon: '🧩',
-      keywords: ['schizophrenia', 'psychosis', 'psychotic', 'antipsychotic', 'delusion', 'hallucination', 'schizoaffective'],
-    },
-    {
-      id: 'bipolar',
-      label: 'Bipolar Disorder',
-      icon: '🔄',
-      keywords: ['bipolar', 'mania', 'manic episode', 'mood stabilizer', 'mood stabiliser', 'lithium'],
+      id: 'addiction',
+      label: 'Addiction & Substance Misuse',
+      icon: '🚫',
+      keywords: ['alcohol withdrawal', 'opioid dependence', 'nicotine', 'addiction', 'substance misuse', 'withdrawal'],
     },
     {
       id: 'adhd',
@@ -346,16 +328,34 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['adhd', 'attention deficit', 'hyperactivity', 'methylphenidate', 'amphetamine', 'stimulant'],
     },
     {
+      id: 'anxiety',
+      label: 'Anxiety Disorders',
+      icon: '😟',
+      keywords: ['anxiety', 'generalised anxiety', 'panic disorder', 'social anxiety', 'phobia', 'anxiolytic', 'gad', 'ptsd'],
+    },
+    {
+      id: 'bipolar',
+      label: 'Bipolar Disorder',
+      icon: '🔄',
+      keywords: ['bipolar', 'mania', 'manic episode', 'mood stabilizer', 'mood stabiliser', 'lithium'],
+    },
+    {
+      id: 'depression',
+      label: 'Depression',
+      icon: '😔',
+      keywords: ['depression', 'major depressive', 'antidepressant', 'ssri', 'snri', 'tricyclic', 'maoi', 'dysthymia'],
+    },
+    {
       id: 'ocd',
       label: 'OCD & Related Disorders',
       icon: '🔁',
       keywords: ['ocd', 'obsessive-compulsive', 'obsessive compulsive'],
     },
     {
-      id: 'addiction',
-      label: 'Addiction & Substance Misuse',
-      icon: '🚫',
-      keywords: ['alcohol withdrawal', 'opioid dependence', 'nicotine', 'addiction', 'substance misuse', 'withdrawal'],
+      id: 'schizophrenia',
+      label: 'Schizophrenia & Psychosis',
+      icon: '🧩',
+      keywords: ['schizophrenia', 'psychosis', 'psychotic', 'antipsychotic', 'delusion', 'hallucination', 'schizoaffective'],
     },
   ],
 
@@ -367,16 +367,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['bacterial', 'antibiotic', 'antibacterial', 'penicillin', 'cephalosporin', 'macrolide', 'fluoroquinolone', 'aminoglycoside', 'tetracycline', 'sulfonamide', 'carbapenem', 'sepsis', 'bacteraemia'],
     },
     {
-      id: 'viral',
-      label: 'Viral Infections & HIV',
-      icon: '🔬',
-      keywords: ['antiviral', 'hiv', 'antiretroviral', 'herpes', 'influenza', 'hepatitis b', 'hepatitis c', 'covid', 'hbv', 'hcv'],
-    },
-    {
       id: 'fungal',
       label: 'Fungal Infections',
       icon: '🍄',
       keywords: ['antifungal', 'candida', 'candidiasis', 'aspergillosis', 'cryptococcal', 'tinea', 'fungal'],
+    },
+    {
+      id: 'immunosuppression',
+      label: 'Immunosuppression & Transplant',
+      icon: '🛡️',
+      keywords: ['immunosuppress', 'transplant', 'rejection', 'tacrolimus', 'ciclosporin', 'mycophenolate'],
     },
     {
       id: 'malaria',
@@ -385,16 +385,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['malaria', 'antimalarial', 'plasmodium', 'tropical', 'leishmaniasis', 'trypanosomiasis'],
     },
     {
-      id: 'tb',
-      label: 'Tuberculosis',
-      icon: '🫁',
-      keywords: ['tuberculosis', 'tb ', ' tb,', 'antitubercular', 'rifampicin', 'isoniazid', 'pyrazinamide', 'ethambutol'],
-    },
-    {
       id: 'parasites',
       label: 'Parasites & Helminths',
       icon: '🪱',
       keywords: ['parasite', 'antiparasitic', 'anthelmintic', 'helminth', 'worm', 'scabies', 'lice', 'protozoa'],
+    },
+    {
+      id: 'tb',
+      label: 'Tuberculosis',
+      icon: '🫁',
+      keywords: ['tuberculosis', 'tb ', ' tb,', 'antitubercular', 'rifampicin', 'isoniazid', 'pyrazinamide', 'ethambutol'],
     },
     {
       id: 'vaccines',
@@ -403,10 +403,10 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['vaccine', 'immunisation', 'immunization', 'immunoglobulin', 'vaccination'],
     },
     {
-      id: 'immunosuppression',
-      label: 'Immunosuppression & Transplant',
-      icon: '🛡️',
-      keywords: ['immunosuppress', 'transplant', 'rejection', 'tacrolimus', 'ciclosporin', 'mycophenolate'],
+      id: 'viral',
+      label: 'Viral Infections & HIV',
+      icon: '🔬',
+      keywords: ['antiviral', 'hiv', 'antiretroviral', 'herpes', 'influenza', 'hepatitis b', 'hepatitis c', 'covid', 'hbv', 'hcv'],
     },
   ],
 
@@ -436,16 +436,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['tinea', 'onychomycosis', 'ringworm', 'antifungal', 'topical antifungal'],
     },
     {
-      id: 'wound',
-      label: 'Wound Care & Antiseptics',
-      icon: '🩹',
-      keywords: ['wound', 'antiseptic', 'antibacterial (topical)', 'wound healing', 'ulcer (skin)'],
-    },
-    {
       id: 'urticaria',
       label: 'Urticaria & Pruritus',
       icon: '😖',
       keywords: ['urticaria', 'pruritus', 'itch', 'antihistamine', 'hives'],
+    },
+    {
+      id: 'wound',
+      label: 'Wound Care & Antiseptics',
+      icon: '🩹',
+      keywords: ['wound', 'antiseptic', 'antibacterial (topical)', 'wound healing', 'ulcer (skin)'],
     },
   ],
 
@@ -490,22 +490,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['contraceptive', 'contraception', 'oral contraceptive', 'emergency contraception', 'pill'],
     },
     {
+      id: 'erectile',
+      label: 'Erectile Dysfunction',
+      icon: '💊',
+      keywords: ['erectile dysfunction', 'ed ', ' ed,', 'pde5', 'sildenafil', 'tadalafil'],
+    },
+    {
       id: 'fertility',
       label: 'Fertility & Infertility',
       icon: '🌱',
       keywords: ['fertility', 'infertility', 'ovulation induction', 'clomiphene', 'ivf', 'gonadotropin'],
-    },
-    {
-      id: 'obstetrics',
-      label: 'Obstetrics & Labour',
-      icon: '🤰',
-      keywords: ['labour', 'labor', 'oxytocic', 'uterotonic', 'tocolytic', 'preterm labour', 'postpartum haemorrhage', 'oxytocin'],
-    },
-    {
-      id: 'menstrual',
-      label: 'Menstrual Disorders',
-      icon: '🌸',
-      keywords: ['menstrual', 'dysmenorrhoea', 'dysmenorrhea', 'menorrhagia', 'amenorrhoea', 'endometriosis', 'pms'],
     },
     {
       id: 'menopause',
@@ -514,10 +508,16 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['menopause', 'hrt', 'hormone replacement', 'oestrogen', 'estrogen', 'hot flush', 'postmenopausal'],
     },
     {
-      id: 'erectile',
-      label: 'Erectile Dysfunction',
-      icon: '💊',
-      keywords: ['erectile dysfunction', 'ed ', ' ed,', 'pde5', 'sildenafil', 'tadalafil'],
+      id: 'menstrual',
+      label: 'Menstrual Disorders',
+      icon: '🌸',
+      keywords: ['menstrual', 'dysmenorrhoea', 'dysmenorrhea', 'menorrhagia', 'amenorrhoea', 'endometriosis', 'pms'],
+    },
+    {
+      id: 'obstetrics',
+      label: 'Obstetrics & Labour',
+      icon: '🤰',
+      keywords: ['labour', 'labor', 'oxytocic', 'uterotonic', 'tocolytic', 'preterm labour', 'postpartum haemorrhage', 'oxytocin'],
     },
     {
       id: 'sti',
@@ -529,16 +529,10 @@ export const SYSTEM_CONDITIONS = {
 
   sensory: [
     {
-      id: 'glaucoma',
-      label: 'Glaucoma',
-      icon: '👁️',
-      keywords: ['glaucoma', 'intraocular pressure', 'iop'],
-    },
-    {
-      id: 'eye_infection',
-      label: 'Eye Infections & Inflammation',
-      icon: '👁️',
-      keywords: ['conjunctivitis', 'keratitis', 'uveitis', 'ophthalmic', 'eye infection', 'eye drop'],
+      id: 'dry_eye',
+      label: 'Dry Eye & Lubricants',
+      icon: '💧',
+      keywords: ['dry eye', 'ocular lubricant', 'artificial tear'],
     },
     {
       id: 'ear',
@@ -547,25 +541,31 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['otitis', 'ear infection', 'otic', 'hearing'],
     },
     {
+      id: 'eye_infection',
+      label: 'Eye Infections & Inflammation',
+      icon: '👁️',
+      keywords: ['conjunctivitis', 'keratitis', 'uveitis', 'ophthalmic', 'eye infection', 'eye drop'],
+    },
+    {
+      id: 'glaucoma',
+      label: 'Glaucoma',
+      icon: '👁️',
+      keywords: ['glaucoma', 'intraocular pressure', 'iop'],
+    },
+    {
       id: 'nasal',
       label: 'Nasal & Sinus Disorders',
       icon: '👃',
       keywords: ['nasal', 'sinusitis', 'rhinitis', 'nasal polyp', 'decongestant nasal'],
     },
-    {
-      id: 'dry_eye',
-      label: 'Dry Eye & Lubricants',
-      icon: '💧',
-      keywords: ['dry eye', 'ocular lubricant', 'artificial tear'],
-    },
   ],
 
   nutritional: [
     {
-      id: 'vitamins',
-      label: 'Vitamins',
-      icon: '🌟',
-      keywords: ['vitamin a', 'vitamin b', 'vitamin c', 'vitamin d', 'vitamin e', 'vitamin k', 'thiamine', 'riboflavin', 'niacin', 'pyridoxine', 'cyanocobalamin', 'ascorbic acid', 'retinol', 'tocopherol'],
+      id: 'malnutrition',
+      label: 'Malnutrition & Deficiency',
+      icon: '🥗',
+      keywords: ['malnutrition', 'deficiency', 'nutritional supplement', 'kwashiorkor', 'marasmus', 'nutritional support'],
     },
     {
       id: 'minerals',
@@ -574,31 +574,25 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['iron', 'calcium', 'magnesium', 'zinc', 'phosphate', 'potassium', 'sodium', 'electrolyte', 'mineral'],
     },
     {
-      id: 'malnutrition',
-      label: 'Malnutrition & Deficiency',
-      icon: '🥗',
-      keywords: ['malnutrition', 'deficiency', 'nutritional supplement', 'kwashiorkor', 'marasmus', 'nutritional support'],
-    },
-    {
       id: 'tpn',
       label: 'Total Parenteral Nutrition',
       icon: '💉',
       keywords: ['parenteral nutrition', 'tpn', 'enteral nutrition', 'tube feed'],
     },
+    {
+      id: 'vitamins',
+      label: 'Vitamins',
+      icon: '🌟',
+      keywords: ['vitamin a', 'vitamin b', 'vitamin c', 'vitamin d', 'vitamin e', 'vitamin k', 'thiamine', 'riboflavin', 'niacin', 'pyridoxine', 'cyanocobalamin', 'ascorbic acid', 'retinol', 'tocopherol'],
+    },
   ],
 
   pain: [
     {
-      id: 'mild_pain',
-      label: 'Mild to Moderate Pain',
-      icon: '💊',
-      keywords: ['mild pain', 'moderate pain', 'paracetamol', 'acetaminophen', 'nsaid', 'ibuprofen', 'aspirin', 'analgesic', 'antipyretic'],
-    },
-    {
-      id: 'severe_pain',
-      label: 'Severe & Chronic Pain',
-      icon: '😣',
-      keywords: ['severe pain', 'chronic pain', 'opioid', 'morphine', 'fentanyl', 'oxycodone', 'tramadol', 'strong opioid'],
+      id: 'general_anaesthesia',
+      label: 'General Anaesthesia',
+      icon: '😴',
+      keywords: ['general anaesthetic', 'general anesthetic', 'induction', 'propofol', 'thiopental', 'volatile', 'anaesthetic induction'],
     },
     {
       id: 'local_anaesthesia',
@@ -607,10 +601,10 @@ export const SYSTEM_CONDITIONS = {
       keywords: ['local anaesthetic', 'local anesthetic', 'lignocaine', 'lidocaine', 'bupivacaine', 'nerve block', 'regional anaesthesia'],
     },
     {
-      id: 'general_anaesthesia',
-      label: 'General Anaesthesia',
-      icon: '😴',
-      keywords: ['general anaesthetic', 'general anesthetic', 'induction', 'propofol', 'thiopental', 'volatile', 'anaesthetic induction'],
+      id: 'mild_pain',
+      label: 'Mild to Moderate Pain',
+      icon: '💊',
+      keywords: ['mild pain', 'moderate pain', 'paracetamol', 'acetaminophen', 'nsaid', 'ibuprofen', 'aspirin', 'analgesic', 'antipyretic'],
     },
     {
       id: 'palliative',
@@ -618,9 +612,15 @@ export const SYSTEM_CONDITIONS = {
       icon: '🕊️',
       keywords: ['palliative', 'end of life', 'terminal', 'syringe driver', 'symptom control'],
     },
+    {
+      id: 'severe_pain',
+      label: 'Severe & Chronic Pain',
+      icon: '😣',
+      keywords: ['severe pain', 'chronic pain', 'opioid', 'morphine', 'fentanyl', 'oxycodone', 'tramadol', 'strong opioid'],
+    },
   ],
 
-};
+};;
 
 /**
  * Given a drug and a system ID, returns the list of condition labels
