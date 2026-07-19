@@ -11,13 +11,17 @@ import {
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
   Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
+  FileText, Stethoscope,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
+import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
+import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
 import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider } from '../context/AiProviderContext';
+import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -62,7 +66,52 @@ function downloadIncompleteCSV(incompleteDrugs, showToast) {
   link.remove();
 }
 
-// ── Editable fields ────────────────────────────────────────────────────────
+// ── Bulk-add conditions via CSV ────────────────────────────────────────────
+const CONDITIONS_CSV_HEADERS = ['system', 'label', 'id', 'icon', 'keywords'];
+const VALID_SYSTEM_IDS = new Set(ANATOMICAL_SYSTEMS.map(s => s.id));
+
+function downloadConditionsTemplate() {
+  const example = {
+    system: 'cardiovascular',
+    label: 'Example Condition',
+    id: '',
+    icon: '🩺',
+    keywords: 'example condition, sample keyword',
+  };
+  const csv = Papa.unparse([example], { columns: CONDITIONS_CSV_HEADERS });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'conditions_bulk_template.csv';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+// Validates + normalizes one parsed CSV row into a condition object (or an
+// error). Duplicate checking against what's already in the system (seeded +
+// custom) happens separately, once all rows are normalized, since it needs
+// the full existing-conditions picture.
+function normalizeConditionRow(row, rowNum) {
+  const system = (row.system || '').trim().toLowerCase();
+  const label = (row.label || '').trim();
+
+  if (!system) return { error: { row: rowNum, message: 'Missing required field: system' } };
+  if (!VALID_SYSTEM_IDS.has(system)) {
+    return { error: { row: rowNum, message: `Unknown system "${row.system}". Must be one of: ${[...VALID_SYSTEM_IDS].join(', ')}` } };
+  }
+  if (!label) return { error: { row: rowNum, message: 'Missing required field: label' } };
+
+  const id = (row.id || '').trim() || slugifyConditionLabel(label);
+  const icon = (row.icon || '').trim() || '🩺';
+  const keywords = (row.keywords || '').trim()
+    ? row.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    : [label.toLowerCase()];
+
+  return { condition: { system, id, label, icon, keywords } };
+}
+
+
 const EDITABLE_FIELDS = [
   { key: 'generic_name',          label: 'Generic Name',          type: 'text',     required: true  },
   { key: 'pronunciation',         label: 'Pronunciation (e.g. am-ox-i-SIL-in)', type: 'text', required: false },
@@ -134,6 +183,15 @@ export default function AdminPage() {
   const [expandedClass, setExpandedClass] = useState(null);
   const [classAiState,  setClassAiState]  = useState({});
   const [runningClass,  setRunningClass]  = useState(null);
+
+  // Conditions CSV bulk-add
+  const { customConditionsBySystem } = useCustomConditions();
+  const [condCsvFile,     setCondCsvFile]     = useState(null);
+  const [condCsvRows,     setCondCsvRows]     = useState([]);   // normalized rows, one per CSV line
+  const [condCsvErrors,   setCondCsvErrors]   = useState([]);   // hard parse/validation errors, block upload
+  const [condCsvUploading, setCondCsvUploading] = useState(false);
+  const [condCsvSummary,  setCondCsvSummary]  = useState(null); // { added, duplicates, errors }
+  const condCsvInputRef = useRef(null);
   const abortRef = useRef(false);
 
   // ── Load from Firestore ────────────────────────────────────────────────
@@ -213,6 +271,97 @@ export default function AdminPage() {
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4500);
+  }
+
+  function handleCondCsvFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setCondCsvFile(file);
+    setCondCsvSummary(null);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const errors = [];
+        const rows = [];
+        // Tracks system+id and system+normalized-label seen so far within
+        // this CSV, so an in-file duplicate is flagged (later row wins).
+        const seenInFile = new Set();
+
+        results.data.forEach((raw, i) => {
+          const rowNum = i + 2; // +1 for header row, +1 for 1-indexing
+          const { condition, error } = normalizeConditionRow(raw, rowNum);
+          if (error) { errors.push(error); return; }
+
+          const fileKey = `${condition.system}::${condition.id}`;
+          const fileLabelKey = `${condition.system}::${normalizeConditionLabel(condition.label)}`;
+          const isFileDup = seenInFile.has(fileKey) || seenInFile.has(fileLabelKey);
+          seenInFile.add(fileKey);
+          seenInFile.add(fileLabelKey);
+
+          // Duplicate against what's already saved (seeded or custom)
+          const baseForSystem   = SYSTEM_CONDITIONS[condition.system] || [];
+          const customForSystem = customConditionsBySystem[condition.system] || [];
+          const existingIds     = new Set([...baseForSystem, ...customForSystem].map(c => c.id));
+          const existingLabels  = new Set([...baseForSystem, ...customForSystem].map(c => normalizeConditionLabel(c.label)));
+          const isExistingDup = existingIds.has(condition.id) || existingLabels.has(normalizeConditionLabel(condition.label));
+
+          rows.push({
+            rowNum,
+            condition,
+            status: isFileDup ? 'file_duplicate' : isExistingDup ? 'existing_duplicate' : 'new',
+          });
+        });
+
+        setCondCsvRows(rows);
+        setCondCsvErrors(errors);
+      },
+      error: (err) => {
+        setCondCsvRows([]);
+        setCondCsvErrors([{ row: 0, message: 'CSV parsing error: ' + err.message }]);
+      },
+    });
+  }
+
+  async function handleCondCsvUpload() {
+    const toUpload = condCsvRows.filter(r => r.status === 'new');
+    if (toUpload.length === 0) {
+      showToast('Nothing to upload — all rows are duplicates or invalid.', 'error');
+      return;
+    }
+    setCondCsvUploading(true);
+    let added = 0, errorCount = 0;
+    try {
+      // Group by system so each system gets exactly one Firestore write.
+      const bySystem = new Map();
+      toUpload.forEach(r => {
+        if (!bySystem.has(r.condition.system)) bySystem.set(r.condition.system, []);
+        bySystem.get(r.condition.system).push(r.condition);
+      });
+
+      for (const [systemId, conditions] of bySystem) {
+        try {
+          await addCustomConditions(systemId, conditions);
+          added += conditions.length; // addCustomConditions silently drops any last-second dupes; close enough for a summary count
+        } catch (err) {
+          console.error('Conditions CSV upload failed for system', systemId, err);
+          errorCount += conditions.length;
+        }
+      }
+
+      setCondCsvSummary({
+        added,
+        duplicates: condCsvRows.length - toUpload.length,
+        errors: errorCount,
+      });
+      showToast(`Added ${added} condition${added !== 1 ? 's' : ''}${errorCount ? `, ${errorCount} failed` : ''}.`, errorCount ? 'error' : 'success');
+      setCondCsvFile(null);
+      setCondCsvRows([]);
+      setCondCsvErrors([]);
+      if (condCsvInputRef.current) condCsvInputRef.current.value = '';
+    } finally {
+      setCondCsvUploading(false);
+    }
   }
 
   function patchClassState(className, update) {
@@ -715,6 +864,7 @@ export default function AdminPage() {
         {[
           {id:'drugs', label:'Drug List',   icon:Database},
           {id:'ai',    label:'AI Generate', icon:Sparkles},
+          {id:'conditions', label:'Conditions CSV', icon:Stethoscope},
         ].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
@@ -1049,6 +1199,123 @@ export default function AdminPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══════════════════════ CONDITIONS CSV TAB ════════════════════════ */}
+      {activeTab === 'conditions' && (
+        <div className="space-y-4">
+          {/* Intro banner */}
+          <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <Stethoscope className="w-6 h-6 text-primary-600 flex-shrink-0 mt-0.5"/>
+              <div>
+                <h2 className="font-bold text-primary-900 mb-1">Bulk Add Conditions</h2>
+                <p className="text-sm text-primary-700 leading-relaxed">
+                  Upload a CSV to add conditions to any system's taxonomy in one go, instead of one at a time.
+                  Columns: <strong>system, label, id, icon, keywords</strong>. <code>system</code> and <code>label</code> are required;
+                  leave <code>id</code> blank to auto-generate it from the label, and put comma-separated keywords in a single
+                  quoted <code>keywords</code> cell (e.g. <code>"hypertension, high blood pressure"</code>).
+                  Rows that already exist (by id or label, in this system) are skipped automatically.
+                </p>
+                <button onClick={downloadConditionsTemplate} className="mt-3 flex items-center gap-1.5 text-xs font-bold text-primary-700 hover:text-primary-800">
+                  <Download className="w-3.5 h-3.5"/>Download CSV template
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* File picker */}
+          <div className="bg-white border border-drug-border rounded-xl p-5">
+            <label className="flex items-center gap-2 text-sm font-semibold text-drug-text mb-3 cursor-pointer">
+              <Upload className="w-4 h-4 text-primary-600"/>
+              {condCsvFile ? condCsvFile.name : 'Choose a CSV file…'}
+              <input ref={condCsvInputRef} type="file" accept=".csv,text/csv" onChange={handleCondCsvFile} className="hidden"/>
+            </label>
+            {!condCsvFile && (
+              <button onClick={()=>condCsvInputRef.current?.click()} className="px-4 py-2 bg-primary-600 text-white text-sm font-bold rounded-lg hover:bg-primary-700 flex items-center gap-2">
+                <FileText className="w-4 h-4"/>Select File
+              </button>
+            )}
+
+            {/* Parse errors (block upload) */}
+            {condCsvErrors.length > 0 && (
+              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs font-bold text-red-700 mb-1.5 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5"/>{condCsvErrors.length} error{condCsvErrors.length!==1?'s':''} — these rows will be skipped</p>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {condCsvErrors.map((e, i) => (
+                    <p key={i} className="text-xs text-red-600">Row {e.row}: {e.message}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Preview */}
+            {condCsvRows.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-4 mb-2 text-xs font-semibold flex-wrap">
+                  <span className="text-green-700">🆕 {condCsvRows.filter(r=>r.status==='new').length} new</span>
+                  <span className="text-amber-700">⏭ {condCsvRows.filter(r=>r.status!=='new').length} duplicate (will be skipped)</span>
+                </div>
+                <div className="border border-drug-border rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr className="text-left text-drug-muted">
+                        <th className="px-3 py-2">Row</th>
+                        <th className="px-3 py-2">System</th>
+                        <th className="px-3 py-2">Label</th>
+                        <th className="px-3 py-2">ID</th>
+                        <th className="px-3 py-2">Keywords</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {condCsvRows.map((r) => (
+                        <tr key={r.rowNum} className="border-t border-drug-border">
+                          <td className="px-3 py-1.5 text-drug-muted">{r.rowNum}</td>
+                          <td className="px-3 py-1.5">{r.condition.system}</td>
+                          <td className="px-3 py-1.5">{r.condition.icon} {r.condition.label}</td>
+                          <td className="px-3 py-1.5 text-drug-muted">{r.condition.id}</td>
+                          <td className="px-3 py-1.5 text-drug-muted truncate max-w-[200px]">{r.condition.keywords.join(', ')}</td>
+                          <td className="px-3 py-1.5">
+                            {r.status === 'new'
+                              ? <span className="text-green-700 font-semibold">New</span>
+                              : <span className="text-amber-700 font-semibold">Duplicate</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center gap-3 mt-4">
+                  <button
+                    onClick={handleCondCsvUpload}
+                    disabled={condCsvUploading || condCsvRows.every(r=>r.status!=='new')}
+                    className="px-4 py-2 bg-primary-600 text-white text-sm font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {condCsvUploading ? <><RefreshCw className="w-4 h-4 animate-spin"/>Uploading…</> : <><Upload className="w-4 h-4"/>Upload {condCsvRows.filter(r=>r.status==='new').length} condition{condCsvRows.filter(r=>r.status==='new').length!==1?'s':''}</>}
+                  </button>
+                  <button
+                    onClick={()=>{ setCondCsvFile(null); setCondCsvRows([]); setCondCsvErrors([]); setCondCsvSummary(null); if (condCsvInputRef.current) condCsvInputRef.current.value=''; }}
+                    disabled={condCsvUploading}
+                    className="px-4 py-2 border border-drug-border text-drug-text text-sm font-semibold rounded-lg hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Summary after upload */}
+            {condCsvSummary && (
+              <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+                ✅ Added {condCsvSummary.added} condition{condCsvSummary.added!==1?'s':''}
+                {condCsvSummary.duplicates > 0 && `, skipped ${condCsvSummary.duplicates} duplicate${condCsvSummary.duplicates!==1?'s':''}`}
+                {condCsvSummary.errors > 0 && `, ${condCsvSummary.errors} failed`}.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
