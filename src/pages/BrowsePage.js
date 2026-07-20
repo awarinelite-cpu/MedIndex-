@@ -970,6 +970,20 @@ export default function BrowsePage() {
       {/* AI condition insight — offered whenever there's an active search term */}
       {searchQuery.trim() && <ConditionInsightCard searchQuery={searchQuery} existingDrugs={ALL_DRUGS} />}
 
+      {/* AI lookup fallback — sits directly under the insight card, ahead of
+          any search results, regardless of whether the search matched
+          anything in the database. Loose/fuzzy matches (e.g. other
+          penicillins showing up for a search that doesn't exactly exist yet)
+          shouldn't hide the option to look this exact drug up with AI —
+          only an exact name match should. */}
+      {filterClass.trim() ? (
+        <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
+      ) : (
+        searchQuery.trim() && !hasExactDrugMatch && (
+          <AiSearchFallback searchQuery={searchQuery} />
+        )
+      )}
+
       {/* Results — grouped into the 21 formulary classes & their subclasses */}
       {filteredDrugs.length === 0 ? (
         <div className="text-center py-20">
@@ -979,28 +993,9 @@ export default function BrowsePage() {
                   className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">
             Clear filters
           </button>
-          {filterClass.trim()
-            ? <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
-            : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
       ) : (
-        <>
-          <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
-          {/* Loose/fuzzy matches (e.g. other penicillins showing up for a
-              search that doesn't exactly exist yet) shouldn't hide the option
-              to look this exact drug up with AI — only an exact name match should. */}
-          {searchQuery.trim() && !filterClass.trim() && !hasExactDrugMatch && (
-            <AiSearchFallback searchQuery={searchQuery} />
-          )}
-        </>
-      )}
-
-      {/* AI expansion — always show when browsing a specific class */}
-      {filteredDrugs.length > 0 && filterClass.trim() && (
-        <AiClassFallback
-          className={filterClass}
-          existingDrugs={classDrugs}
-        />
+        <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
       )}
 
       {/* Bulk fast Strength fill — admin only, for classes that are otherwise complete */}
