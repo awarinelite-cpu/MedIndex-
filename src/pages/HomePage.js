@@ -4,7 +4,7 @@ import {
   Search, Pill, Heart, Activity, Brain, Bone,
   Stethoscope, ChevronRight, Grid3X3, LayoutGrid,
   Soup, Droplets, Droplet, HeartHandshake, Sparkle,
-  Shield, Baby, Eye, Apple, Zap, ShieldCheck,
+  Shield, Baby, Eye, Apple, Zap, ShieldCheck, Siren,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -17,7 +17,7 @@ import AiSearchFallback from '../components/AiSearchFallback';
 const SYSTEM_ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope,
   Soup, Droplets, Droplet, HeartHandshake, Sparkle,
-  Shield, Baby, Eye, Apple, Zap,
+  Shield, Baby, Eye, Apple, Zap, Siren,
 };
 
 // 5 pinned systems + All Categories + More Systems (unchanged layout)

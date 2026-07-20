@@ -190,6 +190,17 @@ export const ANATOMICAL_SYSTEMS = [
       'local anesthetic', 'general anesthetic',
     ],
   },
+  {
+    id: 'emergency',
+    name: 'Trauma & Emergency',
+    icon: 'Siren',
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    keywords: [
+      'emergency', 'trauma', 'antidote', 'poisoning', 'toxin', 'overdose',
+      'anaphylaxis', 'shock', 'burn', 'antivenom', 'resuscitation',
+    ],
+  },
 ];
 
 // Systems pinned as their own dedicated homepage tile — the rest surface

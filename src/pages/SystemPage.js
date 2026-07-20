@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
-  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
+  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
   Pill, Grid3X3, List, ArrowLeft,
   Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen,
 } from 'lucide-react';
@@ -25,7 +25,7 @@ import ConditionSection from '../components/ConditionSection';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
-  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Grid3X3,
+  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Grid3X3, Siren,
 };
 
 

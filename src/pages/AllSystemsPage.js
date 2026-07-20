@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
-  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Pill, ArrowLeft,
+  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Pill, ArrowLeft, Siren,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -10,7 +10,7 @@ import { getSystemCounts } from '../utils/systemMatch';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
-  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap,
+  HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
 };
 
 export default function AllSystemsPage() {
