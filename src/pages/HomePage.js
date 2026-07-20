@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import { quickSearch } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
+import AiSearchFallback from '../components/AiSearchFallback';
 
 const SYSTEM_ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope,
@@ -55,6 +57,15 @@ export default function HomePage() {
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return quickSearch(ALL_DRUGS, searchQuery, 8);
+  }, [ALL_DRUGS, searchQuery]);
+
+  // Whether the search text is an exact drug name — if so, the instant
+  // dropdown above already covers it and the AI "not in our database yet"
+  // fallback below stays hidden; if not, this is likely a condition search.
+  const hasExactDrugMatch = useMemo(() => {
+    const q = normalizeConditionDrugName(searchQuery);
+    if (!q) return true;
+    return ALL_DRUGS.some(d => normalizeConditionDrugName(d.generic_name) === q);
   }, [ALL_DRUGS, searchQuery]);
 
   const handleSearch = (e) => {
@@ -161,6 +172,17 @@ export default function HomePage() {
           )}
         </div>
       </section>
+
+      {/* Condition insight — if the search matches (or is close to) a known
+          condition, show its clinical overview + drug list right here; if it
+          doesn't exist in the system yet, the AI lookup prompt appears
+          instead. Only the main hero search bar does this. */}
+      {searchQuery.trim() && (
+        <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
+          <ConditionInsightCard searchQuery={searchQuery} existingDrugs={ALL_DRUGS} />
+          {!hasExactDrugMatch && <AiSearchFallback searchQuery={searchQuery} />}
+        </section>
+      )}
 
       {/* Categories */}
       <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
