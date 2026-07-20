@@ -835,6 +835,9 @@ export default function BrowsePage() {
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { isAdmin, user } = useAuth();
   const ALL_CLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean))].sort(), [ALL_DRUGS]);
+  // Subclasses, listed separately so the dropdown can offer them alongside
+  // top-level classes (e.g. "Beta-blockers" under "Cardiovascular Agents").
+  const ALL_SUBCLASSES = useMemo(() => [...new Set(ALL_DRUGS.map(d => d.drug_subclass).filter(Boolean))].sort(), [ALL_DRUGS]);
 
   const { condition }             = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -951,8 +954,15 @@ export default function BrowsePage() {
             onChange={e => setFilterClass(e.target.value)}
             className="px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
           >
-            <option value="">All Classes</option>
-            {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="">All Classes &amp; Subclasses</option>
+            <optgroup label="Drug Classes">
+              {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+            {ALL_SUBCLASSES.length > 0 && (
+              <optgroup label="Drug Subclasses">
+                {ALL_SUBCLASSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </optgroup>
+            )}
           </select>
           <select
             value={filterStatus}

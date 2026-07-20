@@ -196,12 +196,24 @@ function scoreAndAnnotate(drug, q, variants) {
     }
   }
 
-  // ── 4. Drug class ─────────────────────────────────────────────────────────
+  // ── 4. Drug class / subclass ────────────────────────────────────────────
+  // Matches the combined "class + subclass" text. A full-phrase match scores
+  // highest; a match where every word of the query appears somewhere in the
+  // class/subclass text (any order) still counts, so a query like "beta
+  // blocker" matches a subclass of "Beta-blockers" and a subclass search
+  // works the same way a drug-name search does.
+  classLoop:
   for (const variant of variants) {
     if (textIncludes(cls, variant)) {
       score += 30;
-      if (!matchType) { matchType = 'class'; matchSnippet = drug.drug_class; }
-      break;
+      if (!matchType) { matchType = 'class'; matchSnippet = drug.drug_class || drug.drug_subclass; }
+      break classLoop;
+    }
+    const words = variant.split(' ').filter(Boolean);
+    if (words.length > 1 && words.every(w => textIncludes(cls, w))) {
+      score += 25;
+      if (!matchType) { matchType = 'class'; matchSnippet = drug.drug_subclass || drug.drug_class; }
+      break classLoop;
     }
   }
 

@@ -424,16 +424,21 @@ function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch,
 
   // Apply filters within this condition
   const filtered = useMemo(() => {
+    const q = nameSearch.trim().toLowerCase();
+    // If the search text matches this condition's own name, treat every drug
+    // in the condition as a match (searching "Hypertension" should surface
+    // the full Hypertension drug list, not just drugs whose own name/class
+    // happens to contain that word).
+    const conditionMatches = !!q && condition.label?.toLowerCase().includes(q);
     return drugs.filter(d => {
       const matchClass = !classFilter || d.drug_class === classFilter;
-      const q = nameSearch.trim().toLowerCase();
-      const matchName = !q ||
+      const matchName = !q || conditionMatches ||
         d.generic_name?.toLowerCase().includes(q) ||
         d.drug_subclass?.toLowerCase().includes(q) ||
         d.drug_class?.toLowerCase().includes(q);
       return matchClass && matchName;
     });
-  }, [drugs, classFilter, nameSearch]);
+  }, [drugs, classFilter, nameSearch, condition.label]);
 
   // Sub-group by drug class within the condition — always computed
   const byClass = useMemo(() => {
@@ -1367,18 +1372,35 @@ export default function SystemPage() {
     return [...s].sort();
   }, [drugs]);
 
+  // Condition ids whose own label matches the current search text — drugs
+  // tagged to one of these count as visible even if their own name/class
+  // doesn't contain the search text.
+  const matchingConditionIds = useMemo(() => {
+    const q = nameSearch.trim().toLowerCase();
+    if (!q) return new Set();
+    return new Set(
+      [...conditionGroups.values()]
+        .filter(e => e.condition.label?.toLowerCase().includes(q))
+        .map(e => e.condition.id)
+    );
+  }, [conditionGroups, nameSearch]);
+
   // Total visible after filters
   const visibleCount = useMemo(() => {
+    const q = nameSearch.trim().toLowerCase();
     return drugs.filter(d => {
       const matchClass = !classFilter || d.drug_class === classFilter;
-      const q = nameSearch.trim().toLowerCase();
-      const matchName = !q ||
+      if (!matchClass) return false;
+      if (!q) return true;
+      const matchName =
         d.generic_name?.toLowerCase().includes(q) ||
         d.drug_subclass?.toLowerCase().includes(q) ||
         d.drug_class?.toLowerCase().includes(q);
-      return matchClass && matchName;
+      if (matchName) return true;
+      const tags = Array.isArray(d.condition_tags) ? d.condition_tags : [];
+      return tags.some(id => matchingConditionIds.has(id));
     }).length;
-  }, [drugs, classFilter, nameSearch]);
+  }, [drugs, classFilter, nameSearch, matchingConditionIds]);
 
   // Same field set as the main Bulk Upload template (UploadPage.js), plus
   // condition_tags so drugs land under the right condition on this System
@@ -1553,7 +1575,20 @@ export default function SystemPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {[...conditionGroups.values()].map((entry) => (
+              {[...conditionGroups.values()]
+                .filter((entry) => {
+                  const q = nameSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  if (entry.condition.label?.toLowerCase().includes(q)) return true;
+                  return entry.drugs.some(d => {
+                    const matchClass = !classFilter || d.drug_class === classFilter;
+                    if (!matchClass) return false;
+                    return d.generic_name?.toLowerCase().includes(q) ||
+                      d.drug_subclass?.toLowerCase().includes(q) ||
+                      d.drug_class?.toLowerCase().includes(q);
+                  });
+                })
+                .map((entry) => (
                 <ConditionSection
                   key={entry.condition.id}
                   condition={entry.condition}
