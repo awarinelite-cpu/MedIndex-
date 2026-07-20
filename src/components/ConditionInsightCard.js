@@ -11,7 +11,9 @@ import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, fetchConditionIn
 import { parseConditionInsight, isNotAConditionText } from '../utils/parseConditionInsight';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
-import { useCustomConditions, normalizeConditionLabel, slugifyConditionLabel, addCustomConditions } from '../hooks/useCustomConditions';
+import { useCustomConditions, normalizeConditionLabel, slugifyConditionLabel, addCustomConditions, removeCondition } from '../hooks/useCustomConditions';
+import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import ConditionSection from './ConditionSection';
 
 /* ── AI condition insight: intro/etiology/pathophysiology + drug list ────── */
 /* Shown above search results whenever there's an active search query, so a  */
@@ -129,6 +131,21 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
     if (!localMatch) return [];
     return dbDrugs.filter(d => Array.isArray(d.condition_tags) && d.condition_tags.includes(localMatch.id));
   }, [dbDrugs, localMatch]);
+  const { clinicalInfoByCondition } = useConditionClinicalInfo();
+  const [conditionOpen, setConditionOpen] = useState(true);
+  useEffect(() => { setConditionOpen(true); }, [localMatch?.id]);
+  const [deletingCondition, setDeletingCondition] = useState(false);
+  const handleDeleteLocalCondition = async (condition) => {
+    if (!window.confirm(`Delete "${condition.label}"? This removes the condition card and unlinks its drugs. This cannot be undone.`)) return;
+    setDeletingCondition(true);
+    try {
+      await removeCondition(condition.systemId, condition.id);
+    } catch (err) {
+      console.error('Failed to delete condition:', err);
+    } finally {
+      setDeletingCondition(false);
+    }
+  };
 
   const cacheKey = `ai_condition_insight_${searchQuery.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle'); // idle | loading | done | error
@@ -288,47 +305,26 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
     if (localMatch) {
       const isExact = !!existingMatch;
       return (
-        <div className="mb-6 bg-white border border-drug-border rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between gap-3 px-5 py-4 bg-blue-50 border-b border-drug-border flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xl flex-shrink-0">{localMatch.icon || '📁'}</span>
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold text-drug-text truncate">{localMatch.label}</h2>
-                <p className="text-xs text-drug-muted truncate">
-                  {isExact ? 'Already tracked' : 'Closest existing match'} under {localMatch.systemName}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={runLookup}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg font-semibold text-xs hover:bg-violet-100 flex-shrink-0"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Get AI Insight
-            </button>
-          </div>
-          {localMatchDrugs.length > 0 ? (
-            <div>
-              {localMatchDrugs.map((d, i) => (
-                <Link
-                  key={d.id || d.firestoreId || i}
-                  to={`/drug/${d.id || d.firestoreId}`}
-                  className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-50 ${i !== localMatchDrugs.length - 1 ? 'border-b border-drug-border' : ''}`}
-                >
-                  <div className="p-1.5 rounded-lg flex-shrink-0 bg-green-50">
-                    <Pill className="w-4 h-4 text-green-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{d.generic_name}</div>
-                    <div className="text-xs text-drug-muted truncate">{d.drug_class}</div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="px-5 py-4 text-sm text-drug-muted">
-              No medications linked to "{localMatch.label}" yet. Get AI Insight to find and add some.
+        <div className="mb-6">
+          {!isExact && (
+            <p className="mb-2 px-1 text-xs text-drug-muted">
+              🔎 Closest existing match for "{searchQuery}"
             </p>
           )}
+          <ConditionSection
+            condition={localMatch}
+            drugs={localMatchDrugs}
+            viewMode="list"
+            classFilter=""
+            nameSearch=""
+            isOpen={conditionOpen}
+            onToggle={() => setConditionOpen(o => !o)}
+            systemName={localMatch.systemName}
+            onDrugRemoved={() => {}}
+            clinicalInfo={clinicalInfoByCondition[localMatch.id]}
+            onDeleteCondition={handleDeleteLocalCondition}
+            isDeleting={deletingCondition}
+          />
         </div>
       );
     }
