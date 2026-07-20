@@ -94,7 +94,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
       const hidden = new Set(hiddenConditionIdsBySystem[system.id] || []);
       for (const c of [...base, ...custom]) {
         if (hidden.has(c.id)) continue;
-        list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label, keywords: c.keywords });
+        list.push({ systemId: system.id, systemName: system.name, id: c.id, label: c.label, icon: c.icon, keywords: c.keywords });
       }
     }
     list.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'en', { sensitivity: 'base' }));
@@ -118,6 +118,17 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
   useEffect(() => {
     setFuzzyDecision('pending');
   }, [fuzzyMatch?.id, searchQuery]);
+
+  // The condition to show *from the local database* before ever touching
+  // AI: an exact label match if there is one, otherwise the best fuzzy
+  // match (already gated at score >= 0.5 above). This is read-only display,
+  // so the lower bar used for the fuzzy *suggestion* banner elsewhere is
+  // fine here too — nothing gets written to the taxonomy just by viewing it.
+  const localMatch = existingMatch || fuzzyMatch;
+  const localMatchDrugs = useMemo(() => {
+    if (!localMatch) return [];
+    return dbDrugs.filter(d => Array.isArray(d.condition_tags) && d.condition_tags.includes(localMatch.id));
+  }, [dbDrugs, localMatch]);
 
   const cacheKey = `ai_condition_insight_${searchQuery.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle'); // idle | loading | done | error
@@ -274,6 +285,53 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
   if (!searchQuery.trim()) return null;
 
   if (state === 'idle') {
+    if (localMatch) {
+      const isExact = !!existingMatch;
+      return (
+        <div className="mb-6 bg-white border border-drug-border rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-5 py-4 bg-blue-50 border-b border-drug-border flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xl flex-shrink-0">{localMatch.icon || '📁'}</span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-drug-text truncate">{localMatch.label}</h2>
+                <p className="text-xs text-drug-muted truncate">
+                  {isExact ? 'Already tracked' : 'Closest existing match'} under {localMatch.systemName}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={runLookup}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg font-semibold text-xs hover:bg-violet-100 flex-shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Get AI Insight
+            </button>
+          </div>
+          {localMatchDrugs.length > 0 ? (
+            <div>
+              {localMatchDrugs.map((d, i) => (
+                <Link
+                  key={d.id || d.firestoreId || i}
+                  to={`/drug/${d.id || d.firestoreId}`}
+                  className={`flex items-center gap-3 px-5 py-3 hover:bg-gray-50 ${i !== localMatchDrugs.length - 1 ? 'border-b border-drug-border' : ''}`}
+                >
+                  <div className="p-1.5 rounded-lg flex-shrink-0 bg-green-50">
+                    <Pill className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{d.generic_name}</div>
+                    <div className="text-xs text-drug-muted truncate">{d.drug_class}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="px-5 py-4 text-sm text-drug-muted">
+              No medications linked to "{localMatch.label}" yet. Get AI Insight to find and add some.
+            </p>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="mb-6 bg-violet-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
