@@ -878,6 +878,12 @@ export default function BrowsePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, filterClass, filterStatus]);
 
+  const hasExactDrugMatch = useMemo(() => {
+    const q = normalizeConditionDrugName(searchQuery);
+    if (!q) return true; // no query — nothing to offer a lookup for
+    return ALL_DRUGS.some(d => normalizeConditionDrugName(d.generic_name) === q);
+  }, [ALL_DRUGS, searchQuery]);
+
   const filteredDrugs = useMemo(() => {
     const fc = filterClass.trim().toLowerCase();
 
@@ -978,7 +984,15 @@ export default function BrowsePage() {
             : <AiSearchFallback searchQuery={searchQuery} />}
         </div>
       ) : (
-        <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
+        <>
+          <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
+          {/* Loose/fuzzy matches (e.g. other penicillins showing up for a
+              search that doesn't exactly exist yet) shouldn't hide the option
+              to look this exact drug up with AI — only an exact name match should. */}
+          {searchQuery.trim() && !filterClass.trim() && !hasExactDrugMatch && (
+            <AiSearchFallback searchQuery={searchQuery} />
+          )}
+        </>
       )}
 
       {/* AI expansion — always show when browsing a specific class */}
