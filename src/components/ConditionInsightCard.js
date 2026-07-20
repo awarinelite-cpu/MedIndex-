@@ -467,7 +467,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
                     <Pill className={`w-4 h-4 ${isNew ? 'text-violet-500' : 'text-green-600'}`} />
                   </div>
                   <Link
-                    to={existing ? `/drug/${existing.id || existing.firestoreId}` : `/browse?q=${encodeURIComponent(item.name)}`}
+                    to={existing ? `/drug/${existing.id || existing.firestoreId}` : `/?q=${encodeURIComponent(item.name)}`}
                     className="flex-1 min-w-0 hover:underline"
                   >
                     <div className="font-semibold text-sm truncate">{item.name}</div>
