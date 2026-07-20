@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -382,10 +382,48 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
+  const [isEditingLabel, setIsEditingLabel] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(condition.label);
+  const [renameFieldError, setRenameFieldError] = useState('');
+
+  // Keep the draft in sync if the label changes from elsewhere (e.g. another
+  // admin renames it while this one isn't actively editing).
+  useEffect(() => {
+    if (!isEditingLabel) setDraftLabel(condition.label);
+  }, [condition.label, isEditingLabel]);
+
+  const startEditingLabel = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDraftLabel(condition.label);
+    setRenameFieldError('');
+    setIsEditingLabel(true);
+  };
+  const cancelEditingLabel = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setDraftLabel(condition.label);
+    setRenameFieldError('');
+    setIsEditingLabel(false);
+  };
+  const submitEditingLabel = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!onRenameCondition || isRenaming) return;
+    const trimmed = draftLabel.trim();
+    if (!trimmed) { setRenameFieldError('Name cannot be empty.'); return; }
+    if (trimmed === condition.label.trim()) { setIsEditingLabel(false); return; }
+    try {
+      await onRenameCondition(condition, trimmed);
+      setIsEditingLabel(false);
+      setRenameFieldError('');
+    } catch (err) {
+      // Keep the editor open with the attempted name so the admin can fix
+      // and retry (e.g. a duplicate-name collision) instead of losing it.
+      setRenameFieldError(err.message || 'Rename failed.');
+    }
+  };
 
   // Admin: remove a drug from THIS condition by pulling this condition's id
   // out of the drug's condition_tags. Since display is strictly tag-based,
@@ -443,23 +481,79 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   return (
     <div className={`bg-white border rounded-2xl overflow-hidden ${isEmpty ? 'border-dashed border-drug-border' : 'border-drug-border shadow-sm'}`}>
       {/* Header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (!isEditingLabel) onToggle(); }}
+        onKeyDown={(e) => { if (!isEditingLabel && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggle(); } }}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className="text-xl">{condition.icon}</span>
-          <div className="text-left">
-            <div className="font-bold text-drug-text">{condition.label}</div>
-            <div className="text-xs text-drug-muted mt-0.5">
-              {isEmpty
-                ? 'No drugs saved yet — tap to generate with AI'
-                : `${filtered.length} drug${filtered.length !== 1 ? 's' : ''} · ${byClass.length} class${byClass.length !== 1 ? 'es' : ''}`}
-            </div>
+          <div className="text-left min-w-0 flex-1">
+            {isEditingLabel ? (
+              <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  type="text"
+                  value={draftLabel}
+                  onChange={(e) => setDraftLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitEditingLabel(e);
+                    if (e.key === 'Escape') cancelEditingLabel(e);
+                  }}
+                  disabled={isRenaming}
+                  className="min-w-0 flex-1 font-bold text-drug-text text-sm border border-primary-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-200 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={submitEditingLabel}
+                  disabled={isRenaming}
+                  title="Save name"
+                  className="p-1.5 rounded-lg hover:bg-green-50 disabled:opacity-50 flex-shrink-0"
+                >
+                  <Check className="w-4 h-4 text-green-600" />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingLabel}
+                  disabled={isRenaming}
+                  title="Cancel"
+                  className="p-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 flex-shrink-0"
+                >
+                  <X className="w-4 h-4 text-drug-muted" />
+                </button>
+              </div>
+            ) : (
+              <div className="font-bold text-drug-text truncate">{condition.label}</div>
+            )}
+            {renameFieldError && (
+              <div className="text-xs text-red-600 mt-0.5">{renameFieldError}</div>
+            )}
+            {!isEditingLabel && (
+              <div className="text-xs text-drug-muted mt-0.5">
+                {isEmpty
+                  ? 'No drugs saved yet — tap to generate with AI'
+                  : `${filtered.length} drug${filtered.length !== 1 ? 's' : ''} · ${byClass.length} class${byClass.length !== 1 ? 'es' : ''}`}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {isAdmin && onDeleteCondition && condition.id !== '_other' && (
+          {isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={`Edit ${condition.label}`}
+              onClick={startEditingLabel}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startEditingLabel(e); }}
+              className={`p-1.5 rounded-lg hover:bg-primary-50 ${isRenaming ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Edit condition name"
+            >
+              <Pencil className="w-4 h-4 text-primary-600" />
+            </span>
+          )}
+          {isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -472,11 +566,11 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Trash2 className="w-4 h-4 text-red-500" />
             </span>
           )}
-          {open
+          {!isEditingLabel && (open
             ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
-            : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />}
+            : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />)}
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="border-t border-drug-border">

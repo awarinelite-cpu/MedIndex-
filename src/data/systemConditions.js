@@ -4325,10 +4325,16 @@ export function getDrugConditions(drug, systemId, extraConditions = []) {
  * Returns: Map<conditionId, { condition, drugs[] }>
  * A drug can appear in multiple conditions.
  */
-export function groupDrugsByCondition(drugs, systemId, extraConditions = [], hiddenIds = []) {
+export function groupDrugsByCondition(drugs, systemId, extraConditions = [], hiddenIds = [], labelOverrides = {}) {
   const baseConditions = SYSTEM_CONDITIONS[systemId] || [];
   const hidden = new Set(hiddenIds);
-  const rawConditions = [...baseConditions, ...extraConditions].filter(c => !hidden.has(c.id));
+  const rawConditions = [...baseConditions, ...extraConditions]
+    .filter(c => !hidden.has(c.id))
+    // Apply any admin rename — labelOverrides only ever affects seeded
+    // (systemConditions.js) conditions; custom/admin-added conditions store
+    // their edited label directly on the condition object itself (see
+    // renameCondition in useCustomConditions.js), so this is a no-op for them.
+    .map(c => (labelOverrides[c.id] ? { ...c, label: labelOverrides[c.id] } : c));
   if (rawConditions.length === 0) return new Map();
 
   // Defensively dedupe the condition list itself — by id first, then by

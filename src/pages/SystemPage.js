@@ -17,7 +17,7 @@ import { groupDrugsByCondition, getDrugConditions, SYSTEM_CONDITIONS } from '../
 import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo';
 import { fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
-import { useCustomConditions, addCustomConditions, removeCondition, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { useCustomConditions, addCustomConditions, removeCondition, renameCondition, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -599,7 +599,7 @@ export default function SystemPage() {
   const { provider }  = useAiProvider();
   const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
-  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
+  const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
   const { clinicalInfoByCondition } = useConditionClinicalInfo();
   // Track drug↔condition links the admin just removed, so they disappear
   // immediately without waiting for a Firestore refetch. Keyed "drugId::condId".
@@ -624,6 +624,22 @@ export default function SystemPage() {
       setDeletingConditionId(null);
     }
   };
+  const [renamingConditionId, setRenamingConditionId] = useState(null);
+  const [renameError, setRenameError] = useState('');
+  const handleRenameCondition = async (condition, newLabel) => {
+    if (newLabel.trim() === condition.label.trim()) return; // no-op
+    setRenamingConditionId(condition.id);
+    setRenameError('');
+    try {
+      await renameCondition(systemId, condition.id, newLabel);
+      // Live listener picks up the change and re-renders automatically.
+    } catch (err) {
+      setRenameError(`RENAME FAILED: ${err.code ? `[${err.code}] ` : ''}${err.message || 'Unknown error'}`);
+      throw err; // let the inline editor keep its edit state open on failure
+    } finally {
+      setRenamingConditionId(null);
+    }
+  };
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
@@ -641,6 +657,10 @@ export default function SystemPage() {
   const hiddenIds = useMemo(
     () => hiddenConditionIdsBySystem[systemId] || [],
     [hiddenConditionIdsBySystem, systemId]
+  );
+  const labelOverrides = useMemo(
+    () => labelOverridesBySystem[systemId] || {},
+    [labelOverridesBySystem, systemId]
   );
 
   // All drugs in this system. A drug qualifies either by its drug_class
@@ -664,8 +684,8 @@ export default function SystemPage() {
 
   // Group by condition
   const conditionGroups = useMemo(
-    () => groupDrugsByCondition(drugs, systemId, extraConditions, hiddenIds),
-    [drugs, systemId, extraConditions, hiddenIds]
+    () => groupDrugsByCondition(drugs, systemId, extraConditions, hiddenIds, labelOverrides),
+    [drugs, systemId, extraConditions, hiddenIds, labelOverrides]
   );
 
   const [retryingEmpty, setRetryingEmpty] = useState(false);
@@ -1018,12 +1038,17 @@ export default function SystemPage() {
                   clinicalInfo={clinicalInfoByCondition[entry.condition.id]}
                   onDeleteCondition={handleDeleteCondition}
                   isDeleting={deletingConditionId === entry.condition.id}
+                  onRenameCondition={handleRenameCondition}
+                  isRenaming={renamingConditionId === entry.condition.id}
                 />
               ))}
             </div>
           )}
           {deleteError && (
             <p className="mt-3 text-xs text-red-600 font-medium">{deleteError}</p>
+          )}
+          {renameError && (
+            <p className="mt-3 text-xs text-red-600 font-medium">{renameError}</p>
           )}
 
           <AiSystemConditionsFallback

@@ -30,6 +30,18 @@ function notifyAllHidden(data) {
   hiddenSubscribers.forEach(fn => fn(data));
 }
 
+// Same pattern again, for renamed *seeded* conditions — systemConditions.js
+// can't be mutated at runtime, so an admin rename of a seeded condition is
+// recorded here as { [systemId]: { [conditionId]: newLabel } } instead, and
+// applied on top of the static label everywhere conditions are read.
+let liveOverrides        = null;
+const overridesSubscribers = new Set();
+
+function notifyAllOverrides(data) {
+  liveOverrides = data;
+  overridesSubscribers.forEach(fn => fn(data));
+}
+
 function ensureListener() {
   if (unsubscribe) return;
   unsubscribe = onSnapshot(
@@ -38,11 +50,13 @@ function ensureListener() {
       const data = snap.exists() ? snap.data() : {};
       notifyAll(data.systems || {});
       notifyAllHidden(data.hidden || {});
+      notifyAllOverrides(data.overrides || {});
     },
     (err) => {
       console.error('[useCustomConditions] listen error:', err.code, err.message);
       notifyAll(liveData || {});
       notifyAllHidden(liveHidden || {});
+      notifyAllOverrides(liveOverrides || {});
     }
   );
 }
@@ -63,10 +77,12 @@ export function normalizeConditionLabel(label) {
 }
 
 // Returns { customConditionsBySystem: { [systemId]: [{id,label,icon,keywords}] },
-//           hiddenConditionIdsBySystem: { [systemId]: [id, ...] }, loading }
+//           hiddenConditionIdsBySystem: { [systemId]: [id, ...] },
+//           labelOverridesBySystem: { [systemId]: { [id]: newLabel } }, loading }
 export function useCustomConditions() {
   const [data, setData]           = useState(liveData || {});
   const [hidden, setHidden]       = useState(liveHidden || {});
+  const [overrides, setOverrides] = useState(liveOverrides || {});
   const [loading, setLoading]     = useState(!liveData);
 
   useEffect(() => {
@@ -75,22 +91,31 @@ export function useCustomConditions() {
 
     const setter = (d) => { setData(d); setLoading(false); };
     const hiddenSetter = (h) => setHidden(h);
+    const overridesSetter = (o) => setOverrides(o);
     subscribers.add(setter);
     hiddenSubscribers.add(hiddenSetter);
+    overridesSubscribers.add(overridesSetter);
 
     return () => {
       subscribers.delete(setter);
       hiddenSubscribers.delete(hiddenSetter);
+      overridesSubscribers.delete(overridesSetter);
       if (subscribers.size === 0 && unsubscribe) {
         unsubscribe();
         unsubscribe = null;
         liveData = null;
         liveHidden = null;
+        liveOverrides = null;
       }
     };
   }, []);
 
-  return { customConditionsBySystem: data, hiddenConditionIdsBySystem: hidden, loading };
+  return {
+    customConditionsBySystem: data,
+    hiddenConditionIdsBySystem: hidden,
+    labelOverridesBySystem: overrides,
+    loading,
+  };
 }
 
 export function slugifyConditionLabel(label) {
@@ -210,6 +235,73 @@ export async function removeCondition(systemId, conditionId) {
     console.log('[removeCondition] ✅ removed', conditionId, 'from', systemId, isCustom ? '(custom, deleted)' : '(seeded, hidden)');
   } catch (err) {
     console.error('[removeCondition] ❌ Firestore error:', err.code, err.message);
+    throw err;
+  }
+}
+
+// Renames a condition's display label.
+//   - If it's a custom (admin/AI-added) condition, its label is updated
+//     directly in the Firestore "systems" list entry.
+//   - If it's one of the seeded conditions from systemConditions.js (which
+//     can't be mutated at runtime), the new label is instead recorded in a
+//     Firestore "overrides" map for that system/condition id, and applied
+//     on top of the static label by groupDrugsByCondition.
+// The condition's id and keywords are untouched either way, so existing
+// drug tags and AI keyword matching keep working under the new name.
+export async function renameCondition(systemId, conditionId, newLabel) {
+  const trimmed = String(newLabel || '').trim();
+  if (!trimmed) throw new Error('Condition name cannot be empty.');
+
+  await auth.authStateReady();
+
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Not signed in. Please sign in as admin and try again.');
+  }
+
+  const ref = doc(db, ...DOC_REF_PATH);
+
+  try {
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? snap.data() : {};
+    const systems   = current.systems   || {};
+    const overrides = current.overrides || {};
+
+    const existingForSystem = systems[systemId] || [];
+    const isCustom = existingForSystem.some(c => c.id === conditionId);
+
+    // Reject a rename that collides with another condition already in this
+    // system (seeded or custom), same case/punctuation-insensitive rule
+    // used when adding conditions — otherwise two cards could end up with
+    // identical labels.
+    const baseForSystem = SYSTEM_CONDITIONS[systemId] || [];
+    const systemOverrides = overrides[systemId] || {};
+    const otherLabels = new Set(
+      [...baseForSystem, ...existingForSystem]
+        .filter(c => c.id !== conditionId)
+        .map(c => normalizeConditionLabel(systemOverrides[c.id] || c.label))
+    );
+    if (otherLabels.has(normalizeConditionLabel(trimmed))) {
+      throw new Error(`Another condition in this system is already named "${trimmed}".`);
+    }
+
+    const update = {};
+    if (isCustom) {
+      update.systems = {
+        ...systems,
+        [systemId]: existingForSystem.map(c => c.id === conditionId ? { ...c, label: trimmed } : c),
+      };
+    } else {
+      update.overrides = {
+        ...overrides,
+        [systemId]: { ...systemOverrides, [conditionId]: trimmed },
+      };
+    }
+
+    await setDoc(ref, { ...update, last_updated: serverTimestamp() }, { merge: true });
+    console.log('[renameCondition] ✅ renamed', conditionId, 'to', trimmed, 'in', systemId, isCustom ? '(custom)' : '(seeded, override)');
+  } catch (err) {
+    console.error('[renameCondition] ❌ Firestore error:', err.code, err.message);
     throw err;
   }
 }
