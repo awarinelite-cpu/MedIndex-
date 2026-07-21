@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
   Pill, Grid3X3, List, ArrowLeft,
-  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge,
+  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge, X,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -1008,6 +1008,23 @@ export default function SystemPage() {
         </div>
       )}
 
+      {/* Floating merge-mode toggle — fixed to the bottom of the screen so it
+          stays reachable while scrolling through a long condition list,
+          instead of only being available in the button row up top. Hidden
+          once merge mode is active since the fixed selection/confirm bar
+          (further down) takes over that space and has its own Cancel. */}
+      {isAdmin && !loading && !mergeMode && (
+        <button
+          onClick={toggleMergeMode}
+          title="Select two or more condition cards that represent the same clinical entity and fold them into one"
+          className="fixed right-4 z-40 inline-flex items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-amber-600 text-white text-sm font-semibold shadow-lg hover:bg-amber-700"
+          style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+        >
+          <Merge className="w-4 h-4" />
+          Merge Duplicates
+        </button>
+      )}
+
       {!clinicalSweep.running && clinicalSweep.total > 0 && clinicalSweep.errors > 0 && (
         <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           ⚠ Clinical info: {clinicalSweep.total - clinicalSweep.errors} of {clinicalSweep.total} generated successfully, {clinicalSweep.errors} failed — click "Add Clinical Info to All" again to retry the rest.
@@ -1131,6 +1148,15 @@ export default function SystemPage() {
           {mergeMode && (
             <div className="fixed left-0 right-0 bottom-0 z-40 px-4 sm:px-6 lg:px-8 pb-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
               <div className="max-w-7xl mx-auto p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-lg">
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wide text-amber-700">Merge mode</span>
+                  <button
+                    onClick={toggleMergeMode}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                  >
+                    <X className="w-3.5 h-3.5" /> Cancel
+                  </button>
+                </div>
                 {selectedForMerge.size === 0 && (
                   <p className="text-sm text-amber-800">
                     Tap two or more condition cards above that represent the same clinical entity.
