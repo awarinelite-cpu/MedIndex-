@@ -382,7 +382,7 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
@@ -551,6 +551,20 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             )}
             {renameFieldError && (
               <div className="text-xs text-red-600 mt-0.5">{renameFieldError}</div>
+            )}
+            {!isEditingLabel && systemName && (
+              <div className="text-[11px] text-drug-muted/80 mt-0.5 truncate">
+                {systemId ? (
+                  <Link
+                    to={`/system/${systemId}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="hover:text-primary-600 hover:underline"
+                    title={`Go to the ${systemName} system page`}
+                  >
+                    {systemName}
+                  </Link>
+                ) : systemName}
+              </div>
             )}
             {!isEditingLabel && (
               <div className="text-xs text-drug-muted mt-0.5">

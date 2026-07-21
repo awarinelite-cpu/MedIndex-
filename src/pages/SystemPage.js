@@ -1125,6 +1125,7 @@ export default function SystemPage() {
                   isOpen={openConditionId === entry.condition.id}
                   onToggle={() => setOpenConditionId(o => o === entry.condition.id ? null : entry.condition.id)}
                   systemName={system.name}
+                  systemId={systemId}
                   onDrugRemoved={handleDrugRemoved}
                   clinicalInfo={clinicalInfoByCondition[entry.condition.id]}
                   onDeleteCondition={handleDeleteCondition}

@@ -339,6 +339,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
             isOpen={conditionOpen}
             onToggle={() => setConditionOpen(o => !o)}
             systemName={localMatch.systemName}
+            systemId={localMatch.systemId}
             onDrugRemoved={() => {}}
             clinicalInfo={clinicalInfoByCondition[localMatch.id]}
             onDeleteCondition={handleDeleteLocalCondition}
