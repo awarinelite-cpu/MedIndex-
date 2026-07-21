@@ -242,9 +242,10 @@ export async function fetchConditionClassification({ conditionLabel, systemOptio
     full += decoder.decode(value, { stream: true });
   }
 
-  const systemMatch   = full.match(/System:\s*([a-z_]+)/i);
-  const iconMatch     = full.match(/Icon:\s*(\S+)/u);
-  const keywordsMatch = full.match(/Keywords:\s*(.+)/i);
+  const clean = full.replace(/\*\*/g, '').replace(/`/g, '');
+  const systemMatch   = clean.match(/System:\s*([a-z_]+)/i);
+  const iconMatch     = clean.match(/Icon:\s*(\S+)/u);
+  const keywordsMatch = clean.match(/Keywords:\s*(.+)/i);
 
   const systemId = systemMatch ? systemMatch[1].trim().toLowerCase() : '';
   if (!systemId || !Array.isArray(systemOptions) || !systemOptions.some(s => s.id === systemId)) {

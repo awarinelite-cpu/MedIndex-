@@ -256,6 +256,8 @@ Within each section, bold sub-labels using **double asterisks** where useful, an
 
     prompt = `You are filing the clinical condition "${conditionLabel}" into a drug reference app's body-system taxonomy. Choose the ONE best-fitting system id from this exact list: ${optionsList}
 
+Some conditions plausibly fit more than one system — pick the single most clinically standard one anyway. Do not explain your reasoning, do not hedge, and do not add any text before or after the three lines below.
+
 Reply with EXACTLY these three lines and nothing else:
 System: <the chosen system id, exactly as given above>
 Icon: <a single relevant emoji for this condition>
@@ -387,12 +389,17 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 200 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".
             // Supported on gemini-2.5-flash / flash-lite / pro.
-            tools: [{ google_search: {} }],
+            // Skipped for classify_condition: it's just picking from a fixed,
+            // already-known list of system ids, never needs a web lookup —
+            // and grounded responses tend to add search-planning/citation
+            // preamble that eats into that mode's small token budget and can
+            // push the required "System:" line past the truncation point.
+            ...(mode !== 'classify_condition' ? { tools: [{ google_search: {} }] } : {}),
           }),
         }
       );
