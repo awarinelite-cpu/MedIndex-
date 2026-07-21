@@ -950,7 +950,7 @@ export default function SystemPage() {
   const Icon = ICONS[system.icon] || Pill;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
         className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
@@ -959,53 +959,54 @@ export default function SystemPage() {
       </button>
 
       {/* System header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className={`p-3 rounded-xl ${system.bg}`}>
+      <div className="flex items-start gap-4 mb-3">
+        <div className={`p-3 rounded-xl ${system.bg} flex-shrink-0`}>
           <Icon className={`w-7 h-7 ${system.color}`} />
         </div>
-        <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold">{system.name}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold break-words">{system.name}</h1>
           <p className="text-drug-muted mt-0.5 text-sm">
             {loading ? 'Loading…' : `${drugs.length} medication${drugs.length !== 1 ? 's' : ''} · ${conditionGroups.size} condition${conditionGroups.size !== 1 ? 's' : ''} · ${allClasses.length} drug class${allClasses.length !== 1 ? 'es' : ''}`}
           </p>
         </div>
-        {isAdmin && !loading && (
+      </div>
+
+      {isAdmin && !loading && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6">
           <button
             onClick={handleRetryEmptyConditions}
             disabled={retryingEmpty}
             title="Re-queue any conditions in this system that still have zero drugs — useful if an earlier auto-fill run stalled partway through"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50 flex-shrink-0"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${retryingEmpty ? 'animate-spin' : ''}`} />
             {retryingEmpty ? 'Retrying…' : 'Retry empty conditions'}
           </button>
-        )}
-        {isAdmin && !loading && (missingClinicalInfoCount > 0 || clinicalSweep.running) && (
-          <button
-            onClick={handleGenerateAllClinicalInfo}
-            disabled={clinicalSweep.running}
-            title="Generate the clinical info panel (introduction, types, organ system, etiology, pathophysiology, clinical manifestation, diagnosis, and management) for every condition here that doesn't have one yet"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50 flex-shrink-0"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            {clinicalSweep.running
-              ? `Adding Clinical Info ${clinicalSweep.done}/${clinicalSweep.total}…`
-              : `Add Clinical Info to All (${missingClinicalInfoCount})`}
-          </button>
-        )}
-        {isAdmin && !loading && (
+          {(missingClinicalInfoCount > 0 || clinicalSweep.running) && (
+            <button
+              onClick={handleGenerateAllClinicalInfo}
+              disabled={clinicalSweep.running}
+              title="Generate the clinical info panel (introduction, types, organ system, etiology, pathophysiology, clinical manifestation, diagnosis, and management) for every condition here that doesn't have one yet"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              {clinicalSweep.running
+                ? `Adding Clinical Info ${clinicalSweep.done}/${clinicalSweep.total}…`
+                : `Add Clinical Info to All (${missingClinicalInfoCount})`}
+            </button>
+          )}
           <button
             onClick={toggleMergeMode}
             title="Select two or more condition cards that represent the same clinical entity and fold them into one"
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 flex-shrink-0 ${
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 ${
               mergeMode ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
             }`}
           >
             <Merge className="w-3.5 h-3.5" />
             {mergeMode ? 'Cancel Merge' : 'Merge Duplicates'}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {!clinicalSweep.running && clinicalSweep.total > 0 && clinicalSweep.errors > 0 && (
         <div className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
