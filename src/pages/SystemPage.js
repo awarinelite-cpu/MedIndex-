@@ -950,7 +950,7 @@ export default function SystemPage() {
   const Icon = ICONS[system.icon] || Pill;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${mergeMode ? 'pb-40' : ''}`}>
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
         className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
@@ -1129,48 +1129,50 @@ export default function SystemPage() {
           )}
 
           {mergeMode && (
-            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl sticky bottom-4">
-              {selectedForMerge.size === 0 && (
-                <p className="text-sm text-amber-800">
-                  Tap two or more condition cards above that represent the same clinical entity.
-                </p>
-              )}
-              {selectedForMerge.size === 1 && (
-                <p className="text-sm text-amber-800">
-                  Select at least one more card to merge with — 1 selected so far.
-                </p>
-              )}
-              {selectedForMerge.size >= 2 && (
-                <>
-                  <p className="text-sm font-semibold text-amber-900 mb-2">
-                    {selectedForMerge.size} selected — choose which one to keep:
+            <div className="fixed left-0 right-0 bottom-0 z-40 px-4 sm:px-6 lg:px-8 pb-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+              <div className="max-w-7xl mx-auto p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-lg">
+                {selectedForMerge.size === 0 && (
+                  <p className="text-sm text-amber-800">
+                    Tap two or more condition cards above that represent the same clinical entity.
                   </p>
-                  <div className="space-y-1.5 mb-3">
-                    {[...conditionGroups.values()]
-                      .filter(e => selectedForMerge.has(e.condition.id))
-                      .map(e => (
-                        <label key={e.condition.id} className="flex items-center gap-2 text-sm text-drug-text cursor-pointer">
-                          <input
-                            type="radio"
-                            name="merge-primary"
-                            checked={primaryMergeId === e.condition.id}
-                            onChange={() => setPrimaryMergeId(e.condition.id)}
-                          />
-                          <span>{e.condition.icon} {e.condition.label}</span>
-                          <span className="text-xs text-drug-muted">({e.drugs.length} drug{e.drugs.length !== 1 ? 's' : ''})</span>
-                        </label>
-                      ))}
-                  </div>
-                  <button
-                    onClick={handleConfirmMerge}
-                    disabled={!primaryMergeId || merging}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
-                  >
-                    <Merge className="w-3.5 h-3.5" />
-                    {merging ? 'Merging…' : `Merge ${selectedForMerge.size - 1} into ${primaryMergeId ? [...conditionGroups.values()].find(e => e.condition.id === primaryMergeId)?.condition.label : 'selected'}`}
-                  </button>
-                </>
-              )}
+                )}
+                {selectedForMerge.size === 1 && (
+                  <p className="text-sm text-amber-800">
+                    Select at least one more card to merge with — 1 selected so far.
+                  </p>
+                )}
+                {selectedForMerge.size >= 2 && (
+                  <>
+                    <p className="text-sm font-semibold text-amber-900 mb-2">
+                      {selectedForMerge.size} selected — choose which one to keep:
+                    </p>
+                    <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                      {[...conditionGroups.values()]
+                        .filter(e => selectedForMerge.has(e.condition.id))
+                        .map(e => (
+                          <label key={e.condition.id} className="flex items-center gap-2 text-sm text-drug-text cursor-pointer">
+                            <input
+                              type="radio"
+                              name="merge-primary"
+                              checked={primaryMergeId === e.condition.id}
+                              onChange={() => setPrimaryMergeId(e.condition.id)}
+                            />
+                            <span>{e.condition.icon} {e.condition.label}</span>
+                            <span className="text-xs text-drug-muted">({e.drugs.length} drug{e.drugs.length !== 1 ? 's' : ''})</span>
+                          </label>
+                        ))}
+                    </div>
+                    <button
+                      onClick={handleConfirmMerge}
+                      disabled={!primaryMergeId || merging}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
+                    >
+                      <Merge className="w-3.5 h-3.5" />
+                      {merging ? 'Merging…' : `Merge ${selectedForMerge.size - 1} into ${primaryMergeId ? [...conditionGroups.values()].find(e => e.condition.id === primaryMergeId)?.condition.label : 'selected'}`}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
           {mergeError && (
