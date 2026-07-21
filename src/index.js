@@ -16,7 +16,7 @@ root.render(
 // ── PWA Service Worker ───────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+    navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).then(reg => {
       console.log('[MedLookup SW] Registered:', reg.scope);
 
       // ── When the SW sends SW_UPDATED (it claimed all clients after activate),
