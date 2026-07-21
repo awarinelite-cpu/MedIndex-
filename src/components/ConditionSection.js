@@ -382,7 +382,7 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
@@ -484,11 +484,33 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       <div
         role="button"
         tabIndex={0}
-        onClick={() => { if (!isEditingLabel) onToggle(); }}
-        onKeyDown={(e) => { if (!isEditingLabel && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggle(); } }}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+        onClick={() => {
+          if (isEditingLabel) return;
+          if (mergeMode) { if (onToggleMergeSelect) onToggleMergeSelect(condition); return; }
+          onToggle();
+        }}
+        onKeyDown={(e) => {
+          if (isEditingLabel) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (mergeMode) { if (onToggleMergeSelect) onToggleMergeSelect(condition); return; }
+            onToggle();
+          }
+        }}
+        className={`w-full flex items-center justify-between px-5 py-4 transition-colors cursor-pointer ${
+          mergeMode && isSelectedForMerge ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'
+        }`}
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
+          {mergeMode && (
+            <input
+              type="checkbox"
+              checked={!!isSelectedForMerge}
+              onChange={() => onToggleMergeSelect && onToggleMergeSelect(condition)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-4 h-4 flex-shrink-0 accent-amber-600"
+            />
+          )}
           <span className="text-xl">{condition.icon}</span>
           <div className="text-left min-w-0 flex-1">
             {isEditingLabel ? (
@@ -540,7 +562,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
+          {!mergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -553,7 +575,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Pencil className="w-4 h-4 text-primary-600" />
             </span>
           )}
-          {isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
+          {!mergeMode && isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -566,13 +588,13 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Trash2 className="w-4 h-4 text-red-500" />
             </span>
           )}
-          {!isEditingLabel && (open
+          {!mergeMode && !isEditingLabel && (open
             ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
             : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />)}
         </div>
       </div>
 
-      {open && (
+      {open && !mergeMode && (
         <div className="border-t border-drug-border">
           <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
 

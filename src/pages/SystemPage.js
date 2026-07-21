@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
   Pill, Grid3X3, List, ArrowLeft,
-  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen,
+  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +18,7 @@ import { parseAiConditionList } from '../utils/parseAiConditionList';
 import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo';
 import { fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, removeCondition, renameCondition, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { mergeConditions } from '../utils/mergeConditions';
 import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -640,6 +641,66 @@ export default function SystemPage() {
       setRenamingConditionId(null);
     }
   };
+
+  // ── Merge duplicate conditions ──────────────────────────────────────────
+  // Admin picks 2+ condition cards that represent the same clinical entity
+  // (e.g. "Aortic Aneurysm" / "Aneurysm, Aortic"), chooses which one to keep,
+  // and every drug + any saved clinical info from the others is folded into
+  // it before the duplicates are removed from the taxonomy.
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState(() => new Set());
+  const [primaryMergeId, setPrimaryMergeId] = useState(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+  const [mergeResult, setMergeResult] = useState(null);
+
+  const toggleMergeMode = () => {
+    setMergeMode(m => !m);
+    setSelectedForMerge(new Set());
+    setPrimaryMergeId(null);
+    setMergeError('');
+    setMergeResult(null);
+  };
+
+  const handleToggleMergeSelect = (condition) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(condition.id)) {
+        next.delete(condition.id);
+        if (primaryMergeId === condition.id) setPrimaryMergeId(null);
+      } else {
+        next.add(condition.id);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirmMerge = async () => {
+    if (!primaryMergeId || selectedForMerge.size < 2) return;
+    const duplicateIds = [...selectedForMerge].filter(id => id !== primaryMergeId);
+    const primaryCondition = [...conditionGroups.values()].find(e => e.condition.id === primaryMergeId)?.condition;
+    const dupLabels = [...conditionGroups.values()]
+      .filter(e => duplicateIds.includes(e.condition.id))
+      .map(e => e.condition.label);
+    if (!window.confirm(
+      `Merge ${dupLabels.map(l => `"${l}"`).join(', ')} into "${primaryCondition?.label}"?\n\n` +
+      `Every drug tagged under the merged-away conditions will be re-tagged to the kept one, and the merged-away condition cards will be removed. This cannot be undone.`
+    )) return;
+
+    setMerging(true);
+    setMergeError('');
+    try {
+      const result = await mergeConditions(systemId, primaryMergeId, duplicateIds, ALL_DRUGS);
+      setMergeResult({ ...result, primaryLabel: primaryCondition?.label });
+      setSelectedForMerge(new Set());
+      setPrimaryMergeId(null);
+      setMergeMode(false);
+    } catch (err) {
+      setMergeError(`MERGE FAILED: ${err.code ? `[${err.code}] ` : ''}${err.message || 'Unknown error'}`);
+    } finally {
+      setMerging(false);
+    }
+  };
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
@@ -932,6 +993,18 @@ export default function SystemPage() {
               : `Add Clinical Info to All (${missingClinicalInfoCount})`}
           </button>
         )}
+        {isAdmin && !loading && (
+          <button
+            onClick={toggleMergeMode}
+            title="Select two or more condition cards that represent the same clinical entity and fold them into one"
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 flex-shrink-0 ${
+              mergeMode ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
+            }`}
+          >
+            <Merge className="w-3.5 h-3.5" />
+            {mergeMode ? 'Cancel Merge' : 'Merge Duplicates'}
+          </button>
+        )}
       </div>
 
       {!clinicalSweep.running && clinicalSweep.total > 0 && clinicalSweep.errors > 0 && (
@@ -1040,6 +1113,9 @@ export default function SystemPage() {
                   isDeleting={deletingConditionId === entry.condition.id}
                   onRenameCondition={handleRenameCondition}
                   isRenaming={renamingConditionId === entry.condition.id}
+                  mergeMode={mergeMode}
+                  isSelectedForMerge={selectedForMerge.has(entry.condition.id)}
+                  onToggleMergeSelect={handleToggleMergeSelect}
                 />
               ))}
             </div>
@@ -1049,6 +1125,60 @@ export default function SystemPage() {
           )}
           {renameError && (
             <p className="mt-3 text-xs text-red-600 font-medium">{renameError}</p>
+          )}
+
+          {mergeMode && (
+            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl sticky bottom-4">
+              {selectedForMerge.size === 0 && (
+                <p className="text-sm text-amber-800">
+                  Tap two or more condition cards above that represent the same clinical entity.
+                </p>
+              )}
+              {selectedForMerge.size === 1 && (
+                <p className="text-sm text-amber-800">
+                  Select at least one more card to merge with — 1 selected so far.
+                </p>
+              )}
+              {selectedForMerge.size >= 2 && (
+                <>
+                  <p className="text-sm font-semibold text-amber-900 mb-2">
+                    {selectedForMerge.size} selected — choose which one to keep:
+                  </p>
+                  <div className="space-y-1.5 mb-3">
+                    {[...conditionGroups.values()]
+                      .filter(e => selectedForMerge.has(e.condition.id))
+                      .map(e => (
+                        <label key={e.condition.id} className="flex items-center gap-2 text-sm text-drug-text cursor-pointer">
+                          <input
+                            type="radio"
+                            name="merge-primary"
+                            checked={primaryMergeId === e.condition.id}
+                            onChange={() => setPrimaryMergeId(e.condition.id)}
+                          />
+                          <span>{e.condition.icon} {e.condition.label}</span>
+                          <span className="text-xs text-drug-muted">({e.drugs.length} drug{e.drugs.length !== 1 ? 's' : ''})</span>
+                        </label>
+                      ))}
+                  </div>
+                  <button
+                    onClick={handleConfirmMerge}
+                    disabled={!primaryMergeId || merging}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
+                  >
+                    <Merge className="w-3.5 h-3.5" />
+                    {merging ? 'Merging…' : `Merge ${selectedForMerge.size - 1} into ${primaryMergeId ? [...conditionGroups.values()].find(e => e.condition.id === primaryMergeId)?.condition.label : 'selected'}`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {mergeError && (
+            <p className="mt-3 text-xs text-red-600 font-medium">{mergeError}</p>
+          )}
+          {mergeResult && !mergeMode && (
+            <p className="mt-3 text-xs text-green-700 font-medium">
+              ✓ Merged {mergeResult.conditionsRemoved} condition{mergeResult.conditionsRemoved !== 1 ? 's' : ''} into "{mergeResult.primaryLabel}" — {mergeResult.drugsUpdated} drug{mergeResult.drugsUpdated !== 1 ? 's' : ''} re-tagged.
+            </p>
           )}
 
           <AiSystemConditionsFallback
