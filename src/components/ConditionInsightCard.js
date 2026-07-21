@@ -301,13 +301,32 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
 
   if (!searchQuery.trim()) return null;
 
+  const aiInsightPrompt = (
+    <div className="bg-violet-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-2 min-w-0">
+        <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
+        <p className="text-sm text-drug-text">
+          {localMatch
+            ? `Not what you meant? Get a fresh AI clinical overview and full drug list for "${searchQuery}".`
+            : `Is "${searchQuery}" a condition? Get a clinical overview and full drug list.`}
+        </p>
+      </div>
+      <button
+        onClick={runLookup}
+        className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl font-semibold text-sm hover:bg-violet-700 transition-colors flex-shrink-0"
+      >
+        <Sparkles className="w-4 h-4" /> Get AI Insight
+      </button>
+    </div>
+  );
+
   if (state === 'idle') {
     if (localMatch) {
       const isExact = !!existingMatch;
       return (
-        <div className="mb-6">
+        <div className="mb-6 space-y-3">
           {!isExact && (
-            <p className="mb-2 px-1 text-xs text-drug-muted">
+            <p className="px-1 text-xs text-drug-muted">
               🔎 Closest existing match for "{searchQuery}"
             </p>
           )}
@@ -325,25 +344,11 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
             onDeleteCondition={handleDeleteLocalCondition}
             isDeleting={deletingCondition}
           />
+          {aiInsightPrompt}
         </div>
       );
     }
-    return (
-      <div className="mb-6 bg-violet-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
-          <p className="text-sm text-drug-text">
-            Is "{searchQuery}" a condition? Get a clinical overview and full drug list.
-          </p>
-        </div>
-        <button
-          onClick={runLookup}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-xl font-semibold text-sm hover:bg-violet-700 transition-colors flex-shrink-0"
-        >
-          <Sparkles className="w-4 h-4" /> Get AI Insight
-        </button>
-      </div>
-    );
+    return <div className="mb-6">{aiInsightPrompt}</div>;
   }
 
   if (state === 'loading') {
