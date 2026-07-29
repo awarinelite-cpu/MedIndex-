@@ -37,19 +37,21 @@ export default function CalculatorsPage() {
 
       {/* Tabs + content */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex rounded-xl border border-drug-border overflow-hidden mb-8 bg-white shadow-sm max-w-xl">
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold transition-colors whitespace-nowrap ${
-                tab === t.key ? 'bg-primary-600 text-white' : 'text-drug-muted hover:bg-gray-50'
-              }`}
-            >
-              <t.icon className="w-4 h-4" />
-              {t.label}
-            </button>
-          ))}
+        <div className="rounded-xl border border-drug-border mb-8 bg-white shadow-sm max-w-xl overflow-x-auto">
+          <div className="flex min-w-max sm:min-w-0">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`sm:flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold transition-colors whitespace-nowrap ${
+                  tab === t.key ? 'bg-primary-600 text-white' : 'text-drug-muted hover:bg-gray-50'
+                }`}
+              >
+                <t.icon className="w-4 h-4" />
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {tab === 'drug' && <DrugDosageCalculator />}
