@@ -144,16 +144,16 @@ export default function BMICalculator() {
                 onChange={(e) => setHeightCm(Number(e.target.value))}
                 className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
               />
-              <div className="relative w-28">
+              <div className="relative w-36">
                 <input
                   type="number"
                   min="50"
                   max="250"
                   value={heightCm || ''}
                   onChange={(e) => setHeightCm(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-2 pl-3 pr-8 text-right font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-drug-muted">cm</span>
+                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">cm</span>
               </div>
             </div>
           ) : (
@@ -166,9 +166,9 @@ export default function BMICalculator() {
                   max="8"
                   value={heightFt || ''}
                   onChange={(e) => setHeightFt(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-2 px-3 text-center font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 px-4 text-center text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="absolute right-3 top-7 text-xs font-bold text-drug-muted">ft</span>
+                <span className="absolute right-4 top-9 text-sm font-bold text-drug-muted">ft</span>
               </div>
               <div className="relative">
                 <span className="text-xs text-drug-muted mb-1 block">Inches</span>
@@ -178,9 +178,9 @@ export default function BMICalculator() {
                   max="11"
                   value={heightIn || ''}
                   onChange={(e) => setHeightIn(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-2 px-3 text-center font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 px-4 text-center text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="absolute right-3 top-7 text-xs font-bold text-drug-muted">in</span>
+                <span className="absolute right-4 top-9 text-sm font-bold text-drug-muted">in</span>
               </div>
             </div>
           )}
@@ -203,16 +203,16 @@ export default function BMICalculator() {
                 onChange={(e) => setWeightKg(Number(e.target.value))}
                 className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
               />
-              <div className="relative w-28">
+              <div className="relative w-36">
                 <input
                   type="number"
                   min="10"
                   max="300"
                   value={weightKg || ''}
                   onChange={(e) => setWeightKg(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-2 pl-3 pr-8 text-right font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-drug-muted">kg</span>
+                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">kg</span>
               </div>
             </div>
           ) : (
@@ -225,16 +225,16 @@ export default function BMICalculator() {
                 onChange={(e) => setWeightLbs(Number(e.target.value))}
                 className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
               />
-              <div className="relative w-28">
+              <div className="relative w-36">
                 <input
                   type="number"
                   min="20"
                   max="600"
                   value={weightLbs || ''}
                   onChange={(e) => setWeightLbs(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-2 pl-3 pr-9 text-right font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="absolute right-3 top-2.5 text-xs font-bold text-drug-muted">lbs</span>
+                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">lbs</span>
               </div>
             </div>
           )}
