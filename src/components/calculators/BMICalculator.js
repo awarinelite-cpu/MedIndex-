@@ -135,26 +135,16 @@ export default function BMICalculator() {
           </label>
 
           {unit === 'metric' ? (
-            <div className="flex items-center space-x-3">
+            <div className="relative max-w-xs mx-auto">
               <input
-                type="range"
-                min="100"
-                max="220"
-                value={heightCm}
-                onChange={(e) => setHeightCm(Number(e.target.value))}
-                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                type="number"
+                min="50"
+                max="250"
+                value={heightCm || ''}
+                onChange={(e) => setHeightCm(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-full bg-gray-50 border border-drug-border rounded-xl py-6 pl-4 pr-14 text-center text-3xl font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
-              <div className="relative w-36">
-                <input
-                  type="number"
-                  min="50"
-                  max="250"
-                  value={heightCm || ''}
-                  onChange={(e) => setHeightCm(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">cm</span>
-              </div>
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-base font-bold text-drug-muted">cm</span>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 pt-1">
@@ -194,48 +184,28 @@ export default function BMICalculator() {
           </label>
 
           {unit === 'metric' ? (
-            <div className="flex items-center space-x-3">
+            <div className="relative max-w-xs mx-auto">
               <input
-                type="range"
-                min="30"
-                max="180"
-                value={weightKg}
-                onChange={(e) => setWeightKg(Number(e.target.value))}
-                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                type="number"
+                min="10"
+                max="300"
+                value={weightKg || ''}
+                onChange={(e) => setWeightKg(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-full bg-gray-50 border border-drug-border rounded-xl py-6 pl-4 pr-14 text-center text-3xl font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
-              <div className="relative w-36">
-                <input
-                  type="number"
-                  min="10"
-                  max="300"
-                  value={weightKg || ''}
-                  onChange={(e) => setWeightKg(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">kg</span>
-              </div>
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-base font-bold text-drug-muted">kg</span>
             </div>
           ) : (
-            <div className="flex items-center space-x-3">
+            <div className="relative max-w-xs mx-auto">
               <input
-                type="range"
-                min="60"
-                max="400"
-                value={weightLbs}
-                onChange={(e) => setWeightLbs(Number(e.target.value))}
-                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                type="number"
+                min="20"
+                max="600"
+                value={weightLbs || ''}
+                onChange={(e) => setWeightLbs(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-full bg-gray-50 border border-drug-border rounded-xl py-6 pl-4 pr-14 text-center text-3xl font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
-              <div className="relative w-36">
-                <input
-                  type="number"
-                  min="20"
-                  max="600"
-                  value={weightLbs || ''}
-                  onChange={(e) => setWeightLbs(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-gray-50 border border-drug-border rounded-xl py-3.5 pl-4 pr-10 text-right text-lg font-bold text-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <span className="absolute right-4 top-4 text-sm font-bold text-drug-muted">lbs</span>
-              </div>
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-base font-bold text-drug-muted">lbs</span>
             </div>
           )}
         </div>
