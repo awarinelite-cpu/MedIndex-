@@ -2,19 +2,14 @@
 // Same interface as drug-ai-details.js (Gemini). Streams plain text back.
 // Requires ANTHROPIC_API_KEY in Vercel environment variables.
 //
-// Runs on the Node.js runtime rather than Edge. Vercel's Edge Runtime must
-// send the first byte of a response within 25 seconds or the connection is
-// cut, regardless of what the upstream model is still doing. For a detailed
-// prompt (e.g. "list every drug in this class"), Claude's time-to-first-byte
-// can exceed that, which showed up as a silently empty stream ("connection
-// closed before the response completed") even though nothing was actually
-// wrong with the API key or the request. Node.js functions only enforce an
-// overall duration limit, not a first-byte deadline, so they tolerate a
-// slower-starting stream. maxDuration below requests up to 60s (Hobby plan
-// ceiling); raise it if the Vercel project is on Pro.
+// NOTE: previously tried moving this to the Node.js runtime to dodge Edge's
+// 25-second first-byte limit, but that produced an unobservable multi-minute
+// hang with zero server logs instead of a clean error — worse than the
+// original problem. Reverted to Edge. The actual fix is keeping the prompt
+// small/fast enough that Claude's first token consistently lands well under
+// 25 seconds (see reduced max_tokens for 'class' mode in buildPrompt.js).
 
-export const config = { runtime: 'nodejs' };
-export const maxDuration = 60;
+export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { buildPrompt } from './_lib/buildPrompt.js';
 
