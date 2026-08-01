@@ -67,7 +67,15 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
     });
     return map;
   }, [lookupPool]);
-  const knownDrugNames = useMemo(() => lookupPool.map(d => d.generic_name).filter(Boolean), [lookupPool]);
+  // Deliberately NOT lookupPool here — that's the whole database (every
+  // drug tagged to every condition in every system), and telling the AI
+  // "include these anyway if used for this condition" biases it toward
+  // recycling drugs that are actually indicated for a DIFFERENT, related
+  // condition (e.g. subclinical Cushing's drugs bleeding into an Adrenal
+  // Incidentaloma search) instead of researching this condition fresh.
+  // Scoping to just this condition's own already-tagged drugs keeps the
+  // "don't repeat what's already here" hint honest.
+  const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
 
   const cacheKey = `ai_condition_${conditionLabel.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
