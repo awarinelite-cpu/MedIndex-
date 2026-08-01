@@ -233,6 +233,15 @@ The relevant history/examination findings, laboratory tests, and imaging or othe
 ## Medical Management
 The medical (pharmacological and general, non-surgical) management approach. If "${conditionLabel}" has clinically distinct types listed under ## Types that are genuinely managed differently, use a "### <Type Name>" sub-header for EACH type — matching the type names used above exactly — followed by that type's specific management as bullet points. If there are no clinically distinct types, or all types share essentially the same management approach, give a single flat bullet-point management section instead of sub-headers.
 
+## Surgical Management
+If "${conditionLabel}" is ever managed surgically (even only in specific cases, complications, or refractory disease), describe the surgical approach(es) as concise bullet points, noting when surgery vs medical management is chosen. If surgery is NOT a recognized part of managing this condition, write exactly this line and nothing else: "Surgical management is not typically indicated for this condition — managed medically."
+
+## Nursing Diagnosis
+List 4-8 relevant nursing diagnoses for a patient with this condition, as bullet points in standard NANDA-style format (e.g. "- Risk for [problem] related to [cause] as evidenced by [signs]" or "- [Problem] related to [cause]").
+
+## Nursing Consideration
+The key nursing considerations and interventions distinct from the medical management above — monitoring priorities, safety precautions, patient/family education points, and any condition-specific nursing care — as concise bullet points.
+
 Within each section, bold sub-labels using **double asterisks** where useful, and use bullet points (lines starting with "- ") for lists. Be precise, clinically accurate, and concise — this is educational/reference material only, not a substitute for current clinical guidelines. Do not fabricate specific numeric dosing; refer to drug classes or first-line agent names only, since detailed dosing lives in this app's separate drug records.`;
   } else if (mode === 'classify_condition') {
     // Given a condition label the nurse searched (with no known category),
@@ -389,7 +398,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 2200 : mode === 'condition_clinical_info' ? 3500 : mode === 'condition' ? 1400 : (mode === 'class' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 2200 : mode === 'condition_clinical_info' ? 4200 : mode === 'condition' ? 1400 : (mode === 'class' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".

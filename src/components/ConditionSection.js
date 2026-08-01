@@ -10,7 +10,7 @@ import { useAiProvider } from '../context/AiProviderContext';
 import { useAiInsight } from '../context/AiInsightContext';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
-import { parseConditionClinicalInfo, hasNoDistinctTypes } from '../utils/parseConditionClinicalInfo';
+import { parseConditionClinicalInfo, hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, updateDoc, serverTimestamp, arrayRemove } from 'firebase/firestore';
@@ -326,6 +326,7 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
   }
 
   const noTypes = hasNoDistinctTypes(localInfo.types);
+  const noSurgical = hasNoSurgicalManagement(localInfo.surgicalManagement);
 
   return (
     <div className="border-b border-drug-border">
@@ -373,6 +374,9 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
           <ClinicalInfoSection title="Clinical Manifestation" body={localInfo.clinicalManifestation} />
           <ClinicalInfoSection title="Diagnosis and Investigation" body={localInfo.diagnosis} />
           <ClinicalInfoSection title="Medical Management" body={localInfo.management} />
+          {!noSurgical && <ClinicalInfoSection title="Surgical Management" body={localInfo.surgicalManagement} />}
+          <ClinicalInfoSection title="Nursing Diagnosis" body={localInfo.nursingDiagnosis} />
+          <ClinicalInfoSection title="Nursing Consideration" body={localInfo.nursingConsideration} />
         </div>
       )}
     </div>

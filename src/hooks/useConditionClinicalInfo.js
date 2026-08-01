@@ -42,7 +42,8 @@ function ensureListener() {
 
 // Returns { clinicalInfoByCondition: { [conditionId]: {introduction, types,
 // organRelated, etiology, pathology, clinicalManifestation, diagnosis,
-// management, generatedAt} }, loading }
+// management, surgicalManagement, nursingDiagnosis, nursingConsideration,
+// generatedAt} }, loading }
 export function useConditionClinicalInfo() {
   const [data, setData]       = useState(liveData || {});
   const [loading, setLoading] = useState(!liveData);

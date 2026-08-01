@@ -88,7 +88,7 @@ export async function fetchAiDrugText({ genericName, drugClass, endpoint = '/api
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Fast, minimal-token strength-only lookup ──────────────────────────────
@@ -120,7 +120,7 @@ export async function fetchStrengthText({ genericName, drugClass, endpoint = '/a
   }
   full = full.trim();
   if (!full) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Fast, minimal-token pronunciation-only lookup ─────────────────────────
@@ -151,7 +151,7 @@ export async function fetchPronunciationText({ genericName, endpoint = '/api/dru
   // Guard against a stray header/quotes/bullet the model might still add.
   full = full.trim().replace(/^#{1,6}\s*/, '').replace(/^["'*-]+\s*/, '').replace(/["'*]+$/, '');
   if (!full) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // Saves just the pronunciation field onto an existing drug record (or
@@ -213,7 +213,7 @@ export async function fetchConditionDrugList({ conditionLabel, systemName, known
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Classify a searched condition into the existing system taxonomy ────────
@@ -287,7 +287,7 @@ export async function fetchConditionInsight({ conditionLabel, knownDrugNames, en
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Fetch AI structured clinical teaching summary for a condition ──────────
@@ -317,7 +317,7 @@ export async function fetchConditionClinicalInfo({ conditionLabel, systemName, e
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Fetch AI-suggested drug list for a drug class ───────────────────────────
@@ -344,7 +344,7 @@ export async function fetchClassDrugList({ className, knownDrugNames, endpoint =
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Fetch AI-suggested additional conditions for a body system ─────────────
@@ -371,7 +371,7 @@ export async function fetchSystemConditionsList({ systemName, existingLabels, en
     full += decoder.decode(value, { stream: true });
   }
   if (!full.trim()) throw new Error('AI returned an empty response.');
-  return full;
+  return full.trim();
 }
 
 // ── Generate, validate, and save a drug ──────────────────────────────────
