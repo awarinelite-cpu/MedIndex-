@@ -72,6 +72,9 @@ export default async function handler(req) {
       let buffer = '';
       let wroteAny = false;
       let streamErrorMsg = '';
+      let stopReason = '';
+      let sawMessageStop = false;
+      const blockTypesSeen = new Set();
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -96,15 +99,39 @@ export default async function handler(req) {
                 streamErrorMsg = evt?.error?.message || 'The AI service reported an error mid-response.';
                 continue;
               }
+              if (eventType === 'content_block_start' && evt.content_block?.type) {
+                blockTypesSeen.add(evt.content_block.type);
+              }
               if (eventType === 'content_block_delta' && evt.delta?.type === 'text_delta') {
                 controller.enqueue(encoder.encode(evt.delta.text));
                 wroteAny = true;
               }
+              if (eventType === 'message_delta' && evt.delta?.stop_reason) {
+                stopReason = evt.delta.stop_reason;
+              }
+              if (eventType === 'message_stop') {
+                sawMessageStop = true;
+              }
             } catch {}
           }
         }
-        if (!wroteAny && streamErrorMsg) {
-          controller.enqueue(encoder.encode(`[Claude error: ${streamErrorMsg}]`));
+        // Nothing was written to the client. Figure out and report why,
+        // rather than letting the client fall back to a generic "empty
+        // response" message with no diagnostic value.
+        if (!wroteAny) {
+          if (streamErrorMsg) {
+            controller.enqueue(encoder.encode(`[Claude error: ${streamErrorMsg}]`));
+          } else if (!sawMessageStop) {
+            controller.enqueue(encoder.encode('[Claude error: connection closed before the response completed. This usually means the request was cut off by the platform (e.g. an edge function timeout) rather than Claude itself.]'));
+          } else if (stopReason === 'max_tokens') {
+            controller.enqueue(encoder.encode('[Claude error: hit the token limit before producing any output text. Try again — if this repeats, the request may need a smaller/simpler prompt.]'));
+          } else if (blockTypesSeen.size && !blockTypesSeen.has('text')) {
+            controller.enqueue(encoder.encode(`[Claude error: response contained only ${[...blockTypesSeen].join(', ')} content, no text output.]`));
+          } else if (stopReason) {
+            controller.enqueue(encoder.encode(`[Claude error: stopped with reason "${stopReason}" and produced no text.]`));
+          } else {
+            controller.enqueue(encoder.encode('[Claude error: received a response with no text content and no stated reason. Please try again.]'));
+          }
         }
       } catch (err) {
         console.error('Claude stream error:', err);
