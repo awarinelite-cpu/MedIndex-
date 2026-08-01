@@ -13,6 +13,44 @@
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+const ALLOWED_MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro']);
+
+// Firestore project/key for the client-side project (public reads only —
+// app_config is "public read, signed-in write" per firestore.rules), used
+// so the admin panel's Settings tab can change the active Gemini model
+// without a redeploy. Same values as src/firebase.js.
+const FIREBASE_PROJECT_ID = 'nacon-post-utme-past-question';
+const FIREBASE_API_KEY = 'AIzaSyAB8yCfmdvOTWRpj50Hhc7AWuabWLDvy6k';
+
+// Module-scope cache: Edge functions reuse warm instances across requests,
+// so this avoids a Firestore round-trip on every single AI call. A cold
+// instance just falls back to env var / DEFAULT_MODEL for its first request.
+let modelCache = { value: null, fetchedAt: 0 };
+const CACHE_TTL_MS = 60_000;
+
+async function resolveModel() {
+  const now = Date.now();
+  if (modelCache.value && (now - modelCache.fetchedAt) < CACHE_TTL_MS) {
+    return modelCache.value;
+  }
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/app_config/ai_settings?key=${FIREBASE_API_KEY}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      const chosen = json?.fields?.geminiModel?.stringValue;
+      if (chosen && ALLOWED_MODELS.has(chosen)) {
+        modelCache = { value: chosen, fetchedAt: now };
+        return chosen;
+      }
+    }
+  } catch {
+    // Network hiccup or doc doesn't exist yet — fall through to env/default.
+  }
+  const fallback = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  modelCache = { value: fallback, fetchedAt: now };
+  return fallback;
+}
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -30,7 +68,7 @@ export default async function handler(req) {
     });
   }
 
-  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  const model = await resolveModel();
 
   let body;
   try {

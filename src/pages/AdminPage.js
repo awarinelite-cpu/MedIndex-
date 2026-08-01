@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
   collection, getDocs, doc, deleteDoc, updateDoc,
-  writeBatch, serverTimestamp,
+  writeBatch, serverTimestamp, getDoc, setDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -11,7 +11,7 @@ import {
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
   Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
-  FileText, Stethoscope,
+  FileText, Stethoscope, Settings as SettingsIcon,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -190,6 +190,48 @@ export default function AdminPage() {
   const [condCsvRows,     setCondCsvRows]     = useState([]);   // normalized rows, one per CSV line
   const [condCsvErrors,   setCondCsvErrors]   = useState([]);   // hard parse/validation errors, block upload
   const [condCsvUploading, setCondCsvUploading] = useState(false);
+
+  // ── AI Settings tab (which Gemini model powers Gemini-provider lookups) ──
+  const GEMINI_MODEL_OPTIONS = [
+    { id: 'gemini-2.5-flash-lite', label: 'Flash-Lite', hint: 'Fastest, cheapest — briefer answers' },
+    { id: 'gemini-2.5-flash',      label: 'Flash',      hint: 'Balanced speed, cost, and depth' },
+    { id: 'gemini-2.5-pro',        label: 'Pro',        hint: 'Richest, most detailed — slower & pricier' },
+  ];
+  const [aiSettings,        setAiSettings]        = useState({ geminiModel: 'gemini-2.5-flash-lite' });
+  const [aiSettingsLoading,  setAiSettingsLoading] = useState(true);
+  const [aiSettingsSaving,   setAiSettingsSaving]  = useState(false);
+  const [aiSettingsSaved,    setAiSettingsSaved]   = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'app_config', 'ai_settings'));
+        if (snap.exists() && snap.data().geminiModel) {
+          setAiSettings(prev => ({ ...prev, geminiModel: snap.data().geminiModel }));
+        }
+      } catch (e) {
+        console.error('Failed to load AI settings:', e);
+      } finally {
+        setAiSettingsLoading(false);
+      }
+    })();
+  }, []);
+
+  const saveGeminiModel = useCallback(async (modelId) => {
+    setAiSettingsSaving(true);
+    setAiSettingsSaved(false);
+    try {
+      await setDoc(doc(db, 'app_config', 'ai_settings'), { geminiModel: modelId }, { merge: true });
+      setAiSettings(prev => ({ ...prev, geminiModel: modelId }));
+      setAiSettingsSaved(true);
+      setTimeout(() => setAiSettingsSaved(false), 2500);
+    } catch (e) {
+      console.error('Failed to save AI settings:', e);
+      showToast('Failed to save — check your connection and try again.', 'error');
+    } finally {
+      setAiSettingsSaving(false);
+    }
+  }, []);
   const [condCsvSummary,  setCondCsvSummary]  = useState(null); // { added, duplicates, errors }
   const condCsvInputRef = useRef(null);
   const abortRef = useRef(false);
@@ -865,6 +907,7 @@ export default function AdminPage() {
           {id:'drugs', label:'Drug List',   icon:Database},
           {id:'ai',    label:'AI Generate', icon:Sparkles},
           {id:'conditions', label:'Conditions CSV', icon:Stethoscope},
+          {id:'settings', label:'Settings', icon:SettingsIcon},
         ].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
@@ -1316,6 +1359,64 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════ SETTINGS TAB ══════════════════════════════ */}
+      {activeTab === 'settings' && (
+        <div className="bg-white border border-drug-border rounded-xl p-6">
+          <h3 className="text-lg font-bold text-drug-text mb-1">AI Settings</h3>
+          <p className="text-sm text-drug-muted mb-5">
+            Choose which Gemini model powers lookups when a nurse has "Gemini" selected as their AI provider.
+            Bigger models give richer, more detailed answers (closer to Claude's depth) but cost more per request
+            and respond a little slower. Takes effect within about a minute — no redeploy needed.
+          </p>
+
+          {aiSettingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-drug-muted">
+              <RefreshCw className="w-4 h-4 animate-spin"/> Loading current setting…
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {GEMINI_MODEL_OPTIONS.map(opt => {
+                const active = aiSettings.geminiModel === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => !aiSettingsSaving && saveGeminiModel(opt.id)}
+                    disabled={aiSettingsSaving}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-colors ${
+                      active
+                        ? 'border-primary-600 bg-primary-50'
+                        : 'border-drug-border hover:border-primary-300'
+                    } ${aiSettingsSaving ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-drug-text">{opt.label}</span>
+                        <span className="text-xs text-drug-muted font-mono">{opt.id}</span>
+                      </div>
+                      <div className="text-xs text-drug-muted mt-0.5">{opt.hint}</div>
+                    </div>
+                    {active && (
+                      <span className="shrink-0 px-2 py-1 text-xs font-bold bg-primary-600 text-white rounded-full">
+                        Active
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {aiSettingsSaving && (
+            <div className="flex items-center gap-2 text-sm text-drug-muted mt-4">
+              <RefreshCw className="w-4 h-4 animate-spin"/> Saving…
+            </div>
+          )}
+          {aiSettingsSaved && !aiSettingsSaving && (
+            <div className="text-sm text-green-700 mt-4">✅ Saved — Gemini requests will use this model shortly.</div>
+          )}
         </div>
       )}
     </div>
