@@ -2,12 +2,16 @@
 // Same interface as drug-ai-details.js (Gemini). Streams plain text back.
 // Requires ANTHROPIC_API_KEY in Vercel environment variables.
 //
-// NOTE: previously tried moving this to the Node.js runtime to dodge Edge's
-// 25-second first-byte limit, but that produced an unobservable multi-minute
-// hang with zero server logs instead of a clean error — worse than the
-// original problem. Reverted to Edge. The actual fix is keeping the prompt
-// small/fast enough that Claude's first token consistently lands well under
-// 25 seconds (see reduced max_tokens for 'class' mode in buildPrompt.js).
+// The Response object (and its ReadableStream) is returned to the client
+// BEFORE the fetch to Anthropic is even made. Previously the function
+// awaited the full Anthropic fetch (and validated it) before returning
+// anything at all — so if Claude took a while, or the platform enforces any
+// kind of "must begin responding quickly" rule, the client could end up with
+// nothing delivered at all: no content, no error, request just vanishes,
+// even though Anthropic fully generated (and billed for) a response. Now a
+// harmless placeholder byte goes out the instant the stream opens, and the
+// Anthropic call + all its error handling happens inside the stream itself,
+// so there's no way for the client to be left with literally nothing.
 
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
@@ -36,53 +40,59 @@ export default async function handler(req) {
   catch (e) { return new Response(JSON.stringify({ error: e.error || 'Bad request.' }), { status: e.status || 400, headers: { 'Content-Type': 'application/json' } }); }
 
   const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-
-  let claudeRes;
-  try {
-    claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        stream:     true,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: 'Unexpected server error.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  if (!claudeRes.ok || !claudeRes.body) {
-    let detail = '';
-    try { detail = await claudeRes.text(); } catch {}
-    console.error('Claude API error:', claudeRes.status, detail);
-    const isQuota = claudeRes.status === 429;
-    return new Response(JSON.stringify({
-      error: isQuota
-        ? 'Claude API rate limit reached. Please wait a moment and try again.'
-        : 'Failed to reach the Claude AI service.',
-    }), { status: 502, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  // Claude SSE: events with type "content_block_delta" carry the text deltas.
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const reader  = claudeRes.body.getReader();
 
   const stream = new ReadableStream({
     async start(controller) {
-      let buffer = '';
+      // Sent immediately, before any network call — guarantees the client
+      // sees the response as having started right away, regardless of how
+      // long Claude itself takes. Stripped by the client's .trim() calls.
+      controller.enqueue(encoder.encode(' '));
+
       let wroteAny = false;
       let streamErrorMsg = '';
       let stopReason = '';
       let sawMessageStop = false;
       const blockTypesSeen = new Set();
+
       try {
+        let claudeRes;
+        try {
+          claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type':      'application/json',
+              'x-api-key':         apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: maxTokens,
+              stream:     true,
+              messages:   [{ role: 'user', content: prompt }],
+            }),
+          });
+        } catch (fetchErr) {
+          console.error('Claude fetch error:', fetchErr);
+          controller.enqueue(encoder.encode('[Claude error: could not reach the Anthropic API. Check network/DNS from the server.]'));
+          return;
+        }
+
+        if (!claudeRes.ok || !claudeRes.body) {
+          let detail = '';
+          try { detail = await claudeRes.text(); } catch {}
+          console.error('Claude API error:', claudeRes.status, detail);
+          let msg = `Claude API error (${claudeRes.status}).`;
+          if (claudeRes.status === 429) msg = 'Claude API rate limit reached. Please wait a moment and try again.';
+          else if (claudeRes.status === 401) msg = 'Claude API key was rejected (invalid or revoked).';
+          else if (claudeRes.status === 400) msg = `Claude API rejected the request: ${detail.slice(0, 200)}`;
+          controller.enqueue(encoder.encode(`[Claude error: ${msg}]`));
+          return;
+        }
+
+        const reader = claudeRes.body.getReader();
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -97,11 +107,6 @@ export default async function handler(req) {
             if (!dataStr || dataStr === '[DONE]') continue;
             try {
               const evt = JSON.parse(dataStr);
-              // Anthropic can send a mid-stream error event (rate limit,
-              // overload, etc.) after already returning 200 OK. Previously
-              // this was silently ignored, so the client just saw a blank
-              // stream with no explanation ("AI returned an empty
-              // response"). Surface the real reason as visible text instead.
               if (eventType === 'error') {
                 streamErrorMsg = evt?.error?.message || 'The AI service reported an error mid-response.';
                 continue;
@@ -122,22 +127,20 @@ export default async function handler(req) {
             } catch {}
           }
         }
-        // Nothing was written to the client. Figure out and report why,
-        // rather than letting the client fall back to a generic "empty
-        // response" message with no diagnostic value.
+
         if (!wroteAny) {
           if (streamErrorMsg) {
             controller.enqueue(encoder.encode(`[Claude error: ${streamErrorMsg}]`));
           } else if (!sawMessageStop) {
-            controller.enqueue(encoder.encode('[Claude error: connection closed before the response completed. This usually means the request was cut off by the platform (e.g. an edge function timeout) rather than Claude itself.]'));
+            controller.enqueue(encoder.encode('[Claude error: connection to Anthropic closed before the response completed.]'));
           } else if (stopReason === 'max_tokens') {
-            controller.enqueue(encoder.encode('[Claude error: hit the token limit before producing any output text. Try again — if this repeats, the request may need a smaller/simpler prompt.]'));
+            controller.enqueue(encoder.encode('[Claude error: hit the token limit before producing any output text.]'));
           } else if (blockTypesSeen.size && !blockTypesSeen.has('text')) {
             controller.enqueue(encoder.encode(`[Claude error: response contained only ${[...blockTypesSeen].join(', ')} content, no text output.]`));
           } else if (stopReason) {
             controller.enqueue(encoder.encode(`[Claude error: stopped with reason "${stopReason}" and produced no text.]`));
           } else {
-            controller.enqueue(encoder.encode('[Claude error: received a response with no text content and no stated reason. Please try again.]'));
+            controller.enqueue(encoder.encode('[Claude error: received a response with no text content and no stated reason.]'));
           }
         }
       } catch (err) {
