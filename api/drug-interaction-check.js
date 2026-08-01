@@ -216,7 +216,6 @@ export default async function handler(req) {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'messages-2023-12-15',
         },
         body: JSON.stringify({
           model,

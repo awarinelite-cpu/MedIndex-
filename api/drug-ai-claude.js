@@ -38,7 +38,6 @@ export default async function handler(req) {
         'Content-Type':      'application/json',
         'x-api-key':         apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta':    'messages-2023-12-15',
       },
       body: JSON.stringify({
         model,
@@ -71,6 +70,8 @@ export default async function handler(req) {
   const stream = new ReadableStream({
     async start(controller) {
       let buffer = '';
+      let wroteAny = false;
+      let streamErrorMsg = '';
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -86,14 +87,28 @@ export default async function handler(req) {
             if (!dataStr || dataStr === '[DONE]') continue;
             try {
               const evt = JSON.parse(dataStr);
+              // Anthropic can send a mid-stream error event (rate limit,
+              // overload, etc.) after already returning 200 OK. Previously
+              // this was silently ignored, so the client just saw a blank
+              // stream with no explanation ("AI returned an empty
+              // response"). Surface the real reason as visible text instead.
+              if (eventType === 'error') {
+                streamErrorMsg = evt?.error?.message || 'The AI service reported an error mid-response.';
+                continue;
+              }
               if (eventType === 'content_block_delta' && evt.delta?.type === 'text_delta') {
                 controller.enqueue(encoder.encode(evt.delta.text));
+                wroteAny = true;
               }
             } catch {}
           }
         }
+        if (!wroteAny && streamErrorMsg) {
+          controller.enqueue(encoder.encode(`[Claude error: ${streamErrorMsg}]`));
+        }
       } catch (err) {
         console.error('Claude stream error:', err);
+        if (!wroteAny) controller.enqueue(encoder.encode('[Claude error: connection interrupted before any content arrived.]'));
       } finally {
         controller.close();
       }
