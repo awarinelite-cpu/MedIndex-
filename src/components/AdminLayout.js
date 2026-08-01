@@ -110,28 +110,32 @@ export default function AdminLayout({ children }) {
       )}
 
       {/* ── Admin Header ─────────────────────────────────────────────────── */}
-      <header style={{ background: '#0B1F3A' }} className="text-white sticky top-0 z-40 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
+      <header style={{ background: '#0B1F3A' }} className="text-white sticky top-0 z-40 shadow-lg w-full">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8" style={{ width: '100%', boxSizing: 'border-box' }}>
+          <div className="flex items-center justify-between h-14 gap-2">
 
             {/* Logo */}
-            <div className="flex items-center gap-2">
-              <div style={{ background: 'linear-gradient(135deg,#00C9A7,#0070F3)', borderRadius: 8 }} className="w-8 h-8 flex items-center justify-center">
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
+              <div style={{ background: 'linear-gradient(135deg,#00C9A7,#0070F3)', borderRadius: 8 }} className="w-8 h-8 flex items-center justify-center shrink-0">
                 <Pill className="w-4 h-4 text-white" />
               </div>
-              <span className="text-base font-bold">MedIndex</span>
-              <span style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7', fontSize: 10, padding: '2px 8px', borderRadius: 20 }} className="font-bold">
+              <span className="text-base font-bold hidden xs:inline sm:inline">MedIndex</span>
+              <span style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7', fontSize: 10, padding: '2px 8px', borderRadius: 20 }} className="font-bold shrink-0">
                 Admin
               </span>
             </div>
 
-            {/* Nav links */}
-            <nav className="flex items-center gap-1">
+            {/* Nav links — scrolls internally instead of blowing out the page
+                width if it doesn't fit (topbar overflow was the mobile bug). */}
+            <nav
+              className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+            >
               {navLinks.map(link => (
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
                     isActive(link.to)
                       ? 'bg-white/20 text-white'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -146,7 +150,7 @@ export default function AdminLayout({ children }) {
               <button
                 onClick={toggleTheme}
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-1"
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-1 shrink-0"
               >
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
@@ -154,9 +158,11 @@ export default function AdminLayout({ children }) {
               {/* Back to public site */}
               <Link
                 to="/"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors ml-2"
+                title="Public Site"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors ml-1 sm:ml-2 shrink-0"
               >
-                ← Public Site
+                <span aria-hidden="true">←</span>
+                <span className="hidden sm:inline">Public Site</span>
               </Link>
 
               {/* Logout */}
@@ -164,7 +170,7 @@ export default function AdminLayout({ children }) {
                 <button
                   onClick={handleLogout}
                   title={`Sign out (${user.email})`}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-red-500/20 transition-colors ml-1"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-red-500/20 transition-colors ml-1 shrink-0"
                 >
                   <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Sign Out</span>
@@ -176,7 +182,7 @@ export default function AdminLayout({ children }) {
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <main className="flex-1">
+      <main className="flex-1" style={{ width: '100%', maxWidth: '100vw', boxSizing: 'border-box', overflowX: 'hidden' }}>
         {children}
       </main>
 
