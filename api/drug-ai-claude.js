@@ -1,8 +1,20 @@
 // api/drug-ai-claude.js — Anthropic Claude provider
 // Same interface as drug-ai-details.js (Gemini). Streams plain text back.
 // Requires ANTHROPIC_API_KEY in Vercel environment variables.
+//
+// Runs on the Node.js runtime rather than Edge. Vercel's Edge Runtime must
+// send the first byte of a response within 25 seconds or the connection is
+// cut, regardless of what the upstream model is still doing. For a detailed
+// prompt (e.g. "list every drug in this class"), Claude's time-to-first-byte
+// can exceed that, which showed up as a silently empty stream ("connection
+// closed before the response completed") even though nothing was actually
+// wrong with the API key or the request. Node.js functions only enforce an
+// overall duration limit, not a first-byte deadline, so they tolerate a
+// slower-starting stream. maxDuration below requests up to 60s (Hobby plan
+// ceiling); raise it if the Vercel project is on Pro.
 
-export const config = { runtime: 'edge', regions: ['iad1'] };
+export const config = { runtime: 'nodejs' };
+export const maxDuration = 60;
 
 import { buildPrompt } from './_lib/buildPrompt.js';
 
