@@ -5,6 +5,10 @@
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { buildPrompt } from './_lib/buildPrompt.js';
+import { resolveModel } from './_lib/resolveModel.js';
+
+const DEFAULT_MODEL = 'moonshot-v1-8k';
+const ALLOWED_MODELS = new Set(['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']);
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -28,8 +32,12 @@ export default async function handler(req) {
   try { ({ prompt, maxTokens } = buildPrompt(body)); }
   catch (e) { return new Response(JSON.stringify({ error: e.error || 'Bad request.' }), { status: e.status || 400, headers: { 'Content-Type': 'application/json' } }); }
 
-  // moonshot-v1-8k is the fast/cheap model; moonshot-v1-32k for longer context
-  const model = process.env.KIMI_MODEL || 'moonshot-v1-8k';
+  const model = await resolveModel({
+    field: 'kimiModel',
+    allowed: ALLOWED_MODELS,
+    envVar: 'KIMI_MODEL',
+    fallback: DEFAULT_MODEL,
+  });
 
   let kimiRes;
   try {

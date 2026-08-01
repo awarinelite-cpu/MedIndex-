@@ -5,6 +5,10 @@
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { buildPrompt } from './_lib/buildPrompt.js';
+import { resolveModel } from './_lib/resolveModel.js';
+
+const DEFAULT_MODEL = 'deepseek-chat';
+const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -28,8 +32,12 @@ export default async function handler(req) {
   try { ({ prompt, maxTokens } = buildPrompt(body)); }
   catch (e) { return new Response(JSON.stringify({ error: e.error || 'Bad request.' }), { status: e.status || 400, headers: { 'Content-Type': 'application/json' } }); }
 
-  // DeepSeek-chat is the general-purpose model; use deepseek-reasoner for chain-of-thought
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const model = await resolveModel({
+    field: 'deepseekModel',
+    allowed: ALLOWED_MODELS,
+    envVar: 'DEEPSEEK_MODEL',
+    fallback: DEFAULT_MODEL,
+  });
 
   let dsRes;
   try {

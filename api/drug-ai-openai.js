@@ -5,6 +5,10 @@
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { buildPrompt } from './_lib/buildPrompt.js';
+import { resolveModel } from './_lib/resolveModel.js';
+
+const DEFAULT_MODEL = 'gpt-4o-mini';
+const ALLOWED_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'gpt-4.1']);
 
 export default async function handler(req) {
   if (req.method !== 'POST') {
@@ -28,7 +32,12 @@ export default async function handler(req) {
   try { ({ prompt, maxTokens } = buildPrompt(body)); }
   catch (e) { return new Response(JSON.stringify({ error: e.error || 'Bad request.' }), { status: e.status || 400, headers: { 'Content-Type': 'application/json' } }); }
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const model = await resolveModel({
+    field: 'openaiModel',
+    allowed: ALLOWED_MODELS,
+    envVar: 'OPENAI_MODEL',
+    fallback: DEFAULT_MODEL,
+  });
 
   let openaiRes;
   try {

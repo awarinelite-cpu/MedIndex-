@@ -35,9 +35,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  let buildPrompt;
+  let buildPrompt, resolveModel;
   try {
     ({ buildPrompt } = await import('./_lib/buildPrompt.js'));
+    ({ resolveModel } = await import('./_lib/resolveModel.js'));
   } catch (e) {
     console.error('Failed to load buildPrompt:', e);
     res.status(500).json({ error: 'Server error loading prompt builder.' });
@@ -52,7 +53,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+  const model = await resolveModel({
+    field: 'claudeModel',
+    allowed: new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-8']),
+    envVar: 'CLAUDE_MODEL',
+    fallback: 'claude-sonnet-4-6',
+  });
 
   // Start the response immediately, before the Anthropic call, so the
   // client is guaranteed to receive *something* even in a worst-case

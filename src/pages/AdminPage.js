@@ -20,8 +20,53 @@ import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQ
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
 import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import { useAiInsight } from '../context/AiInsightContext';
-import { useAiProvider } from '../context/AiProviderContext';
+import { useAiProvider, AI_PROVIDERS } from '../context/AiProviderContext';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+
+// ── AI Settings tab: which model powers each provider's lookups ───────────
+// Module-level (not component state) since it's static — keeps a stable
+// reference across renders so it's safe to omit from effect deps.
+const AI_MODEL_OPTIONS = {
+  gemini: {
+    field: 'geminiModel', label: 'Gemini', defaultId: 'gemini-2.5-flash-lite',
+    options: [
+      { id: 'gemini-2.5-flash-lite', label: 'Flash-Lite', hint: 'Fastest, cheapest — briefer answers' },
+      { id: 'gemini-2.5-flash',      label: 'Flash',      hint: 'Balanced speed, cost, and depth' },
+      { id: 'gemini-2.5-pro',        label: 'Pro',        hint: 'Richest, most detailed — slower & pricier' },
+    ],
+  },
+  claude: {
+    field: 'claudeModel', label: 'Claude', defaultId: 'claude-sonnet-4-6',
+    options: [
+      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5',  hint: 'Fastest, cheapest — briefer answers' },
+      { id: 'claude-sonnet-4-6',         label: 'Sonnet 4.6', hint: 'Balanced speed, cost, and depth (default)' },
+      { id: 'claude-opus-4-8',           label: 'Opus 4.8',   hint: 'Richest, most detailed — slower & pricier' },
+    ],
+  },
+  openai: {
+    field: 'openaiModel', label: 'ChatGPT', defaultId: 'gpt-4o-mini',
+    options: [
+      { id: 'gpt-4o-mini', label: '4o mini', hint: 'Fastest, cheapest — briefer answers' },
+      { id: 'gpt-4o',      label: '4o',       hint: 'Balanced speed, cost, and depth' },
+      { id: 'gpt-4.1',     label: '4.1',      hint: 'Richest, most detailed — slower & pricier' },
+    ],
+  },
+  deepseek: {
+    field: 'deepseekModel', label: 'DeepSeek', defaultId: 'deepseek-chat',
+    options: [
+      { id: 'deepseek-chat',     label: 'Chat',     hint: 'General-purpose — fast, cheap (default)' },
+      { id: 'deepseek-reasoner', label: 'Reasoner', hint: 'Chain-of-thought — deeper, slower' },
+    ],
+  },
+  kimi: {
+    field: 'kimiModel', label: 'Kimi', defaultId: 'moonshot-v1-8k',
+    options: [
+      { id: 'moonshot-v1-8k',   label: '8K',   hint: 'Fastest, cheapest — shorter context' },
+      { id: 'moonshot-v1-32k',  label: '32K',  hint: 'Balanced — longer context' },
+      { id: 'moonshot-v1-128k', label: '128K', hint: 'Richest, largest context — slower & pricier' },
+    ],
+  },
+};
 
 // ── Completeness check using unified field group aliases ──────────────────
 // Handles both AI schema (indications/adverse_effect/nursing_action)
@@ -191,23 +236,27 @@ export default function AdminPage() {
   const [condCsvErrors,   setCondCsvErrors]   = useState([]);   // hard parse/validation errors, block upload
   const [condCsvUploading, setCondCsvUploading] = useState(false);
 
-  // ── AI Settings tab (which Gemini model powers Gemini-provider lookups) ──
-  const GEMINI_MODEL_OPTIONS = [
-    { id: 'gemini-2.5-flash-lite', label: 'Flash-Lite', hint: 'Fastest, cheapest — briefer answers' },
-    { id: 'gemini-2.5-flash',      label: 'Flash',      hint: 'Balanced speed, cost, and depth' },
-    { id: 'gemini-2.5-pro',        label: 'Pro',        hint: 'Richest, most detailed — slower & pricier' },
-  ];
-  const [aiSettings,        setAiSettings]        = useState({ geminiModel: 'gemini-2.5-flash-lite' });
+  // ── AI Settings tab (which model powers each AI provider's lookups) ──────
+  const [aiSettings,        setAiSettings]        = useState(
+    Object.fromEntries(Object.values(AI_MODEL_OPTIONS).map(p => [p.field, p.defaultId]))
+  );
   const [aiSettingsLoading,  setAiSettingsLoading] = useState(true);
-  const [aiSettingsSaving,   setAiSettingsSaving]  = useState(false);
-  const [aiSettingsSaved,    setAiSettingsSaved]   = useState(false);
+  const [aiSettingsSavingField, setAiSettingsSavingField] = useState(null);
+  const [aiSettingsSavedField,  setAiSettingsSavedField]  = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'app_config', 'ai_settings'));
-        if (snap.exists() && snap.data().geminiModel) {
-          setAiSettings(prev => ({ ...prev, geminiModel: snap.data().geminiModel }));
+        if (snap.exists()) {
+          const data = snap.data();
+          setAiSettings(prev => {
+            const next = { ...prev };
+            Object.values(AI_MODEL_OPTIONS).forEach(p => {
+              if (data[p.field]) next[p.field] = data[p.field];
+            });
+            return next;
+          });
         }
       } catch (e) {
         console.error('Failed to load AI settings:', e);
@@ -217,19 +266,19 @@ export default function AdminPage() {
     })();
   }, []);
 
-  const saveGeminiModel = useCallback(async (modelId) => {
-    setAiSettingsSaving(true);
-    setAiSettingsSaved(false);
+  const saveModelForField = useCallback(async (field, modelId) => {
+    setAiSettingsSavingField(field);
+    setAiSettingsSavedField(null);
     try {
-      await setDoc(doc(db, 'app_config', 'ai_settings'), { geminiModel: modelId }, { merge: true });
-      setAiSettings(prev => ({ ...prev, geminiModel: modelId }));
-      setAiSettingsSaved(true);
-      setTimeout(() => setAiSettingsSaved(false), 2500);
+      await setDoc(doc(db, 'app_config', 'ai_settings'), { [field]: modelId }, { merge: true });
+      setAiSettings(prev => ({ ...prev, [field]: modelId }));
+      setAiSettingsSavedField(field);
+      setTimeout(() => setAiSettingsSavedField(f => (f === field ? null : f)), 2500);
     } catch (e) {
       console.error('Failed to save AI settings:', e);
       showToast('Failed to save — check your connection and try again.', 'error');
     } finally {
-      setAiSettingsSaving(false);
+      setAiSettingsSavingField(null);
     }
   }, []);
   const [condCsvSummary,  setCondCsvSummary]  = useState(null); // { added, duplicates, errors }
@@ -1366,56 +1415,67 @@ export default function AdminPage() {
       {activeTab === 'settings' && (
         <div className="bg-white border border-drug-border rounded-xl p-6">
           <h3 className="text-lg font-bold text-drug-text mb-1">AI Settings</h3>
-          <p className="text-sm text-drug-muted mb-5">
-            Choose which Gemini model powers lookups when a nurse has "Gemini" selected as their AI provider.
-            Bigger models give richer, more detailed answers (closer to Claude's depth) but cost more per request
-            and respond a little slower. Takes effect within about a minute — no redeploy needed.
+          <p className="text-sm text-drug-muted mb-6">
+            Choose which model powers each AI provider's lookups. Bigger models give richer, more detailed
+            answers but cost more per request and respond a little slower. Changes take effect within about
+            a minute — no redeploy needed.
           </p>
 
           {aiSettingsLoading ? (
             <div className="flex items-center gap-2 text-sm text-drug-muted">
-              <RefreshCw className="w-4 h-4 animate-spin"/> Loading current setting…
+              <RefreshCw className="w-4 h-4 animate-spin"/> Loading current settings…
             </div>
           ) : (
-            <div className="space-y-3">
-              {GEMINI_MODEL_OPTIONS.map(opt => {
-                const active = aiSettings.geminiModel === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => !aiSettingsSaving && saveGeminiModel(opt.id)}
-                    disabled={aiSettingsSaving}
-                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-colors ${
-                      active
-                        ? 'border-primary-600 bg-primary-50'
-                        : 'border-drug-border hover:border-primary-300'
-                    } ${aiSettingsSaving ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-drug-text">{opt.label}</span>
-                        <span className="text-xs text-drug-muted font-mono">{opt.id}</span>
-                      </div>
-                      <div className="text-xs text-drug-muted mt-0.5">{opt.hint}</div>
-                    </div>
-                    {active && (
-                      <span className="shrink-0 px-2 py-1 text-xs font-bold bg-primary-600 text-white rounded-full">
-                        Active
-                      </span>
+            <div className="space-y-8">
+              {Object.entries(AI_MODEL_OPTIONS).map(([providerId, provider]) => (
+                <div key={providerId}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: AI_PROVIDERS?.find?.(p => p.id === providerId)?.color || '#94A3B8' }}
+                    />
+                    <h4 className="font-bold text-drug-text">{provider.label}</h4>
+                    {aiSettingsSavingField === provider.field && (
+                      <RefreshCw className="w-3.5 h-3.5 text-drug-muted animate-spin"/>
                     )}
-                  </button>
-                );
-              })}
+                    {aiSettingsSavedField === provider.field && aiSettingsSavingField !== provider.field && (
+                      <span className="text-xs font-semibold text-green-700">✅ Saved</span>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {provider.options.map(opt => {
+                      const active = aiSettings[provider.field] === opt.id;
+                      const saving = aiSettingsSavingField === provider.field;
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => !saving && saveModelForField(provider.field, opt.id)}
+                          disabled={saving}
+                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-colors ${
+                            active
+                              ? 'border-primary-600 bg-primary-50'
+                              : 'border-drug-border hover:border-primary-300'
+                          } ${saving ? 'opacity-60 cursor-wait' : ''}`}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-drug-text">{opt.label}</span>
+                              <span className="text-xs text-drug-muted font-mono">{opt.id}</span>
+                            </div>
+                            <div className="text-xs text-drug-muted mt-0.5">{opt.hint}</div>
+                          </div>
+                          {active && (
+                            <span className="shrink-0 px-2 py-1 text-xs font-bold bg-primary-600 text-white rounded-full">
+                              Active
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-
-          {aiSettingsSaving && (
-            <div className="flex items-center gap-2 text-sm text-drug-muted mt-4">
-              <RefreshCw className="w-4 h-4 animate-spin"/> Saving…
-            </div>
-          )}
-          {aiSettingsSaved && !aiSettingsSaving && (
-            <div className="text-sm text-green-700 mt-4">✅ Saved — Gemini requests will use this model shortly.</div>
           )}
         </div>
       )}
