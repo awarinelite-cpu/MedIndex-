@@ -53,6 +53,22 @@ export function buildPrompt(body) {
     };
   }
 
+  if (mode === 'condition_clinical_info') {
+    // Powers the admin "Add Clinical Info" panel on SystemPage: a structured
+    // teaching summary for one condition, stored once in Firestore and
+    // reused thereafter (not regenerated on every page view). Deliberately
+    // asks for a "Types" section first so "Medical Management" can key its
+    // own sub-headers off the same type names when management genuinely
+    // differs by type (e.g. Diabetes Mellitus Type 1 vs Type 2) — and falls
+    // back to a single flat section when the condition has no meaningful
+    // subtypes (e.g. Hypertension).
+    if (!conditionLabel) throw { status: 400, error: 'conditionLabel is required.' };
+    return {
+      maxTokens: 3500,
+      prompt: `You are assisting a licensed nurse and nurse educator using a clinical drug reference app in Nigeria. Provide a structured clinical teaching summary of the condition "${conditionLabel}"${systemName ? ` (within the ${systemName} system)` : ''}, suitable for nursing education and quick clinical reference.\n\nRespond with exactly these sections, using these exact markdown headers, in this order. Do not add any other sections, preamble, or closing text.\n\n## Introduction\n2-4 sentences: a clear definition of the condition and its clinical significance.\n\n## Types\nIf "${conditionLabel}" has clinically distinct types, stages, or classifications, list each as a bullet point starting with the **type name in bold**, followed by a brief distinguishing note — for example "- **Type 1 Diabetes Mellitus** — autoimmune beta-cell destruction, absolute insulin deficiency, usually childhood/young-adult onset." If it does NOT have clinically distinct types, write exactly this line and nothing else: "No clinically distinct types — managed as a single clinical entity."\n\n## Organ System Involved\nThe primary organ(s) or body system(s) affected, 1-2 sentences.\n\n## Etiology\nThe causes and risk factors, as concise bullet points (lines starting with "- ").\n\n## Pathophysiology\nA short paragraph (3-6 sentences) explaining the underlying disease mechanism a nurse should understand.\n\n## Clinical Manifestation\nThe signs and symptoms, as concise bullet points. If types were listed above and their manifestations meaningfully differ, group these under "### <Type Name>" sub-headers matching the type names used above exactly; otherwise give a single flat bullet list.\n\n## Diagnosis and Investigation\nThe relevant history/examination findings, laboratory tests, and imaging or other investigations used to diagnose and work this condition up, as concise bullet points.\n\n## Medical Management\nThe medical (pharmacological and general, non-surgical) management approach. If "${conditionLabel}" has clinically distinct types listed under ## Types that are genuinely managed differently, use a "### <Type Name>" sub-header for EACH type — matching the type names used above exactly — followed by that type's specific management as bullet points. If there are no clinically distinct types, or all types share essentially the same management approach, give a single flat bullet-point management section instead of sub-headers.\n\nWithin each section, bold sub-labels using **double asterisks** where useful, and use bullet points (lines starting with "- ") for lists. Be precise, clinically accurate, and concise — this is educational/reference material only, not a substitute for current clinical guidelines. Do not fabricate specific numeric dosing; refer to drug classes or first-line agent names only, since detailed dosing lives in this app's separate drug records.`,
+    };
+  }
+
   if (mode === 'classify_condition') {
     const { systemOptions } = body || {};
     if (!conditionLabel) throw { status: 400, error: 'conditionLabel is required.' };
