@@ -951,7 +951,10 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-drug-border">
+      <div
+        className="flex gap-2 mb-6 border-b border-drug-border overflow-x-auto"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+      >
         {[
           {id:'drugs', label:'Drug List',   icon:Database},
           {id:'ai',    label:'AI Generate', icon:Sparkles},
@@ -959,7 +962,7 @@ export default function AdminPage() {
           {id:'settings', label:'Settings', icon:SettingsIcon},
         ].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors -mb-px shrink-0 whitespace-nowrap ${
               activeTab===tab.id
                 ? 'border-primary-600 text-primary-700'
                 : 'border-transparent text-drug-muted hover:text-drug-text'
