@@ -145,7 +145,7 @@ List the medications (generic names) indicated for "${conditionLabel}", grouped 
 For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), a common Nigerian brand/trade name in parentheses if you know one, its role specifically for "${conditionLabel}" (first-line/adjunct/second-line, etc.), and any notable distinguishing feature. Example format:
 - **Lisinopril** (Zestril) — PO; first-line for hypertension and heart failure with reduced ejection fraction; avoid in pregnancy.
 
-Aim for a thorough, genuinely comprehensive list (roughly 15-30 medications across the relevant classes) that goes beyond the obvious/commonly-cited names, so the nurse gets real breadth — not just the same short list every time. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
+Aim for a focused, high-value list of roughly 5-10 medications across the relevant classes — the most clinically important/commonly used ones a nurse would actually reach for, not an exhaustive catalog. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
 
 This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
   } else if (mode === 'condition_insight') {
@@ -185,7 +185,7 @@ ${knownList}
 List the medications (generic names) indicated for "${conditionLabel}", grouped by drug class using ### markdown sub-headers (e.g. "### ACE Inhibitors", "### Thiazide Diuretics") — use as many class sub-headers as are actually relevant. For each medication, use a bullet point starting with the **generic name in bold**, followed by a brief note: typical route (PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD), a common Nigerian brand/trade name in parentheses if known, its role (first-line/adjunct/second-line), and any notable distinguishing feature. Example:
 - **Lisinopril** (Zestril) — PO; first-line for hypertension; avoid in pregnancy.
 
-Include both medications likely already covered in a standard drug reference AND newer or less commonly listed agents that are still genuinely indicated — aim for a thorough, comprehensive list (roughly 15-30 medications). Every medication listed must be GENUINELY indicated for "${conditionLabel}" specifically; if you are not confident it treats this condition, leave it out rather than guessing.
+Include both medications likely already covered in a standard drug reference AND newer or less commonly listed agents that are still genuinely indicated — aim for a focused, high-value list of roughly 5-10 medications, the ones a nurse would actually reach for first. Every medication listed must be GENUINELY indicated for "${conditionLabel}" specifically; if you are not confident it treats this condition, leave it out rather than guessing.
 
 This is reference material only, not a substitute for current clinical guidelines — do not fabricate specific dosing figures, and do not add any text before "## Overview" or after the medication list.`;
   } else if (mode === 'condition_clinical_info') {
@@ -389,7 +389,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3800 : mode === 'condition_clinical_info' ? 3500 : (mode === 'class' || mode === 'condition' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 2200 : mode === 'condition_clinical_info' ? 3500 : mode === 'condition' ? 1400 : (mode === 'class' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".
