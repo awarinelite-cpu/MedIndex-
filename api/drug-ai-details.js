@@ -383,11 +383,11 @@ Structure your response with these sections, using clear markdown headers (##):
 - Pack Size & Price (general Nigerian market context if known; otherwise note this varies and should be verified locally)
 - Prescription Status & NAFDAC Note (OTC / Prescription / Controlled; state that the NAFDAC registration number must be verified against the product label — never invent one)
 
-Write every section listed above, even briefly — if a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it, so the response fully mirrors this reference schema.
+Write every section listed above in full — if a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it, so the response fully mirrors this reference schema. Aim for genuine depth in each section (roughly 3-6 sentences, or 4-8 bullet points where a list format fits better) rather than a one-line summary — a nurse should be able to rely on this section alone without needing to look elsewhere.
 
-Within each section, bold any sub-labels using **double asterisks** (e.g. "**Absorption:** ...", "**Renal impairment:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists of items like contraindications, adverse effects, or interactions.
+Within each section, bold any sub-labels using **double asterisks** (e.g. "**Absorption:** ...", "**Renal impairment:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists of items like contraindications, adverse effects, or interactions, and don't stop at 2-3 items when more genuinely apply — list them thoroughly.
 
-Be precise, clinically accurate, and concise within each section. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
+Be precise, clinically accurate, and thorough within each section. Do not pad with filler or repeat yourself, but do not compress well-established clinical detail into a single sentence when it deserves more. Do not fabricate specific numeric dosing if you are not confident — note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
   }
 
   let geminiRes;
@@ -406,7 +406,7 @@ Be precise, clinically accurate, and concise within each section. Do not fabrica
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 2200 : mode === 'condition_clinical_info' ? 4200 : mode === 'condition' ? 1400 : (mode === 'class' || mode === 'system_conditions') ? 3000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 2000 },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : (mode === 'class' || mode === 'system_conditions') ? 4000 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 4000 },
             // Google Search grounding — lets the model look up brand/trade
             // names (especially Nigerian-market ones) that aren't in its
             // training data instead of guessing or declaring "not found".
