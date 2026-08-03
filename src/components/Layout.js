@@ -3,10 +3,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useDrugs } from '../hooks/useDrugs';
+import { usePrefetchDrugImages } from '../hooks/usePrefetchDrugImages';
 import AiProviderDropdown from './AiProviderDropdown';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { drugs } = useDrugs();
+  usePrefetchDrugImages(user ? drugs : null);
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [searchQuery,     setSearchQuery]      = useState('');
   const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event

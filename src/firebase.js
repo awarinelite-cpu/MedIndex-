@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 
@@ -15,7 +15,17 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Persistent local cache (IndexedDB): the drugs/conditions collections stay
+// live via onSnapshot as before, but every doc that's ever synced is also
+// written to disk on this device. After the first successful login and
+// sync, useDrugs()/useConditionClinicalInfo() resolve instantly from that
+// local cache — including with no internet at all — instead of falling
+// back to the (potentially stale) bundled seedDrugs.json the moment a
+// request can't reach the server.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export default app;
