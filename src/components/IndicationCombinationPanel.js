@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, AlertTriangle, Loader } from 'lucide-react';
+import { Sparkles, X, AlertTriangle, Loader, Save, Check } from 'lucide-react';
+import { doc, getDoc, setDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { useAiProvider } from '../context/AiProviderContext';
 import { apiUrl } from '../config/apiBase';
+import { slugifyDrugName } from '../utils/aiDrugSave';
 
 // ── API call for standard combination-therapy regimens for a CONDITION ────────
 // Distinct from the per-drug synergy list in DrugInteractionChecker.js: this
@@ -26,8 +29,49 @@ async function fetchIndicationCombinations(conditionLabel, systemName, providerI
   return data.results;
 }
 
+// ── Persist a combination regimen as its own demarcated drug-list entry ────
+// Saved under a stable id derived from its component drugs (not the regimen
+// display name alone), so re-saving the same regimen from a different
+// wording of its name still updates one record instead of duplicating it.
+// is_combination_therapy is what lets ConditionSection's role classifier
+// (drugRoleClassification.js) show it under "Combination Therapy Drugs"
+// instead of "Main Indicated" or "Adjunct".
+async function saveCombinationRegimen({ regimen, conditionId, conditionLabel }) {
+  await auth.authStateReady();
+  if (!auth.currentUser) {
+    throw new Error('Sign in to save this regimen.');
+  }
+  const componentNames = Array.isArray(regimen.drugs)
+    ? regimen.drugs.map(d => d.name).filter(Boolean)
+    : [];
+  const combinedName = regimen.regimenName || componentNames.join(' + ') || 'Combination regimen';
+  const docId = `combo_${slugifyDrugName(componentNames.join('_') || combinedName)}`;
+  const ref = doc(db, 'drugs', docId);
+  const existing = await getDoc(ref);
+
+  await setDoc(ref, {
+    generic_name:            combinedName,
+    drug_class:               'Combination Therapy',
+    drug_subclass:             null,
+    is_combination_therapy:    true,
+    combination_components:    Array.isArray(regimen.drugs) ? regimen.drugs : [],
+    indications:                regimen.indication || conditionLabel || '',
+    overview:                   regimen.clinicalReason || '',
+    pharmacology:                regimen.clinicalReason || '',
+    adverse_effect:              regimen.cautionNote || '',
+    prescription_status:         'Prescription',
+    condition_tags:              conditionId ? arrayUnion(conditionId) : [],
+    source:                      'AI Generated — Combination Regimen',
+    status:                      'Active',
+    created_at:  existing.exists() ? (existing.data().created_at || serverTimestamp()) : serverTimestamp(),
+    last_updated: serverTimestamp(),
+  }, { merge: true });
+
+  return docId;
+}
+
 // ── Popup with the full detail for one combination regimen ─────────────────────
-function RegimenModal({ regimen, onClose }) {
+function RegimenModal({ regimen, onClose, onSave, saveState, saveError }) {
   useEffect(() => {
     function handleKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', handleKey);
@@ -57,12 +101,39 @@ function RegimenModal({ regimen, onClose }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <span
-            className="inline-block text-xs font-bold px-2.5 py-1 rounded-full"
-            style={{ color: '#065F46', background: '#ECFDF5', border: '1px solid #6EE7B7' }}
-          >
-            Combination Regimen
-          </span>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span
+              className="inline-block text-xs font-bold px-2.5 py-1 rounded-full"
+              style={{ color: '#065F46', background: '#ECFDF5', border: '1px solid #6EE7B7' }}
+            >
+              Combination Regimen
+            </span>
+            {onSave && (
+              <button
+                onClick={onSave}
+                disabled={saveState === 'saving'}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full disabled:opacity-60"
+                style={{
+                  color: saveState === 'saved' ? '#065F46' : '#fff',
+                  background: saveState === 'saved' ? '#ECFDF5' : (saveState === 'error' ? '#DC2626' : '#059669'),
+                  border: saveState === 'saved' ? '1px solid #6EE7B7' : 'none',
+                }}
+              >
+                {saveState === 'saving' ? (
+                  <><Loader className="w-3 h-3 animate-spin" /> Saving…</>
+                ) : saveState === 'saved' ? (
+                  <><Check className="w-3 h-3" /> Saved as Combination Therapy</>
+                ) : saveState === 'error' ? (
+                  <><AlertTriangle className="w-3 h-3" /> Retry save</>
+                ) : (
+                  <><Save className="w-3 h-3" /> Save to drug list</>
+                )}
+              </button>
+            )}
+          </div>
+          {saveState === 'error' && saveError && (
+            <p className="text-xs text-red-600 -mt-2">{saveError}</p>
+          )}
 
           {regimen.indication && (
             <div>
@@ -136,12 +207,28 @@ function RegimenModal({ regimen, onClose }) {
 }
 
 // ── Button + list, embedded inside a condition card ─────────────────────────────
-export default function IndicationCombinationPanel({ conditionLabel, systemName }) {
+export default function IndicationCombinationPanel({ conditionId, conditionLabel, systemName }) {
   const { providerId, provider } = useAiProvider();
   const [state, setState]       = useState('idle'); // idle | loading | done | error
   const [list, setList]         = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [openRegimen, setOpenRegimen] = useState(null);
+  // Per-regimen save status, keyed by its index in `list` — 'saving' | 'saved' | 'error'
+  const [saveStates, setSaveStates] = useState({});
+  const [saveErrors, setSaveErrors] = useState({});
+
+  const handleSaveRegimen = async (regimen, idx) => {
+    if (saveStates[idx] === 'saving') return;
+    setSaveStates(prev => ({ ...prev, [idx]: 'saving' }));
+    setSaveErrors(prev => ({ ...prev, [idx]: '' }));
+    try {
+      await saveCombinationRegimen({ regimen, conditionId, conditionLabel });
+      setSaveStates(prev => ({ ...prev, [idx]: 'saved' }));
+    } catch (e) {
+      setSaveStates(prev => ({ ...prev, [idx]: 'error' }));
+      setSaveErrors(prev => ({ ...prev, [idx]: e.message || 'Failed to save this regimen.' }));
+    }
+  };
 
   const runLookup = async () => {
     setState('loading');
@@ -209,36 +296,59 @@ export default function IndicationCombinationPanel({ conditionLabel, systemName 
           </p>
         ) : (
           <div className="mt-2 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden bg-white">
-            {list.map((r, i) => (
-              <button
-                key={i}
-                onClick={() => setOpenRegimen(r)}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-                    <span className="text-sm font-semibold text-drug-text truncate">{r.regimenName}</span>
-                    {r.cautionNote && (
-                      <AlertTriangle
-                        className="w-3.5 h-3.5 flex-shrink-0"
-                        style={{ color: '#92400E' }}
-                        title="This regimen has a known safety concern — see details"
-                      />
+            {list.map((r, i) => {
+              const saveState = saveStates[i];
+              return (
+                <div key={i} className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <button
+                    onClick={() => setOpenRegimen(i)}
+                    className="flex-1 min-w-0 flex items-center justify-between gap-3 text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                        <span className="text-sm font-semibold text-drug-text truncate">{r.regimenName}</span>
+                        {r.cautionNote && (
+                          <AlertTriangle
+                            className="w-3.5 h-3.5 flex-shrink-0"
+                            style={{ color: '#92400E' }}
+                            title="This regimen has a known safety concern — see details"
+                          />
+                        )}
+                      </div>
+                      {r.indication && (
+                        <p className="text-xs text-drug-muted mt-0.5 ml-6 truncate">{r.indication}</p>
+                      )}
+                    </div>
+                    <span
+                      className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ color: '#065F46', background: '#ECFDF5' }}
+                    >
+                      Details
+                    </span>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleSaveRegimen(r, i); }}
+                    disabled={saveState === 'saving'}
+                    title="Save this combination to the drug list, demarcated as Combination Therapy"
+                    className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 disabled:opacity-60"
+                    style={{
+                      color: saveState === 'saved' ? '#065F46' : (saveState === 'error' ? '#DC2626' : '#059669'),
+                      background: saveState === 'saved' ? '#ECFDF5' : '#fff',
+                      border: '1px solid ' + (saveState === 'saved' ? '#6EE7B7' : (saveState === 'error' ? '#FECACA' : '#A7F3D0')),
+                    }}
+                  >
+                    {saveState === 'saving' ? (
+                      <Loader className="w-3 h-3 animate-spin" />
+                    ) : saveState === 'saved' ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <Save className="w-3 h-3" />
                     )}
-                  </div>
-                  {r.indication && (
-                    <p className="text-xs text-drug-muted mt-0.5 ml-6 truncate">{r.indication}</p>
-                  )}
+                  </button>
                 </div>
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ color: '#065F46', background: '#ECFDF5' }}
-                >
-                  Details
-                </span>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )
       )}
@@ -249,8 +359,14 @@ export default function IndicationCombinationPanel({ conditionLabel, systemName 
         </p>
       )}
 
-      {openRegimen && (
-        <RegimenModal regimen={openRegimen} onClose={() => setOpenRegimen(null)} />
+      {openRegimen !== null && list[openRegimen] && (
+        <RegimenModal
+          regimen={list[openRegimen]}
+          onClose={() => setOpenRegimen(null)}
+          onSave={() => handleSaveRegimen(list[openRegimen], openRegimen)}
+          saveState={saveStates[openRegimen]}
+          saveError={saveErrors[openRegimen]}
+        />
       )}
     </div>
   );

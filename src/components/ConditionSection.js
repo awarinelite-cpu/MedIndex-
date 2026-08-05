@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
@@ -9,13 +9,14 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { useAiInsight } from '../context/AiInsightContext';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
-import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
+import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo, silentSaveConditionItems } from '../utils/aiDrugSave';
 import { parseConditionClinicalInfo, hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import { getDrugTherapyRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 
 export function RxBadge({ status }) {
@@ -152,6 +153,19 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
   const saveAllToDatabase = () => {
     startConditionSave({ items, conditionId, label: conditionLabel, conditionKeywords, existingByName, endpoint: provider.endpoint });
   };
+
+  // Non-admins never see a "Save All" button here — but their lookup still
+  // quietly persists in the background, same as the single-drug search
+  // fallback does. Guarded so it only ever fires once per completed lookup.
+  const silentSaveRanForRef = useRef(null);
+  useEffect(() => {
+    if (isAdmin || state !== 'done' || items.length === 0) return;
+    if (silentSaveRanForRef.current === cacheKey) return;
+    silentSaveRanForRef.current = cacheKey;
+    silentSaveConditionItems({ items, conditionId, conditionKeywords, existingByName, endpoint: provider.endpoint })
+      .catch(() => { /* intentionally silent */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, state, cacheKey]);
 
   // Admin-only review queue for drugs the AI linked here that didn't clearly
   // match this condition's keywords — shown regardless of AI-fallback state
@@ -565,6 +579,28 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
+  // Split into Main Indicated / Adjunct Therapy / Combination Therapy, then
+  // sub-group EACH bucket by drug class the same way the old single list
+  // was grouped. See drugRoleClassification.js for how a drug lands in one
+  // bucket vs another.
+  const roleBuckets = useMemo(() => {
+    const buckets = { main: [], adjunct: [], combination: [] };
+    for (const drug of filtered) {
+      buckets[getDrugTherapyRole(drug, condition)].push(drug);
+    }
+    return buckets;
+  }, [filtered, condition]);
+
+  const byClassWithin = (list) => {
+    const map = new Map();
+    for (const drug of list) {
+      const key = drug.drug_class || 'Other';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(drug);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  };
+
   const isEmpty = filtered.length === 0;
 
   return (
@@ -706,94 +742,136 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               No drugs matched this condition yet. Use AI below to find and save some.
             </p>
           ) : (
-            byClass.map(([className, classDrugs], ci) => (
-            <div key={className}>
-              {/* Drug class sub-header */}
-              <div className={`flex items-center justify-between px-5 py-2 bg-gray-50 ${ci > 0 ? 'border-t border-drug-border' : ''}`}>
-                <Link
-                  to={`/browse?class=${encodeURIComponent(className)}`}
-                  className="text-xs font-bold text-primary-700 hover:underline"
-                  onClick={e => e.stopPropagation()}
-                >
-                  {className}
-                </Link>
-                <span className="text-xs text-drug-muted">{classDrugs.length}</span>
-              </div>
+            THERAPY_ROLE_ORDER.map((roleKey) => {
+              const roleDrugs = roleBuckets[roleKey];
+              if (!roleDrugs || roleDrugs.length === 0) return null;
+              const meta = THERAPY_ROLE_META[roleKey];
+              const isCombo = roleKey === 'combination';
 
-              {/* Drugs */}
-              {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-                  {classDrugs.map(drug => (
-                    <Link
-                      key={drug.id}
-                      to={`/drug/${drug.id}`}
-                      className="group border border-drug-border rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="p-1.5 bg-primary-50 rounded-lg">
-                          <Pill className="w-4 h-4 text-primary-600" />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <RxBadge status={drug.prescription_status} />
-                          {isAdmin && (
-                            <button
-                              onClick={(e) => removeFromCondition(drug, e)}
-                              disabled={removingId === drug.id}
-                              title="Remove from this condition"
-                              className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 disabled:opacity-40"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <h3 className="font-bold text-sm group-hover:text-primary-700 transition-colors">
-                        {drug.generic_name}
-                      </h3>
-                      <p className="text-xs text-primary-600 mt-0.5">{drug.drug_subclass || getDisplayDrugClass(drug)}</p>
-                      <p className="text-xs text-drug-muted mt-1.5 line-clamp-2">
-                        {drug.indications || drug.primary_indications}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <div>
-                  {classDrugs.map((drug, i) => (
-                    <Link
-                      key={drug.id}
-                      to={`/drug/${drug.id}`}
-                      className={`flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors ${
-                        i !== classDrugs.length - 1 ? 'border-b border-drug-border' : ''
-                      }`}
-                    >
-                      <div className="p-1.5 bg-primary-50 rounded-lg flex-shrink-0">
-                        <Pill className="w-4 h-4 text-primary-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">{drug.generic_name}</div>
-                        <div className="text-xs text-primary-600 truncate">
-                          {drug.drug_subclass || getDisplayDrugClass(drug)}
-                        </div>
-                      </div>
-                      <RxBadge status={drug.prescription_status} />
-                      {isAdmin && (
-                        <button
-                          onClick={(e) => removeFromCondition(drug, e)}
-                          disabled={removingId === drug.id}
-                          title="Remove from this condition"
-                          className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 flex-shrink-0 disabled:opacity-40"
+              return (
+                <div key={roleKey}>
+                  {/* Category heading — colors defined in drugRoleClassification.js */}
+                  <div
+                    className="flex items-center gap-2 px-5 py-2.5"
+                    style={{ background: meta.bg, borderTop: '1px solid ' + meta.border, borderBottom: '1px solid ' + meta.border }}
+                  >
+                    <span className="text-xs font-extrabold uppercase tracking-wide" style={{ color: meta.color }}>
+                      {meta.label}
+                    </span>
+                    <span className="text-xs font-semibold" style={{ color: meta.color, opacity: 0.75 }}>
+                      {roleDrugs.length}
+                    </span>
+                  </div>
+
+                  {byClassWithin(roleDrugs).map(([className, classDrugs], ci) => (
+                    <div key={className}>
+                      {/* Drug class sub-header */}
+                      <div className={`flex items-center justify-between px-5 py-2 bg-gray-50 ${ci > 0 ? 'border-t border-drug-border' : ''}`}>
+                        <Link
+                          to={`/browse?class=${encodeURIComponent(className)}`}
+                          className="text-xs font-bold text-primary-700 hover:underline"
+                          onClick={e => e.stopPropagation()}
                         >
-                          <X className="w-4 h-4" />
-                        </button>
+                          {className}
+                        </Link>
+                        <span className="text-xs text-drug-muted">{classDrugs.length}</span>
+                      </div>
+
+                      {/* Drugs */}
+                      {viewMode === 'grid' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                          {classDrugs.map(drug => (
+                            <Link
+                              key={drug.id}
+                              to={`/drug/${drug.id}`}
+                              className="group border border-drug-border rounded-xl p-4 hover:border-primary-300 hover:shadow-md transition-all"
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="p-1.5 bg-primary-50 rounded-lg">
+                                  <Pill className="w-4 h-4 text-primary-600" />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <RxBadge status={drug.prescription_status} />
+                                  {isAdmin && (
+                                    <button
+                                      onClick={(e) => removeFromCondition(drug, e)}
+                                      disabled={removingId === drug.id}
+                                      title="Remove from this condition"
+                                      className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 disabled:opacity-40"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <h3 className="font-bold text-sm group-hover:text-primary-700 transition-colors">
+                                {drug.generic_name}
+                              </h3>
+                              <p className="text-xs text-primary-600 mt-0.5">{drug.drug_subclass || getDisplayDrugClass(drug)}</p>
+                              <p className="text-xs text-drug-muted mt-1.5 line-clamp-2">
+                                {drug.indications || drug.primary_indications}
+                              </p>
+                              {isCombo && (
+                                <span
+                                  className="inline-block mt-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ color: meta.color, background: meta.bg, border: '1px solid ' + meta.border }}
+                                >
+                                  Combination Therapy
+                                </span>
+                              )}
+                            </Link>
+                          ))}
+                        </div>
+                      ) : (
+                        <div>
+                          {classDrugs.map((drug, i) => (
+                            <Link
+                              key={drug.id}
+                              to={`/drug/${drug.id}`}
+                              className={`flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors ${
+                                i !== classDrugs.length - 1 ? 'border-b border-drug-border' : ''
+                              }`}
+                            >
+                              <div className="p-1.5 bg-primary-50 rounded-lg flex-shrink-0">
+                                <Pill className="w-4 h-4 text-primary-600" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm truncate flex items-center gap-1.5">
+                                  <span className="truncate">{drug.generic_name}</span>
+                                  {isCombo && (
+                                    <span
+                                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                      style={{ color: meta.color, background: meta.bg, border: '1px solid ' + meta.border }}
+                                    >
+                                      Combination Therapy
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-primary-600 truncate">
+                                  {drug.drug_subclass || getDisplayDrugClass(drug)}
+                                </div>
+                              </div>
+                              <RxBadge status={drug.prescription_status} />
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => removeFromCondition(drug, e)}
+                                  disabled={removingId === drug.id}
+                                  title="Remove from this condition"
+                                  className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 flex-shrink-0 disabled:opacity-40"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+                            </Link>
+                          ))}
+                        </div>
                       )}
-                      <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
-                    </Link>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
-            ))
+              );
+            })
           )}
 
           {/* AI expansion — find more drugs for this condition */}
@@ -810,6 +888,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           {/* Combination therapy regimens for this specific condition */}
           <div className="px-4 pb-4">
             <IndicationCombinationPanel
+              conditionId={condition.id}
               conditionLabel={condition.label}
               systemName={systemName}
             />

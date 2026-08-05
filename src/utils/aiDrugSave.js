@@ -1,8 +1,9 @@
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
 import { apiUrl } from '../config/apiBase';
+import { drugMatchesConditionKeywords } from '../data/systemConditions';
 
 // Wait for Firebase Auth session to restore, then verify sign-in
 async function getAuthUser() {
@@ -567,4 +568,63 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
 
   // Always 'saved'. missingGroups is informational only — never blocks saving.
   return { status: 'saved', id: docId, missingGroups: missing };
+}
+
+// Same normalisation used by ConditionSection.js and AiInsightContext.js,
+// duplicated here rather than imported so this util doesn't depend on any
+// component — matches the pattern already established elsewhere in this app.
+function normalizeDrugNameForMatch(name) {
+  let n = (name || '').trim().toLowerCase();
+  n = n.replace(/[\s/.+-]+/g, ' ').trim();
+  n = n.replace(/\bco (\w)/g, 'co$1');
+  n = n
+    .replace(/\bclavulanic acid\b/g, 'clavulanate')
+    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return n;
+}
+
+// ── Quiet, background save of a condition's AI drug list ───────────────────
+// Used for signed-in non-admin users: mirrors the admin "Save All" path
+// (startConditionSave in AiInsightContext) — existing drugs get this
+// condition's tag added (or flagged pending if their own indications don't
+// support it), brand-new names get generated and saved — but with no
+// progress state, no floating widget, and every failure swallowed. Nothing
+// about this should ever be visible to the person it's running for.
+export async function silentSaveConditionItems({ items, conditionId, conditionKeywords, existingByName, endpoint = '/api/drug-ai-details' }) {
+  if (!Array.isArray(items) || items.length === 0 || !conditionId) return;
+  for (const item of items) {
+    try {
+      const existing = existingByName.get(normalizeDrugNameForMatch(item.name));
+      if (existing) {
+        const relevant = drugMatchesConditionKeywords(existing, conditionKeywords, item.note);
+        if (relevant === false) {
+          await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
+            pending_condition_tags: arrayUnion(conditionId),
+            last_updated: serverTimestamp(),
+          });
+        } else {
+          await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
+            condition_tags: arrayUnion(conditionId),
+            last_updated: serverTimestamp(),
+          });
+        }
+      } else {
+        const drugClassForItem = item.subclass || undefined;
+        const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: drugClassForItem, endpoint });
+        const result = await saveAiDrugToDatabase({
+          genericName: item.name, drugClass: drugClassForItem, text: itemText, overwrite: true,
+        });
+        if (result.status === 'saved') {
+          await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), {
+            condition_tags: arrayUnion(conditionId),
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Intentionally silent — this must never surface to the user.
+    }
+    await new Promise(r => setTimeout(r, 350));
+  }
 }
