@@ -156,7 +156,9 @@ For each medication, use a bullet point starting with the **generic name in bold
 
 Aim for a focused, high-value list of roughly 5-10 medications across the relevant classes — the most clinically important/commonly used ones a nurse would actually reach for, not an exhaustive catalog. If "${conditionLabel}" is not a recognized clinical condition or you're not confident it's real, say so clearly instead of inventing medications.
 
-This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.`;
+This is reference material only, not a substitute for the current product monograph or clinical guidelines — do not fabricate specific dosing figures.
+
+Output nothing except the ## headers and bullet points themselves — no introductory sentence, no explanation of your reasoning, and no closing summary. Begin your reply immediately with the first "## " header. If there is genuinely nothing new to add beyond what's already covered, reply with a single line "No additional medications found." and nothing else — do not explain why.`;
   } else if (mode === 'condition_insight') {
     // Powers the search-page "condition insight" card: a nurse searches an
     // indication/disease name (not a drug name) and gets a clinical primer
@@ -337,7 +339,9 @@ For each medication, use a bullet point starting with the **generic name in bold
 
 Aim for a reasonably thorough list (roughly 10-25 medications depending on how broad the class is) so the nurse gets real coverage of the class, not just one or two examples. If "${className}" is not a recognized drug class or you're not confident it's real, say so clearly instead of inventing medications.
 
-This is reference material only, not a substitute for the current product monograph — do not fabricate specific dosing figures.`;
+This is reference material only, not a substitute for the current product monograph — do not fabricate specific dosing figures.
+
+Output nothing except the ## headers and bullet points themselves — no introductory sentence, no explanation of your reasoning, and no closing summary. Begin your reply immediately with the first "## " header. If there is genuinely nothing new to add beyond what's already covered, reply with a single line "No additional medications found." and nothing else — do not explain why.`;
   } else {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
