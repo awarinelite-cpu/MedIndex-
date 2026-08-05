@@ -1,10 +1,46 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Pill } from 'lucide-react';
+import {
+  ChevronDown, ChevronRight, Pill, Brain, Bone, Syringe, Soup, Heart,
+  Droplet, Wind, ShieldAlert, ShieldCheck, Activity, Baby, Dna, Eye,
+  Ear, Layers, SprayCan, ShieldPlus, Smile, AlertTriangle, Thermometer,
+  Sparkles,
+} from 'lucide-react';
 import { DRUG_CLASS_TAXONOMY, UNCLASSIFIED_BUCKET } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import AiClassInsight from './AiClassInsight';
+
+// Icon + tint for each of the 21 formulary chapters — purely visual, keyed
+// off the taxonomy's own class id, so it doesn't touch the taxonomy data
+// itself (names/numbers stay exactly as filed).
+const CLASS_VISUALS = {
+  'cns':                         { icon: Brain,         color: 'text-purple-500',  bg: 'bg-purple-100'  },
+  'musculoskeletal':             { icon: Bone,           color: 'text-stone-500',   bg: 'bg-stone-100'   },
+  'anaesthesia':                 { icon: Syringe,        color: 'text-sky-500',     bg: 'bg-sky-100'     },
+  'gastrointestinal':            { icon: Soup,           color: 'text-green-600',   bg: 'bg-green-100'   },
+  'cardiovascular':              { icon: Heart,          color: 'text-red-500',     bg: 'bg-red-100'     },
+  'blood-nutrition':             { icon: Droplet,        color: 'text-rose-500',    bg: 'bg-rose-100'    },
+  'respiratory':                 { icon: Wind,           color: 'text-blue-500',    bg: 'bg-blue-100'    },
+  'antiallergics':                { icon: ShieldAlert,    color: 'text-amber-500',   bg: 'bg-amber-100'   },
+  'anti-infective':              { icon: ShieldCheck,    color: 'text-teal-600',    bg: 'bg-teal-100'    },
+  'endocrine':                   { icon: Activity,       color: 'text-indigo-500',  bg: 'bg-indigo-100'  },
+  'reproductive-urinary':        { icon: Baby,           color: 'text-pink-500',    bg: 'bg-pink-100'    },
+  'oncology-immunosuppressive':  { icon: Dna,            color: 'text-violet-500',  bg: 'bg-violet-100'  },
+  'ophthalmological':            { icon: Eye,            color: 'text-cyan-500',    bg: 'bg-cyan-100'    },
+  'ent':                         { icon: Ear,            color: 'text-lime-600',    bg: 'bg-lime-100'    },
+  'dermatological':              { icon: Layers,         color: 'text-fuchsia-500', bg: 'bg-fuchsia-100' },
+  'disinfectants':               { icon: SprayCan,       color: 'text-slate-500',   bg: 'bg-slate-100'   },
+  'immunological':               { icon: ShieldPlus,     color: 'text-emerald-500', bg: 'bg-emerald-100' },
+  'dental':                      { icon: Smile,          color: 'text-yellow-600',  bg: 'bg-yellow-100'  },
+  'antidotes-poisoning':         { icon: AlertTriangle,  color: 'text-red-600',     bg: 'bg-red-100'     },
+  'diagnostic-equipment':        { icon: Thermometer,    color: 'text-gray-500',    bg: 'bg-gray-100'    },
+  'natural-health':              { icon: Sparkles,       color: 'text-orange-500',  bg: 'bg-orange-100'  },
+};
+const DEFAULT_CLASS_VISUAL = { icon: Pill, color: 'text-primary-600', bg: 'bg-primary-100' };
+function classVisual(classId) {
+  return CLASS_VISUALS[classId] || DEFAULT_CLASS_VISUAL;
+}
 
 const STATUS_BADGE = {
   OTC: 'bg-green-100 text-green-700',
@@ -102,11 +138,14 @@ function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle, database
         className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-gray-50"
       >
         <div className="flex items-center gap-3 min-w-0">
-          {classDef.number != null && (
-            <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-primary-100 text-primary-700 text-xs font-bold flex items-center justify-center">
-              {classDef.number}
-            </span>
-          )}
+          {(() => {
+            const { icon: ClassIcon, color, bg } = classVisual(classDef.id);
+            return (
+              <span className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${bg}`}>
+                <ClassIcon className={`w-5 h-5 ${color}`} />
+              </span>
+            );
+          })()}
           <h3 className="font-bold truncate">{classDef.name}</h3>
         </div>
         <span className="flex items-center gap-3 flex-shrink-0">

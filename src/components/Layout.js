@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, Menu, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, Bookmark, MoreHorizontal } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, Bookmark, MoreHorizontal } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -200,15 +200,6 @@ export default function Layout({ children }) {
                   </div>
                 )}
               </div>
-
-              {/* Mobile hamburger — moved up next to bell on small screens */}
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
-                aria-label="Toggle menu"
-              >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-              </button>
             </div>
           </div>
         </div>
