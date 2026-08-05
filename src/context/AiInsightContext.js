@@ -196,7 +196,7 @@ export function AiInsightProvider({ children }) {
     setConditionRunning(true);
     setConditionProgress({ done: 0, total: items.length });
 
-    let done = 0, saved = 0, reused = 0, failed = 0, skippedMismatch = 0;
+    let done = 0, saved = 0, reused = 0, failed = 0, flaggedForReview = 0;
     const errors = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -214,7 +214,21 @@ export function AiInsightProvider({ children }) {
         // keywords to check against, so fall back to trusting the AI.
         const relevant = drugMatchesConditionKeywords(existing, conditionKeywords);
         if (relevant === false) {
-          skippedMismatch++;
+          // Don't just drop it — the AI still thinks it belongs here, so
+          // save the link as UNCONFIRMED (pending_condition_tags) instead
+          // of a confirmed condition_tags entry. An admin reviews these
+          // and either confirms (promotes to condition_tags) or rejects
+          // (removes) — nothing gets silently lost.
+          try {
+            await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {
+              pending_condition_tags: arrayUnion(conditionId),
+              last_updated: serverTimestamp(),
+            });
+            flaggedForReview++;
+          } catch (e) {
+            errors.push({ name: item.name, message: `Failed to flag for review: ${e.message}` });
+            failed++;
+          }
           done++;
           setConditionProgress({ done, total: items.length });
           continue;
@@ -261,7 +275,7 @@ export function AiInsightProvider({ children }) {
     conditionRunningRef.current = false;
     setConditionRunning(false);
     setConditionCurrentName(null);
-    setConditionSummary({ saved, reused, failed, skippedMismatch, errors, stopped, total: items.length, label });
+    setConditionSummary({ saved, reused, failed, flaggedForReview, errors, stopped, total: items.length, label });
 
     // A newly-created or empty condition may have been queued up while this
     // job was running — pick up the next one automatically.
@@ -937,9 +951,9 @@ function ConditionSaveWidget() {
               🔗 {conditionSummary.reused} existing drug{conditionSummary.reused !== 1 ? 's' : ''} linked
             </div>
           )}
-          {conditionSummary.skippedMismatch > 0 && (
+          {conditionSummary.flaggedForReview > 0 && (
             <div style={{ fontSize: 12, color: '#FBBF24', marginBottom: 4 }}>
-              ⚠ {conditionSummary.skippedMismatch} skipped — not actually indicated for this condition
+              🚩 {conditionSummary.flaggedForReview} saved as unconfirmed — flagged for admin review
             </div>
           )}
           {conditionSummary.failed > 0 && (

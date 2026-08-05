@@ -13,7 +13,7 @@ import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo } fr
 import { parseConditionClinicalInfo, hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
-import { doc, updateDoc, serverTimestamp, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
@@ -77,6 +77,39 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
   // "don't repeat what's already here" hint honest.
   const knownDrugNames = useMemo(() => existingDrugs.map(d => d.generic_name).filter(Boolean), [existingDrugs]);
 
+  // Drugs the AI linked to this condition but whose stored indications
+  // didn't clearly match this condition's keywords — saved as unconfirmed
+  // (pending_condition_tags) instead of being dropped, so an admin can
+  // confirm or reject the link instead of it silently disappearing.
+  const pendingDrugs = useMemo(
+    () => lookupPool.filter(d => Array.isArray(d.pending_condition_tags) && d.pending_condition_tags.includes(conditionId)),
+    [lookupPool, conditionId]
+  );
+  const [pendingBusyId, setPendingBusyId] = useState(null);
+  const confirmPending = async (drug) => {
+    setPendingBusyId(drug.id);
+    try {
+      await updateDoc(doc(db, 'drugs', drug.id), {
+        condition_tags: arrayUnion(conditionId),
+        pending_condition_tags: arrayRemove(conditionId),
+        last_updated: serverTimestamp(),
+      });
+    } finally {
+      setPendingBusyId(null);
+    }
+  };
+  const rejectPending = async (drug) => {
+    setPendingBusyId(drug.id);
+    try {
+      await updateDoc(doc(db, 'drugs', drug.id), {
+        pending_condition_tags: arrayRemove(conditionId),
+        last_updated: serverTimestamp(),
+      });
+    } finally {
+      setPendingBusyId(null);
+    }
+  };
+
   const cacheKey = `ai_condition_${conditionLabel.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
   const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
@@ -120,20 +153,61 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
     startConditionSave({ items, conditionId, label: conditionLabel, conditionKeywords, existingByName, endpoint: provider.endpoint });
   };
 
+  // Admin-only review queue for drugs the AI linked here that didn't clearly
+  // match this condition's keywords — shown regardless of AI-fallback state
+  // (idle/done/etc.) since these can be left over from an earlier run.
+  const pendingReviewPanel = isAdmin && pendingDrugs.length > 0 && (
+    <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-200">
+        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+        <span className="text-sm font-bold text-amber-900">
+          {pendingDrugs.length} drug{pendingDrugs.length !== 1 ? 's' : ''} awaiting confirmation for "{conditionLabel}"
+        </span>
+      </div>
+      {pendingDrugs.map(d => (
+        <div key={d.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100 last:border-b-0">
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm truncate">{d.generic_name}</div>
+            <div className="text-xs text-drug-muted truncate">{d.drug_class || '—'}</div>
+          </div>
+          <button
+            disabled={pendingBusyId === d.id}
+            onClick={() => confirmPending(d)}
+            title="Confirm — this drug is indicated for this condition"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-2.5 py-1 rounded-lg disabled:opacity-50"
+          >
+            <Check className="w-3 h-3" /> Confirm
+          </button>
+          <button
+            disabled={pendingBusyId === d.id}
+            onClick={() => rejectPending(d)}
+            title="Reject — not indicated for this condition"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-2.5 py-1 rounded-lg disabled:opacity-50"
+          >
+            <X className="w-3 h-3" /> Reject
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
   if (state === 'idle') {
     return (
-      <div className="mt-3 bg-primary-50 border border-primary-200 rounded-xl p-5 text-center">
-        <Sparkles className="w-7 h-7 text-primary-500 mx-auto mb-2" />
-        <p className="text-sm text-drug-text mb-3">
-          Want the AI to find more medications used for "{conditionLabel}"?
-        </p>
-        <button
-          onClick={runLookup}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
-        >
-          <Sparkles className="w-4 h-4" /> Find more drugs for "{conditionLabel}"
-        </button>
-      </div>
+      <>
+        <div className="mt-3 bg-primary-50 border border-primary-200 rounded-xl p-5 text-center">
+          <Sparkles className="w-7 h-7 text-primary-500 mx-auto mb-2" />
+          <p className="text-sm text-drug-text mb-3">
+            Want the AI to find more medications used for "{conditionLabel}"?
+          </p>
+          <button
+            onClick={runLookup}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+          >
+            <Sparkles className="w-4 h-4" /> Find more drugs for "{conditionLabel}"
+          </button>
+        </div>
+        {pendingReviewPanel}
+      </>
     );
   }
 
@@ -163,6 +237,7 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
 
   // done
   return (
+    <>
     <div className="mt-3 bg-white border border-drug-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-4 py-3 bg-violet-50 border-b border-drug-border">
         <div className="flex items-center gap-2 min-w-0">
@@ -211,7 +286,7 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
           {bulkResults.saved > 0 && `${bulkResults.saved} newly generated`}
           {bulkResults.saved > 0 && bulkResults.reused > 0 && ', '}
           {bulkResults.reused > 0 && `${bulkResults.reused} existing drug${bulkResults.reused !== 1 ? 's' : ''} linked (info reused)`}
-          {bulkResults.skippedMismatch > 0 && `, ${bulkResults.skippedMismatch} skipped (not actually indicated for this condition)`}
+          {bulkResults.flaggedForReview > 0 && `, ${bulkResults.flaggedForReview} saved as unconfirmed (flagged for admin review)`}
           {bulkResults.errors.length > 0 && `, ${bulkResults.errors.length} failed`}.
         </div>
       )}
@@ -248,6 +323,8 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
         })
       )}
     </div>
+    {pendingReviewPanel}
+    </>
   );
 }
 
