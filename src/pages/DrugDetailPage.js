@@ -19,7 +19,7 @@ import {
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
-  serverTimestamp, query, orderBy,
+  serverTimestamp, query, orderBy, Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
@@ -868,6 +868,7 @@ function AddToListButton({ drug }) {
   const [lists, setLists]  = useState([]);
   const [loading, setLoading] = useState(false);
   const [added, setAdded]  = useState({});   // listId → true
+  const [error, setError]  = useState(null);
 
   const loadLists = async () => {
     if (!user?.uid) return;
@@ -877,16 +878,22 @@ function AddToListButton({ drug }) {
         query(collection(db, 'users', user.uid, 'lists'), orderBy('createdAt', 'desc'))
       );
       setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error('Load lists for picker:', e); }
+    } catch (e) { console.error('Load lists for picker:', e); setError('Could not load your lists.'); }
     setLoading(false);
   };
 
-  const handleOpen = () => { setOpen(true); loadLists(); };
+  const handleOpen = () => { setOpen(true); setError(null); loadLists(); };
 
+  // NOTE: FieldValue.serverTimestamp() cannot be used as an element inside
+  // an array field (Firestore throws "FieldValue.serverTimestamp() is not
+  // currently supported inside arrays") — every drug list is a plain array
+  // of drug objects, so each entry's addedAt must use Timestamp.now()
+  // (a concrete value) instead of the serverTimestamp() sentinel.
   const addToList = async (list) => {
     if (!user?.uid) return;
     const already = (list.drugs || []).some(d => d.drugId === drug.id);
     if (already) { setAdded(p => ({ ...p, [list.id]: true })); return; }
+    setError(null);
     try {
       const updatedDrugs = [
         ...(list.drugs || []),
@@ -895,7 +902,7 @@ function AddToListButton({ drug }) {
           drugName:  drug.generic_name,
           drugClass: drug.drug_class || '',
           notes:     '',
-          addedAt:   serverTimestamp(),
+          addedAt:   Timestamp.now(),
         },
       ];
       await updateDoc(doc(db, 'users', user.uid, 'lists', list.id), {
@@ -903,12 +910,16 @@ function AddToListButton({ drug }) {
         last_updated: serverTimestamp(),
       });
       setAdded(p => ({ ...p, [list.id]: true }));
-    } catch (e) { console.error('Add to list error:', e); }
+    } catch (e) {
+      console.error('Add to list error:', e);
+      setError("Couldn't add this drug to the list. Check your connection and try again.");
+    }
   };
 
   const createAndAdd = async () => {
     if (!user?.uid) return;
     setLoading(true);
+    setError(null);
     try {
       const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
         title:     `New List`,
@@ -918,13 +929,16 @@ function AddToListButton({ drug }) {
           drugName:  drug.generic_name,
           drugClass: drug.drug_class || '',
           notes:     '',
-          addedAt:   serverTimestamp(),
+          addedAt:   Timestamp.now(),
         }],
       });
       setAdded(p => ({ ...p, [ref.id]: true }));
       await loadLists();
       setOpen(false);
-    } catch (e) { console.error('Create list error:', e); }
+    } catch (e) {
+      console.error('Create list error:', e);
+      setError("Couldn't create the list. Check your connection and try again.");
+    }
     setLoading(false);
   };
 
@@ -952,6 +966,12 @@ function AddToListButton({ drug }) {
                 <X className="w-4 h-4 text-drug-muted" />
               </button>
             </div>
+
+            {error && (
+              <div className="px-4 py-2.5 text-xs text-red-700 bg-red-50 border-b border-red-100">
+                {error}
+              </div>
+            )}
 
             {loading && (
               <div className="px-4 py-6 text-center text-sm text-drug-muted">Loading lists…</div>
