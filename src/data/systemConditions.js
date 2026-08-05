@@ -2,8 +2,11 @@
 //
 // Defines clinical conditions for each anatomical system.
 // Each condition has a set of keyword patterns matched (case-insensitive,
-// substring) against a drug's indications, primary_indications, overview,
-// and drug_class/drug_subclass fields.
+// substring, with an all-significant-words fallback for multi-word phrases —
+// see matchesConditionByKeyword below) against a drug's indications,
+// primary_indications, overview, drug_class/drug_subclass, and
+// pharmacology/mechanism fields — i.e. not just its clean indication list,
+// but what its mechanism-of-action text says it's used for too.
 //
 // A drug can appear under multiple conditions within a system — that is
 // intentional and clinically accurate (e.g. Metoprolol → Hypertension AND
@@ -4289,16 +4292,20 @@ const KEYWORD_STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 
 
 function matchesConditionByKeyword(drug, cond) {
   // Match against every field the top-of-file doc comment promises:
-  // indications/primary_indications AND overview AND drug_class/subclass.
-  // Previously only the first two were actually checked here — so a drug
-  // whose OVERVIEW or DRUG CLASS text named the condition (but whose
-  // indications text used a different clinical synonym) failed this check
-  // and got wrongly flagged as "unconfirmed" despite being genuinely,
-  // textbook-level indicated (e.g. Diethylcarbamazine's indications may
-  // say "lymphatic filariasis" without the word "elephantiasis" ever
-  // appearing, even though the two terms describe the same disease).
-  const text = [drug.indications, drug.primary_indications, drug.overview, drug.drug_class, drug.drug_subclass]
-    .filter(Boolean).join(' ').toLowerCase();
+  // indications/primary_indications AND overview AND drug_class/subclass —
+  // PLUS pharmacology/mechanism, added on top of that. A drug's mechanism
+  // text routinely states plainly what it's used for as part of explaining
+  // how it works (e.g. "...used in the treatment of lymphatic filariasis by
+  // paralyzing and killing microfilariae..."), which is exactly the kind of
+  // sentence that names a condition even when the Indications field itself
+  // is terse or uses a different clinical synonym. Skipping it was leaving
+  // real signal on the table — this is the "how the drug works, and what
+  // that tells you about what it treats" text, not just its clean indication
+  // list.
+  const text = [
+    drug.indications, drug.primary_indications, drug.overview,
+    drug.drug_class, drug.drug_subclass, drug.pharmacology, drug.mechanism,
+  ].filter(Boolean).join(' ').toLowerCase();
   if (!text) return false;
 
   const hasPhrase = (kw) => {
