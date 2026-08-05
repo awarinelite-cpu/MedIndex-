@@ -4,17 +4,18 @@
 // lives above the router, so it keeps running (and the floating widget stays
 // visible) no matter which page the admin navigates to.
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAuth } from './AuthContext';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { drugMatchesConditionKeywords, SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
-import { GripHorizontal } from 'lucide-react';
+import { GripHorizontal, AlertTriangle, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function isIncomplete(drug) {
   return getMissingGroups(drug).length > 0;
@@ -598,6 +599,53 @@ export function AiInsightProvider({ children }) {
   const { drugs: drugsForAutoFill } = useDrugs();
   useEffect(() => { allDrugsRef.current = drugsForAutoFill; }, [drugsForAutoFill]);
 
+  // ── Global pending-drug review queue ──────────────────────────────────
+  // Every drug/condition pair sitting in pending_condition_tags, anywhere
+  // in the database — flattened into one list so an admin can review them
+  // one at a time from a single popup instead of hunting through each
+  // condition's own page for its flagged drugs. Rebuilds live as drugs or
+  // the custom-conditions doc change (both already streamed elsewhere in
+  // this file), so a pair vanishes from the queue the moment it's
+  // confirmed/rejected on any device.
+  const conditionLabelById = React.useMemo(() => {
+    const map = new Map();
+    allConditionsIndex.forEach(c => map.set(c.id, c));
+    return map;
+  }, [allConditionsIndex]);
+
+  const pendingReviewList = React.useMemo(() => {
+    const list = [];
+    (drugsForAutoFill || []).forEach(d => {
+      (d.pending_condition_tags || []).forEach(conditionId => {
+        const cond = conditionLabelById.get(conditionId);
+        list.push({
+          drugId: d.id,
+          drugName: d.generic_name,
+          drugClass: d.drug_class || '',
+          conditionId,
+          conditionLabel: cond?.label || conditionId,
+          systemName: cond?.systemName || '',
+        });
+      });
+    });
+    return list;
+  }, [drugsForAutoFill, conditionLabelById]);
+
+  const confirmPendingReview = useCallback(async ({ drugId, conditionId }) => {
+    await updateDoc(doc(db, 'drugs', drugId), {
+      condition_tags: arrayUnion(conditionId),
+      pending_condition_tags: arrayRemove(conditionId),
+      last_updated: serverTimestamp(),
+    });
+  }, []);
+
+  const rejectPendingReview = useCallback(async ({ drugId, conditionId }) => {
+    await updateDoc(doc(db, 'drugs', drugId), {
+      pending_condition_tags: arrayRemove(conditionId),
+      last_updated: serverTimestamp(),
+    });
+  }, []);
+
   // Guards against a race that was silently dropping jobs: enqueueing
   // several conditions at once (e.g. "Add All", or the empty-condition
   // sweep finding 5 at once) called processAutoFillQueue() once per
@@ -668,12 +716,14 @@ export function AiInsightProvider({ children }) {
       clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
       clinicalSweepSummary, clinicalSweepResumed, clinicalSweepEligibleCount, clinicalSweepTotalConditions,
       startClinicalInfoSweep, stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
+      pendingReviewList, confirmPendingReview, rejectPendingReview,
     }}>
       {children}
       <GlobalAiInsightWidget />
       <ConditionSaveWidget />
       <ClassSweepWidget />
       <ClinicalInfoSweepWidget />
+      <PendingReviewWidget />
     </AiInsightContext.Provider>
   );
 }
@@ -1197,5 +1247,146 @@ function ClinicalInfoSweepWidget() {
         </>
       )}
     </DraggableWidget>
+  );
+}
+
+// ── Floating trigger + modal for the global pending-drug review queue ──
+// Admin-only. Shows a small badge (bottom-left, so it never collides with
+// the other draggable widgets which default to bottom-right) whenever
+// there's at least one drug/condition pair awaiting confirmation anywhere
+// in the database. Clicking it opens a one-at-a-time review popup instead
+// of making the admin dig through each condition's own page.
+function PendingReviewWidget() {
+  const { isAdmin } = useAuth();
+  const { pendingReviewList, confirmPendingReview, rejectPendingReview } = useContext(AiInsightContext);
+  const [open, setOpen]   = useState(false);
+  const [index, setIndex] = useState(0);
+  const [busy, setBusy]   = useState(false);
+
+  // Keep the pointer in range as the list shrinks (items get confirmed/
+  // rejected from elsewhere too, e.g. another admin, or the per-condition
+  // panel) — clamp instead of resetting to 0 so reviewing stays put.
+  useEffect(() => {
+    setIndex(i => Math.min(i, Math.max(0, pendingReviewList.length - 1)));
+  }, [pendingReviewList.length]);
+
+  if (!isAdmin || pendingReviewList.length === 0) return null;
+
+  const current = pendingReviewList[index];
+
+  const advance = () => {
+    setIndex(i => (i >= pendingReviewList.length - 1 ? 0 : i));
+  };
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    try { await confirmPendingReview(current); advance(); } finally { setBusy(false); }
+  };
+  const handleReject = async () => {
+    setBusy(true);
+    try { await rejectPendingReview(current); advance(); } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => { setOpen(true); setIndex(0); }}
+        style={{
+          position: 'fixed', bottom: 20, left: 16, zIndex: 9999,
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: '#0F172A', color: '#fff', border: '1px solid rgba(245,158,11,0.4)',
+          borderRadius: 999, padding: '10px 16px', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+          fontSize: 13, fontWeight: 700, cursor: 'pointer',
+        }}
+      >
+        <AlertTriangle className="w-4 h-4" style={{ color: '#F59E0B' }} />
+        {pendingReviewList.length} drug{pendingReviewList.length !== 1 ? 's' : ''} awaiting confirmation
+      </button>
+
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff', color: '#0F172A', borderRadius: 20, width: '100%', maxWidth: 420,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.4)', overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #F1F5F9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle className="w-4 h-4" style={{ color: '#D97706' }} />
+                <span style={{ fontWeight: 700, fontSize: 14 }}>Pending drug review</span>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {current ? (
+              <>
+                <div style={{ padding: '20px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', marginBottom: 10 }}>
+                    {index + 1} of {pendingReviewList.length}
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{current.drugName}</div>
+                  {current.drugClass && (
+                    <div style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>{current.drugClass}</div>
+                  )}
+                  <div style={{ fontSize: 13, color: '#334155', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px' }}>
+                    Flagged as possibly indicated for <strong>{current.conditionLabel}</strong>
+                    {current.systemName && <> ({current.systemName})</>} — the AI linked it here, but its stored
+                    indications didn't clearly match. Confirm to tag it, or reject to drop the link.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, padding: '0 20px 16px' }}>
+                  <button
+                    disabled={busy}
+                    onClick={handleReject}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', border: 'none', borderRadius: 12, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
+                  >
+                    <X className="w-3.5 h-3.5" /> Reject
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={handleConfirm}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#fff', background: '#16A34A', border: 'none', borderRadius: 12, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
+                  >
+                    <Check className="w-3.5 h-3.5" /> Confirm
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 20px 20px' }}>
+                  <button
+                    disabled={busy || pendingReviewList.length <= 1}
+                    onClick={() => setIndex(i => (i <= 0 ? pendingReviewList.length - 1 : i - 1))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#64748B', background: 'none', border: 'none', cursor: 'pointer', opacity: pendingReviewList.length <= 1 ? 0.4 : 1 }}
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Skip back
+                  </button>
+                  <button
+                    disabled={busy || pendingReviewList.length <= 1}
+                    onClick={() => setIndex(i => (i >= pendingReviewList.length - 1 ? 0 : i + 1))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#64748B', background: 'none', border: 'none', cursor: 'pointer', opacity: pendingReviewList.length <= 1 ? 0.4 : 1 }}
+                  >
+                    Skip next <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#64748B' }}>
+                All caught up — nothing left to review.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
