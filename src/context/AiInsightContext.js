@@ -213,7 +213,13 @@ export function AiInsightProvider({ children }) {
         // entirely). Check its stored indications against the condition's
         // keywords before tagging it on; a null result means we have no
         // keywords to check against, so fall back to trusting the AI.
-        const relevant = drugMatchesConditionKeywords(existing, conditionKeywords);
+        // Also pass the AI's own note for this item (item.note) — its
+        // one-line justification for why THIS drug belongs on THIS
+        // condition's list, already generated in the same response, rather
+        // than discarding it and checking only the drug's general-purpose
+        // stored fields (which may predate/never mention a more specific
+        // or less common indication the AI is correctly aware of).
+        const relevant = drugMatchesConditionKeywords(existing, conditionKeywords, item.note);
         if (relevant === false) {
           // Don't just drop it — the AI still thinks it belongs here, so
           // save the link as UNCONFIRMED (pending_condition_tags) instead

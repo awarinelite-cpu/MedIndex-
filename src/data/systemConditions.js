@@ -4290,7 +4290,7 @@ export const SYSTEM_CONDITIONS = {
 // no clinical meaning and are unlikely to appear verbatim in a drug's text.
 const KEYWORD_STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 'in', 'to', 'for']);
 
-function matchesConditionByKeyword(drug, cond) {
+function matchesConditionByKeyword(drug, cond, extraText = '') {
   // Match against every field the top-of-file doc comment promises:
   // indications/primary_indications AND overview AND drug_class/subclass —
   // PLUS pharmacology/mechanism, added on top of that. A drug's mechanism
@@ -4302,9 +4302,19 @@ function matchesConditionByKeyword(drug, cond) {
   // real signal on the table — this is the "how the drug works, and what
   // that tells you about what it treats" text, not just its clean indication
   // list.
+  //
+  // extraText (optional) is the AI's OWN one-line justification for THIS
+  // specific drug/condition pairing, taken straight from its condition-list
+  // response (e.g. "PO; anti-Wolbachia agent for lymphatic filariasis") —
+  // not a second AI call, just the reasoning it already gave and that was
+  // previously discarded the moment we checked an existing drug's stored
+  // record. It's often more pointed than the drug's own general-purpose
+  // fields, which may never have been written with this specific,
+  // less-common indication in mind.
   const text = [
     drug.indications, drug.primary_indications, drug.overview,
     drug.drug_class, drug.drug_subclass, drug.pharmacology, drug.mechanism,
+    extraText,
   ].filter(Boolean).join(' ').toLowerCase();
   if (!text) return false;
 
@@ -4338,10 +4348,13 @@ function matchesConditionByKeyword(drug, cond) {
 // an EXISTING drug the AI mentioned for a condition is actually indicated
 // for it before blindly tagging it on, rather than trusting a name match
 // alone (that was silently tagging drugs onto conditions they don't treat).
-export function drugMatchesConditionKeywords(drug, keywords) {
+// extraText: see matchesConditionByKeyword above — pass the AI's own note
+// for this drug/condition pairing when the caller has one.
+export function drugMatchesConditionKeywords(drug, keywords, extraText = '') {
   if (!Array.isArray(keywords) || keywords.length === 0) return null; // no keywords to check against — caller should skip the check
-  return matchesConditionByKeyword(drug, { keywords });
+  return matchesConditionByKeyword(drug, { keywords }, extraText);
 }
+
 
 // Suggest condition ids for a drug within a system, using the strict keyword
 // rule above. Used by the admin backfill to seed condition_tags. Returns an
