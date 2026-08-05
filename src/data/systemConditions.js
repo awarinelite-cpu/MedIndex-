@@ -394,7 +394,7 @@ export const SYSTEM_CONDITIONS = {
       id: 'elephantiasis',
       label: 'Elephantiasis',
       icon: '❤️',
-      keywords: ['elephantiasis'],
+      keywords: ['elephantiasis', 'lymphatic filariasis', 'filariasis', 'wuchereria bancrofti', 'brugia malayi', 'brugia timori', 'wuchereria', 'antifilarial'],
     },
     {
       id: 'leg_ulcers',
@@ -4281,16 +4281,48 @@ export const SYSTEM_CONDITIONS = {
 // This produces a cleaner starting set of tags for the backfill; admins then
 // prune any remaining wrong matches with the remove button. Live display does
 // NOT use this — it is strictly tag-based (see getDrugConditions below).
+// Small stopword set used only to strip filler words ("and", "of", "the"…)
+// out of a multi-word keyword phrase before the all-words fallback below —
+// keeping those in would force a match against connector words that carry
+// no clinical meaning and are unlikely to appear verbatim in a drug's text.
+const KEYWORD_STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 'in', 'to', 'for']);
+
 function matchesConditionByKeyword(drug, cond) {
-  const text = [drug.indications, drug.primary_indications]
+  // Match against every field the top-of-file doc comment promises:
+  // indications/primary_indications AND overview AND drug_class/subclass.
+  // Previously only the first two were actually checked here — so a drug
+  // whose OVERVIEW or DRUG CLASS text named the condition (but whose
+  // indications text used a different clinical synonym) failed this check
+  // and got wrongly flagged as "unconfirmed" despite being genuinely,
+  // textbook-level indicated (e.g. Diethylcarbamazine's indications may
+  // say "lymphatic filariasis" without the word "elephantiasis" ever
+  // appearing, even though the two terms describe the same disease).
+  const text = [drug.indications, drug.primary_indications, drug.overview, drug.drug_class, drug.drug_subclass]
     .filter(Boolean).join(' ').toLowerCase();
   if (!text) return false;
+
+  const hasPhrase = (kw) => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  };
+
   return cond.keywords.some(kwRaw => {
     const kw = kwRaw.trim().toLowerCase();
     if (kw.length < 3) return false; // ignore ultra-short noise keywords
-    // Word-boundary match: keyword must be bounded by non-alphanumerics.
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+    if (hasPhrase(kw)) return true;
+
+    // Fallback for the common case (roughly two-thirds of entries in this
+    // file) where a condition's ONLY keyword is its own full label copied
+    // verbatim — e.g. "lymphedema and elephantiasis". That exact phrase
+    // almost never appears in a drug's own indications wording, which was
+    // silently flagging well-established, correctly-indicated drugs as
+    // "unconfirmed" across most conditions in the app, not just this one.
+    // If the phrase itself doesn't match, fall back to requiring every
+    // significant word IN it (stopwords aside) to appear somewhere in the
+    // text — still a real signal, just not dependent on exact phrasing.
+    const words = kw.split(/\s+/).filter(w => w.length >= 3 && !KEYWORD_STOPWORDS.has(w));
+    if (words.length < 2) return false; // single-word keywords already tried as a phrase above
+    return words.every(w => hasPhrase(w));
   });
 }
 
