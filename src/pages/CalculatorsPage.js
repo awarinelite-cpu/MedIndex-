@@ -4,13 +4,15 @@
 // Matches MedIndex design system (light theme, primary blue, Inter font)
 
 import React, { useState } from 'react';
-import { Pill, Droplet, Calculator, ArrowLeftRight, Scale } from 'lucide-react';
+import { Pill, Droplet, Calculator, ArrowLeftRight, Scale, Divide } from 'lucide-react';
 import DrugDosageCalculator from '../components/calculators/DrugDosageCalculator';
+import SimpleDoseCalculator from '../components/calculators/SimpleDoseCalculator';
 import IVFluidCalculator from '../components/calculators/IVFluidCalculator';
 import UnitConverter from '../components/calculators/UnitConverter';
 import BMICalculator from '../components/calculators/BMICalculator';
 
 const TABS = [
+  { key: 'simple', label: 'Simple Dose', icon: Divide },
   { key: 'drug', label: 'Drug Dosage', icon: Pill },
   { key: 'iv',   label: 'IV Fluids',   icon: Droplet },
   { key: 'units', label: 'Unit Converter', icon: ArrowLeftRight },
@@ -18,7 +20,7 @@ const TABS = [
 ];
 
 export default function CalculatorsPage() {
-  const [tab, setTab] = useState('drug');
+  const [tab, setTab] = useState('simple');
 
   return (
     <div>
@@ -54,6 +56,7 @@ export default function CalculatorsPage() {
           </div>
         </div>
 
+        {tab === 'simple' && <SimpleDoseCalculator />}
         {tab === 'drug' && <DrugDosageCalculator />}
         {tab === 'iv' && <IVFluidCalculator />}
         {tab === 'units' && <UnitConverter />}
