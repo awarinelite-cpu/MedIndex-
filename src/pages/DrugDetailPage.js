@@ -567,7 +567,7 @@ function AiInsightsTab({ drug }) {
 
   // Fields the Overview/Dosage/Safety/etc. tabs actually read from.
   const STRUCTURED_FIELDS = [
-    'overview', 'strength', 'indications', 'therapeutic_note', 'pharmacology',
+    'overview', 'strength', 'indications', 'off_label_use', 'therapeutic_note', 'pharmacology',
     'adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations',
     'contraindications', 'precautions', 'pregnancy_lactation', 'interaction',
     'adverse_effect', 'advice_to_patients', 'nursing_action', 'pharmacovigilance',
@@ -592,6 +592,7 @@ function AiInsightsTab({ drug }) {
         drug.overview && `Overview: ${drug.overview}`,
         drug.strength && `Strength: ${drug.strength}`,
         drug.indications && `Indications: ${drug.indications}`,
+        drug.off_label_use && `Off-label therapeutic use: ${drug.off_label_use}`,
         drug.therapeutic_note && `Therapeutic note: ${drug.therapeutic_note}`,
         drug.adult_dose && `Adult dose: ${drug.adult_dose}`,
         drug.child_dose && `Child dose: ${drug.child_dose}`,
@@ -1185,6 +1186,13 @@ export default function DrugDetailPage() {
                   })
                 : <em className="text-drug-muted">No data available</em>}
             </div>
+
+            {drug.off_label_use && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Off-Label Therapeutic Use</h2>
+                <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p>
+              </div>
+            )}
 
             {drug.therapeutic_note && (
               <div className="section-card p-6">

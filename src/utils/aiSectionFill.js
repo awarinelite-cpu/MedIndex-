@@ -23,8 +23,8 @@ async function getAuthUser() {
 export const TAB_SECTIONS = {
   overview: {
     label:   'Overview',
-    fields:  ['overview', 'indications', 'therapeutic_note'],
-    headers: ['Overview', 'Indications', 'Therapeutic Note'],
+    fields:  ['overview', 'indications', 'off_label_use', 'therapeutic_note'],
+    headers: ['Overview', 'Indications', 'Off-Label Therapeutic Use', 'Therapeutic Note'],
   },
   dosage: {
     label:   'Dosage',

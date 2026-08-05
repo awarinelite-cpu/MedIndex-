@@ -903,7 +903,7 @@ export default function SystemPage() {
   // page as soon as they're uploaded.
   const DRUG_CSV_HEADERS = [
     'generic_name','drug_class','drug_subclass','prescription_status','nafdac_no',
-    'overview','strength','indications','therapeutic_note',
+    'overview','strength','indications','off_label_use','therapeutic_note',
     'adult_dose','child_dose','renal_dose','administration','nstg_recommendations',
     'pharmacology','advice_to_patients','contraindications','precautions',
     'pregnancy_lactation','interaction','adverse_effect','nursing_action',

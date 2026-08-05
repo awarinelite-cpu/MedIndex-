@@ -2,7 +2,7 @@
 // Searches fields that describe what a drug TREATS or IS USED FOR:
 //   - generic_name, drug_class, drug_subclass       (identity)
 //   - indications, primary_indications              (what it treats — both schemas)
-//   - therapeutic_note, nstg_recommendations        (clinical uses — AI schema)
+//   - therapeutic_note, off_label_use, nstg_recommendations (clinical uses — AI schema)
 //   - overview                                      (general description)
 //
 // Deliberately EXCLUDES adverse_effect, side_effects, contraindications etc.
@@ -23,7 +23,7 @@ const INDICATION_FIELDS = ['indications', 'primary_indications'];
 
 // Secondary "uses" fields — clinical notes that often name the conditions a
 // drug is used for (AI-generated schema). Scored slightly below indications.
-const USES_FIELDS = ['therapeutic_note', 'nstg_recommendations'];
+const USES_FIELDS = ['therapeutic_note', 'off_label_use', 'nstg_recommendations'];
 
 // Broader description fields that may mention conditions
 const OVERVIEW_FIELDS = ['overview'];
