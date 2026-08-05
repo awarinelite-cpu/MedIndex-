@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { AiInsightProvider } from './context/AiInsightContext';
 import { AiProviderProvider } from './context/AiProviderContext';
 import { ThemeProvider } from './context/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import ProtectedUserRoute from './components/ProtectedUserRoute';
@@ -27,6 +28,7 @@ import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 function App() {
   return (
+    <ErrorBoundary>
     <ThemeProvider>
     <AuthProvider>
       <AiProviderProvider>
@@ -128,6 +130,7 @@ function App() {
       </AiProviderProvider>
     </AuthProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

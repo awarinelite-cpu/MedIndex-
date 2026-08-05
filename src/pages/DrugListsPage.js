@@ -71,11 +71,13 @@ export default function DrugListsPage() {
   const [renamingId,  setRenamingId]  = useState(null);
   const [deletingId,  setDeletingId]  = useState(null);
   const [saving,      setSaving]      = useState(false);
+  const [error,       setError]       = useState(null);
 
   /* Create */
   const handleCreate = async () => {
     if (!newTitle.trim() || !user?.uid) return;
     setSaving(true);
+    setError(null);
     try {
       await addDoc(collection(db, 'users', user.uid, 'lists'), {
         title:     newTitle.trim(),
@@ -85,28 +87,41 @@ export default function DrugListsPage() {
       setNewTitle('');
       setCreating(false);
       await reload();
-    } catch (e) { console.error('Create list error:', e); }
+    } catch (e) {
+      console.error('Create list error:', e);
+      setError(e.code === 'permission-denied'
+        ? "Couldn't save — please sign out and back in, then try again."
+        : "Couldn't create the list. Check your connection and try again.");
+    }
     setSaving(false);
   };
 
   /* Rename */
   const handleRename = async (listId, newName) => {
     if (!newName.trim() || !user?.uid) return;
+    setError(null);
     try {
       await updateDoc(doc(db, 'users', user.uid, 'lists', listId), { title: newName.trim() });
       setRenamingId(null);
       await reload();
-    } catch (e) { console.error('Rename error:', e); }
+    } catch (e) {
+      console.error('Rename error:', e);
+      setError("Couldn't rename the list. Check your connection and try again.");
+    }
   };
 
   /* Delete */
   const handleDelete = async (listId) => {
     if (!window.confirm('Delete this list? This cannot be undone.')) return;
     setDeletingId(listId);
+    setError(null);
     try {
       await deleteDoc(doc(db, 'users', user.uid, 'lists', listId));
       await reload();
-    } catch (e) { console.error('Delete list error:', e); }
+    } catch (e) {
+      console.error('Delete list error:', e);
+      setError("Couldn't delete the list. Check your connection and try again.");
+    }
     setDeletingId(null);
   };
 
@@ -131,6 +146,16 @@ export default function DrugListsPage() {
           <Plus className="w-4 h-4" /> New List
         </button>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3 mb-6 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="p-1 rounded-lg hover:bg-red-100 flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Create form */}
       {creating && (
