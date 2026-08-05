@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X, AlertTriangle, Loader } from 'lucide-react';
 import { useAiProvider } from '../context/AiProviderContext';
+import { apiUrl } from '../config/apiBase';
 
 // ── API call for standard combination-therapy regimens for a CONDITION ────────
 // Distinct from the per-drug synergy list in DrugInteractionChecker.js: this
@@ -8,7 +9,7 @@ import { useAiProvider } from '../context/AiProviderContext';
 // regimens — each with its own set of component drugs and doses — rather
 // than single partner drugs relative to one starting drug.
 async function fetchIndicationCombinations(conditionLabel, systemName, providerId = 'gemini') {
-  const response = await fetch('/api/drug-interaction-check', {
+  const response = await fetch(apiUrl('/api/drug-interaction-check'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ conditionLabel, systemName, provider: providerId, mode: 'indication_synergy' }),

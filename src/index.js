@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import './index.css';
 import App from './App';
 
@@ -14,7 +15,11 @@ root.render(
 );
 
 // ── PWA Service Worker ───────────────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
+// Skipped inside the Capacitor native app: the bundle is already served
+// locally from the device (no browser tab to cache-bust or reload), and the
+// SW's "new deployment found → reload" logic has nothing meaningful to do
+// there — app updates come from the App/Play Store, not a web deploy.
+if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).then(reg => {
       console.log('[MedLookup SW] Registered:', reg.scope);

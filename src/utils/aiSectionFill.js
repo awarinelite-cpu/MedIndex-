@@ -8,6 +8,7 @@
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
+import { apiUrl } from '../config/apiBase';
 
 async function getAuthUser() {
   await auth.authStateReady();
@@ -62,7 +63,7 @@ export function missingTabFields(drug, tabId) {
 // Fetch AI text for just this tab's sections (streamed as plain text).
 export async function fetchAiSectionText({ genericName, drugClass, tabId, endpoint = '/api/drug-ai-details' }) {
   const cfg = TAB_SECTIONS[tabId];
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -1,0 +1,9 @@
+{
+  "appId": "com.theelitenurses.medindex",
+  "appName": "MedIndex",
+  "webDir": "build",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

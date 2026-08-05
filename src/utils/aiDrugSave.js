@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firest
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
+import { apiUrl } from '../config/apiBase';
 
 // Wait for Firebase Auth session to restore, then verify sign-in
 async function getAuthUser() {
@@ -66,7 +67,7 @@ export function isDrugNotFoundText(text) {
 
 // ── Fetch AI text for a drug ──────────────────────────────────────────────
 export async function fetchAiDrugText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ genericName, drugClass: drugClass || undefined, notInDatabase: true }),
@@ -97,7 +98,7 @@ export async function fetchAiDrugText({ genericName, drugClass, endpoint = '/api
 // and only writes the single 'strength' field, so it's much faster/cheaper
 // than a full regenerate + save.
 export async function fetchStrengthText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'strength', genericName, drugClass: drugClass || undefined }),
@@ -127,7 +128,7 @@ export async function fetchStrengthText({ genericName, drugClass, endpoint = '/a
 // Mirrors fetchStrengthText — a single short phonetic-spelling line, not
 // part of REQUIRED_FIELD_GROUPS, so it never affects a drug's "complete" status.
 export async function fetchPronunciationText({ genericName, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'pronunciation', genericName }),
@@ -191,7 +192,7 @@ export async function saveStrengthOnly({ docId, strengthText }) {
 // Mirrors the 'class' mode fetch but keyed on a clinical condition instead
 // of a drug class — used by SystemPage's condition cards.
 export async function fetchConditionDrugList({ conditionLabel, systemName, knownDrugNames, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'condition', conditionLabel, systemName: systemName || undefined, knownDrugNames }),
@@ -220,7 +221,7 @@ export async function fetchConditionDrugList({ conditionLabel, systemName, known
 // Returns { systemId, icon, keywords } parsed from the "System:/Icon:/
 // Keywords:" block the classify_condition AI mode replies with.
 export async function fetchConditionClassification({ conditionLabel, systemOptions, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'classify_condition', conditionLabel, systemOptions }),
@@ -265,7 +266,7 @@ export async function fetchConditionClassification({ conditionLabel, systemOptio
 // contract as fetchConditionDrugList — returns the full streamed text once
 // the response finishes.
 export async function fetchConditionInsight({ conditionLabel, knownDrugNames, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'condition_insight', conditionLabel, knownDrugNames }),
@@ -295,7 +296,7 @@ export async function fetchConditionInsight({ conditionLabel, knownDrugNames, en
 // contract as fetchConditionInsight; the returned markdown is parsed by
 // parseConditionClinicalInfo into the 7 fixed sections before saving.
 export async function fetchConditionClinicalInfo({ conditionLabel, systemName, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'condition_clinical_info', conditionLabel, systemName }),
@@ -322,7 +323,7 @@ export async function fetchConditionClinicalInfo({ conditionLabel, systemName, e
 
 // ── Fetch AI-suggested drug list for a drug class ───────────────────────────
 export async function fetchClassDrugList({ className, knownDrugNames, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'class', className, knownDrugNames }),
@@ -349,7 +350,7 @@ export async function fetchClassDrugList({ className, knownDrugNames, endpoint =
 
 // ── Fetch AI-suggested additional conditions for a body system ─────────────
 export async function fetchSystemConditionsList({ systemName, existingLabels, endpoint = '/api/drug-ai-details' }) {
-  const res = await fetch(endpoint, {
+  const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode: 'system_conditions', systemName, existingLabels }),

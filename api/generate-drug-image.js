@@ -12,9 +12,11 @@
 
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
+import { withCors } from './_lib/cors.js';
+
 const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
 
-export default async function handler(req) {
+async function coreHandler(req) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -122,3 +124,5 @@ Strict requirements:
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+export default withCors(coreHandler);

@@ -6,6 +6,8 @@
 
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
+import { withCors } from './_lib/cors.js';
+
 const PROMPT = (primaryName, drugList) =>
   `You are a clinical pharmacologist. Analyze drug interactions between "${primaryName}" and each of the following drugs: ${drugList}.
 
@@ -143,7 +145,7 @@ function extractText(raw, provider) {
   }
 }
 
-export default async function handler(req) {
+async function coreHandler(req) {
   if (req.method !== 'POST') {
     return jsonResp({ error: 'Method not allowed' }, 405);
   }
@@ -375,3 +377,5 @@ export default async function handler(req) {
 
   return jsonResp({ results, aiUnavailable: aiUnavailable || undefined });
 }
+
+export default withCors(coreHandler);

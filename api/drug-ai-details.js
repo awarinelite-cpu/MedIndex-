@@ -13,11 +13,12 @@
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { resolveModel } from './_lib/resolveModel.js';
+import { withCors } from './_lib/cors.js';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const ALLOWED_MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro']);
 
-export default async function handler(req) {
+async function coreHandler(req) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -509,3 +510,5 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
   });
 }
+
+export default withCors(coreHandler);

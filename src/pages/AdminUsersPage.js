@@ -5,12 +5,13 @@ import {
 } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { apiUrl } from '../config/apiBase';
 import { auth, db } from '../firebase';
 
 // ── API helper — every call attaches the signed-in admin's ID token ───────
 async function callUsersApi(method, body) {
   const token = await auth.currentUser.getIdToken();
-  const res = await fetch('/api/admin/users', {
+  const res = await fetch(apiUrl('/api/admin/users'), {
     method,
     headers: {
       'Content-Type': 'application/json',
@@ -142,7 +143,7 @@ export default function AdminUsersPage() {
     setRetryAfter(0);
     try {
       const token = await auth.currentUser.getIdToken();
-      const res = await fetch('/api/admin/users', {
+      const res = await fetch(apiUrl('/api/admin/users'), {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));

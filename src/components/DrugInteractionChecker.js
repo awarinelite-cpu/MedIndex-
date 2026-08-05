@@ -3,6 +3,7 @@ import { Search, X, Plus, FlaskConical, AlertTriangle, CheckCircle, AlertCircle,
 import { useAiProvider } from '../context/AiProviderContext';
 import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, getMissingGroups, ensureDrugComplete } from '../utils/aiDrugSave';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+import { apiUrl } from '../config/apiBase';
 
 // ── Severity badge config ─────────────────────────────────────────────────────
 const SEVERITY = {
@@ -32,7 +33,7 @@ function insufficientDataResult(drugName, missingGroups, reason) {
 
 // ── API call via Vercel backend route (multi-provider) ────────────────────────
 async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 'gemini') {
-  const response = await fetch('/api/drug-interaction-check', {
+  const response = await fetch(apiUrl('/api/drug-interaction-check'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ primaryDrug, selectedDrugs, provider: providerId }),
@@ -55,7 +56,7 @@ async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 
 
 // ── API call for the AI's own list of known incompatible drugs ────────────────
 async function fetchIncompatibleDrugsList(primaryDrug, providerId = 'gemini') {
-  const response = await fetch('/api/drug-interaction-check', {
+  const response = await fetch(apiUrl('/api/drug-interaction-check'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ primaryDrug, provider: providerId, mode: 'list' }),
@@ -75,7 +76,7 @@ async function fetchIncompatibleDrugsList(primaryDrug, providerId = 'gemini') {
 // ── API call for the AI's own list of synergistic combination-therapy partners ─
 // The positive counterpart to fetchIncompatibleDrugsList.
 async function fetchSynergyDrugsList(primaryDrug, providerId = 'gemini') {
-  const response = await fetch('/api/drug-interaction-check', {
+  const response = await fetch(apiUrl('/api/drug-interaction-check'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ primaryDrug, provider: providerId, mode: 'synergy' }),

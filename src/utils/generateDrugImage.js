@@ -1,6 +1,7 @@
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
+import { apiUrl } from '../config/apiBase';
 
 async function getAuthUser() {
   await auth.authStateReady();
@@ -15,7 +16,7 @@ async function getAuthUser() {
 // licensed turns up — callers should fall back to generateDrugImage() in
 // that case, not to an unlicensed web image.
 export async function findRealDrugImage({ genericName }) {
-  const res = await fetch('/api/find-drug-image', {
+  const res = await fetch(apiUrl('/api/find-drug-image'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ genericName }),
@@ -42,7 +43,7 @@ export async function saveFoundDrugImage({ docId, found }) {
 
 // Calls the Nano Banana (Gemini image) endpoint and returns a data: URL.
 export async function generateDrugImage({ genericName, drugClass, strength }) {
-  const res = await fetch('/api/generate-drug-image', {
+  const res = await fetch(apiUrl('/api/generate-drug-image'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ genericName, drugClass: drugClass || undefined, strength: strength || undefined }),

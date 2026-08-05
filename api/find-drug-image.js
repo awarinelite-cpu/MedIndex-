@@ -16,6 +16,8 @@
 
 export const config = { runtime: 'edge', regions: ['iad1'] };
 
+import { withCors } from './_lib/cors.js';
+
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
 const OPENFDA_API = 'https://api.fda.gov/drug/label.json';
 
@@ -78,7 +80,7 @@ async function searchOpenFda(genericName) {
   };
 }
 
-export default async function handler(req) {
+async function coreHandler(req) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -131,3 +133,5 @@ export default async function handler(req) {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+export default withCors(coreHandler);

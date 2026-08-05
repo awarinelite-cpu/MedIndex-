@@ -6,11 +6,12 @@ export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { buildPrompt } from './_lib/buildPrompt.js';
 import { resolveModel } from './_lib/resolveModel.js';
+import { withCors } from './_lib/cors.js';
 
 const DEFAULT_MODEL = 'moonshot-v1-8k';
 const ALLOWED_MODELS = new Set(['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']);
 
-export default async function handler(req) {
+async function coreHandler(req) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405, headers: { 'Content-Type': 'application/json', Allow: 'POST' },
@@ -105,3 +106,5 @@ export default async function handler(req) {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
   });
 }
+
+export default withCors(coreHandler);
