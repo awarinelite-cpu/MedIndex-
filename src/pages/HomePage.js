@@ -1,45 +1,49 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Pill, Heart, Activity, Brain, Bone,
-  Stethoscope, ChevronRight, Grid3X3, LayoutGrid,
-  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
-  Shield, Baby, Eye, Apple, Zap, ShieldCheck, Siren,
+  Search, Pill, Heart, Brain, Soup, Wind, ShieldCheck,
+  Droplet, ChevronRight,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';
-import { ANATOMICAL_SYSTEMS, PINNED_SYSTEM_IDS } from '../data/anatomicalSystems';
+import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 
-const SYSTEM_ICONS = {
-  Heart, Activity, Brain, Bone, Stethoscope,
-  Soup, Droplets, Droplet, HeartHandshake, Sparkle,
-  Shield, Baby, Eye, Apple, Zap, Siren,
-};
+// The 6-tile "Browse by Category" grid — icon/color chosen to read clearly
+// as small tinted squares; the underlying system id still drives the link
+// and the keyword-matching used everywhere else, only the tile styling and
+// display label ("... Drugs") are specific to this grid.
+const CATEGORY_TILES = [
+  { id: 'cardiovascular',   label: 'Cardiovascular Drugs',   icon: Heart,       color: 'text-red-500',    bg: 'bg-red-100'    },
+  { id: 'endocrine',        label: 'Endocrine Drugs',        icon: Droplet,     color: 'text-amber-500',  bg: 'bg-amber-100'  },
+  { id: 'neurological',     label: 'Neurological Drugs',     icon: Brain,       color: 'text-purple-500', bg: 'bg-purple-100' },
+  { id: 'gastrointestinal', label: 'Gastrointestinal Drugs', icon: Soup,        color: 'text-green-600',  bg: 'bg-green-100'  },
+  { id: 'respiratory',      label: 'Respiratory Drugs',      icon: Wind,        color: 'text-blue-500',   bg: 'bg-blue-100'   },
+  { id: 'infectious',       label: 'Anti-infective Drugs',   icon: ShieldCheck, color: 'text-teal-600',   bg: 'bg-teal-100'   },
+]
+  .map(tile => {
+    const system = ANATOMICAL_SYSTEMS.find(s => s.id === tile.id);
+    return system ? { ...tile, to: `/system/${tile.id}` } : null;
+  })
+  .filter(Boolean);
 
-// 5 pinned systems + All Categories + More Systems (unchanged layout)
-const PINNED_CARDS = PINNED_SYSTEM_IDS
-  .map(id => ANATOMICAL_SYSTEMS.find(s => s.id === id))
-  .filter(Boolean)
-  .map(s => ({
-    name:  s.name,
-    icon:  SYSTEM_ICONS[s.icon] || Pill,
-    color: s.color,
-    bg:    s.bg,
-    to:    `/system/${s.id}`,
-  }));
+// Rotating avatar tints for the Featured Drugs list rows
+const AVATAR_TINTS = ['bg-slate-100 text-slate-500', 'bg-blue-100 text-blue-500', 'bg-pink-100 text-pink-500'];
 
-const CATEGORIES = [
-  ...PINNED_CARDS,
-  { name: 'All Categories', icon: Grid3X3,    color: 'text-primary-600', bg: 'bg-primary-50', to: '/browse'  },
-  { name: 'More Systems',   icon: LayoutGrid, color: 'text-slate-600',   bg: 'bg-slate-50',   to: '/systems' },
-  { name: 'Essential Drugs', icon: ShieldCheck, color: 'text-green-600', bg: 'bg-green-50',   to: '/essential-drugs' },
-];
-
-// All 15 systems shown — no hidden "More Systems" tile
+function RxBadge({ status }) {
+  const cls =
+    status === 'OTC'        ? 'bg-green-100 text-green-700' :
+    status === 'Controlled' ? 'bg-red-100 text-red-700' :
+                               'bg-blue-100 text-blue-700';
+  return (
+    <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${cls}`}>
+      {status || 'Prescription'}
+    </span>
+  );
+}
 
 
 export default function HomePage() {
@@ -97,39 +101,20 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* Hero */}
-      <section className="bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 text-white py-16 sm:py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
-            {isAdmin
-              ? <>Search <span className="text-primary-300">{TOTAL}+</span> Medications</>
-              : <>Search <span className="text-primary-300">Medications</span></>}
-          </h1>
-          <p className="text-lg sm:text-xl text-primary-100 mb-10 max-w-2xl mx-auto">
-            Comprehensive Nigerian clinical drug reference covering dosages, interactions,
-            nursing considerations, and safety information.
-          </p>
-
-          {/* Search */}
+      {/* Search bar — sits directly under the app header, app-bar style */}
+      <section className="bg-white border-b border-drug-border py-4 sm:py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <form onSubmit={handleSearch} className="max-w-2xl mx-auto relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }}
-              placeholder="Search by name, condition, or drug class..."
-              className="w-full pl-12 pr-32 py-4 rounded-xl text-gray-900 placeholder-gray-400
-                         focus:outline-none focus:ring-4 focus:ring-primary-300/50 shadow-2xl text-lg"
+              placeholder="Search drugs, conditions, or drug classes..."
+              className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-drug-bg text-gray-900 placeholder-gray-400
+                         border border-drug-border focus:outline-none focus:ring-4 focus:ring-primary-300/30
+                         focus:border-primary-300 shadow-sm"
             />
-            {searchQuery && (
-              <button
-                type="submit"
-                className="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 bg-primary-600
-                           text-white rounded-lg text-sm font-semibold hover:bg-primary-700 transition-colors"
-              >
-                Search
-              </button>
-            )}
 
             {/* Instant dropdown */}
             {showDropdown && searchResults.length > 0 && (
@@ -152,13 +137,7 @@ export default function HomePage() {
                         <div className="text-xs text-gray-500 truncate">{getDisplayDrugClass(drug)}</div>
                       )}
                     </div>
-                    <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${
-                      drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                      drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                                   'bg-blue-100 text-blue-700'
-                    }`}>
-                      {drug.prescription_status}
-                    </span>
+                    <RxBadge status={drug.prescription_status} />
                   </Link>
                 ))}
                 <button
@@ -175,18 +154,18 @@ export default function HomePage() {
 
           {/* Live stats — internal figures, admin-only */}
           {isAdmin && (
-            <div className="flex justify-center gap-8 mt-10 text-primary-100">
+            <div className="flex justify-center gap-8 mt-5 text-drug-muted">
               <div className="text-center">
-                <div className="text-2xl font-bold">{loading ? '—' : TOTAL}</div>
-                <div className="text-sm opacity-80">Drugs</div>
+                <div className="text-xl font-bold text-drug-text">{loading ? '—' : TOTAL}</div>
+                <div className="text-xs opacity-80">Drugs</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">{loading ? '—' : CLASS_COUNT}</div>
-                <div className="text-sm opacity-80">Drug Classes</div>
+                <div className="text-xl font-bold text-drug-text">{loading ? '—' : CLASS_COUNT}</div>
+                <div className="text-xs opacity-80">Drug Classes</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">{loading ? '—' : RX_COUNT}</div>
-                <div className="text-sm opacity-80">Rx Categories</div>
+                <div className="text-xl font-bold text-drug-text">{loading ? '—' : RX_COUNT}</div>
+                <div className="text-xs opacity-80">Rx Categories</div>
               </div>
             </div>
           )}
@@ -229,13 +208,7 @@ export default function HomePage() {
                       <div className="text-xs text-gray-500 truncate">{getDisplayDrugClass(drug)}</div>
                     )}
                   </div>
-                  <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${
-                    drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                    drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                                 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {drug.prescription_status}
-                  </span>
+                  <RxBadge status={drug.prescription_status} />
                 </Link>
               ))}
             </div>
@@ -243,68 +216,64 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Categories */}
-      <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-2xl font-bold mb-6">Browse by Category</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
-          {CATEGORIES.map(cat => (
+      {/* Browse by Category — 6-tile grid of colored icon squares */}
+      <section className="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-drug-text">Browse by Category</h2>
+          <Link to="/systems" className="text-sm font-semibold text-primary-600 hover:text-primary-700">
+            View all
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          {CATEGORY_TILES.map(cat => (
             <Link
-              key={cat.name}
+              key={cat.id}
               to={cat.to}
-              className="flex flex-col items-center gap-3 p-6 rounded-xl border border-drug-border
-                         hover:border-primary-300 hover:shadow-md transition-all bg-white"
+              className="flex flex-col items-center gap-2 p-4 rounded-xl hover:shadow-md transition-all bg-white
+                         border border-drug-border text-center"
             >
-              <div className={`p-3 rounded-lg ${cat.bg}`}>
+              <div className={`w-14 h-14 flex items-center justify-center rounded-2xl ${cat.bg}`}>
                 <cat.icon className={`w-6 h-6 ${cat.color}`} />
               </div>
-              <span className="text-sm font-semibold text-center">{cat.name}</span>
+              <span className="text-xs font-semibold text-drug-text leading-tight">{cat.label}</span>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Featured Medications — always instant, no spinner */}
-      <section className="py-12 bg-white">
+      {/* Featured Drugs — list rows, always instant, no spinner */}
+      <section className="py-4 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Featured Medications</h2>
-            <Link to="/browse" className="flex items-center gap-1 text-primary-600 font-semibold hover:text-primary-700">
-              View All <ChevronRight className="w-4 h-4" />
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-bold text-drug-text">Featured Drugs</h2>
+            <Link to="/browse" className="flex items-center gap-0.5 text-sm font-semibold text-primary-600 hover:text-primary-700">
+              View all <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURED.map(drug => (
+          <div className="border border-drug-border rounded-xl overflow-hidden">
+            {FEATURED.map((drug, i) => (
               <Link
                 key={drug.id}
                 to={`/drug/${drug.id}`}
-                className="group bg-white border border-drug-border rounded-xl p-5
-                           hover:border-primary-300 hover:shadow-lg transition-all"
+                className={`flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors ${
+                  i !== FEATURED.length - 1 ? 'border-b border-drug-border' : ''
+                }`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="p-2 bg-primary-50 rounded-lg">
-                    <Pill className="w-5 h-5 text-primary-600" />
-                  </div>
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${
-                    drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                    drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                                 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {drug.prescription_status}
-                  </span>
+                <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${AVATAR_TINTS[i % AVATAR_TINTS.length]}`}>
+                  <Pill className="w-5 h-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-sm text-drug-text truncate">{drug.generic_name}</div>
+                  <div className="text-xs text-drug-muted truncate">{getDisplayDrugClass(drug)}</div>
                 </div>
-                <h3 className="text-lg font-bold text-drug-text group-hover:text-primary-700 transition-colors">
-                  {drug.generic_name}
-                </h3>
-                <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>
-                <p className="text-sm text-drug-muted mt-2 line-clamp-2">{drug.indications}</p>
+                <RxBadge status={drug.prescription_status} />
+                <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
               </Link>
             ))}
           </div>
         </div>
       </section>
-
-
     </div>
   );
 }
