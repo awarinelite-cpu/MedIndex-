@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon, Sun, Moon } from 'lucide-react';
+import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon, Sun, Moon, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useDrugs } from '../hooks/useDrugs';
+import { useCustomConditions } from '../hooks/useCustomConditions';
 
 export default function AdminLayout({ children }) {
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -12,8 +14,17 @@ export default function AdminLayout({ children }) {
 
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { drugs } = useDrugs();
+  const { customConditionsBySystem } = useCustomConditions();
   const location  = useLocation();
   const navigate  = useNavigate();
+
+  const pendingReviewCount = React.useMemo(() => {
+    const drugCount = (drugs || []).filter(d => d.needs_review === true).length;
+    const conditionCount = Object.values(customConditionsBySystem || {})
+      .reduce((sum, list) => sum + (list || []).filter(c => c.needs_review).length, 0);
+    return drugCount + conditionCount;
+  }, [drugs, customConditionsBySystem]);
 
   const handleLogout = async () => {
     await logout();
@@ -64,6 +75,7 @@ export default function AdminLayout({ children }) {
     { to: '/admin/upload', label: 'Bulk Upload', icon: Upload          },
     { to: '/admin/bulk-images', label: 'Bulk Images', icon: ImageIcon  },
     { to: '/admin/users',  label: 'Users',       icon: Users           },
+    { to: '/admin/review', label: 'Review',      icon: ClipboardCheck  },
   ];
 
   return (
@@ -143,6 +155,11 @@ export default function AdminLayout({ children }) {
                 >
                   <link.icon className="w-4 h-4" />
                   <span className="hidden sm:inline">{link.label}</span>
+                  {link.to === '/admin/review' && pendingReviewCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                      {pendingReviewCount}
+                    </span>
+                  )}
                 </Link>
               ))}
 

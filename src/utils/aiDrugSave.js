@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
@@ -12,6 +12,117 @@ async function getAuthUser() {
     throw new Error('You must be signed in as admin to save drugs.');
   }
   return auth.currentUser;
+}
+
+// ── Contributor / review-queue support ─────────────────────────────────────
+// Every write this file makes goes through here so we know, cheaply and
+// consistently, whether the person making the write is an admin. Non-admin
+// writes get flagged `needs_review: true` with who/when metadata instead of
+// silently landing as if an admin had vetted them — this is what powers the
+// /admin/review queue. Cached per uid for the life of the tab since role
+// doesn't change mid-session; a failed role lookup fails safe (treated as
+// non-admin, so it still lands in the review queue rather than skipping it).
+let _roleCache = null; // { uid, isAdmin }
+async function getContributorInfo() {
+  const user = await getAuthUser();
+  if (_roleCache && _roleCache.uid === user.uid) {
+    return { uid: user.uid, email: user.email || 'unknown', isAdmin: _roleCache.isAdmin };
+  }
+  let isAdmin = false;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    isAdmin = snap.exists() && snap.data()?.role === 'admin';
+  } catch {
+    isAdmin = false;
+  }
+  _roleCache = { uid: user.uid, isAdmin };
+  return { uid: user.uid, email: user.email || 'unknown', isAdmin };
+}
+
+// Builds the metadata block attached to every drug write. Admin writes are
+// marked reviewed outright (they ARE the review); non-admin writes are
+// flagged for the queue with who made them and when.
+function buildReviewMeta({ uid, email, isAdmin }, contributionType) {
+  return isAdmin
+    ? { needs_review: false, reviewed_by: email, reviewed_at: serverTimestamp() }
+    : {
+        needs_review: true,
+        contribution_type: contributionType, // 'new' | 'update'
+        contributed_by_uid: uid,
+        contributed_by_email: email,
+        contributed_at: serverTimestamp(),
+      };
+}
+
+// ── Admin review-queue actions ──────────────────────────────────────────────
+// Approve: keep the content as-is, just clear the flag.
+export async function approveDrugReview({ id }) {
+  const { email } = await getContributorInfo();
+  await updateDoc(doc(db, 'drugs', id), {
+    needs_review: false,
+    reviewed_by: email,
+    reviewed_at: serverTimestamp(),
+    previous_version: null,
+  });
+}
+
+// Reject & restore: only meaningful when a previous (pre-overwrite) version
+// was snapshotted — puts the record back exactly as it was before the
+// non-admin write touched it.
+export async function restoreDrugPreviousVersion({ id, previousVersion }) {
+  if (!previousVersion) throw new Error('No previous version was saved for this drug.');
+  const { email } = await getContributorInfo();
+  await setDoc(doc(db, 'drugs', id), {
+    ...previousVersion,
+    needs_review: false,
+    reviewed_by: email,
+    reviewed_at: serverTimestamp(),
+    previous_version: null,
+    last_updated: serverTimestamp(),
+  }, { merge: false });
+}
+
+// Save admin edits made directly on the review page, and clear the flag in
+// the same write.
+export async function saveReviewedDrugEdits({ id, edits }) {
+  const { email } = await getContributorInfo();
+  await updateDoc(doc(db, 'drugs', id), {
+    ...edits,
+    needs_review: false,
+    reviewed_by: email,
+    reviewed_at: serverTimestamp(),
+    previous_version: null,
+    last_updated: serverTimestamp(),
+  });
+}
+
+export async function deleteReviewedDrug({ id }) {
+  await getAuthUser();
+  await deleteDoc(doc(db, 'drugs', id));
+}
+
+// Used by DrugDetailPage's non-admin "per-tab AI insight" background save —
+// the one place outside saveAiDrugToDatabase/saveParsedDrug that writes AI
+// text straight onto an existing drug record. `fields` is the exact set of
+// keys about to be written (e.g. just `strength`, or the full parsed set).
+// Snapshots only those fields' current values (not the whole doc) so a
+// reject on the review page restores precisely what was there before,
+// without disturbing anything else on the record.
+export async function saveTabAiInsight({ drugId, drug, fields }) {
+  const contributor = await getContributorInfo();
+  const priorTouchedFields = {};
+  Object.keys(fields).forEach(k => { priorTouchedFields[k] = drug[k] ?? null; });
+
+  const previousVersion = (!contributor.isAdmin && !drug.needs_review)
+    ? priorTouchedFields
+    : (drug.previous_version ?? null);
+
+  await updateDoc(doc(db, 'drugs', drugId), {
+    ...fields,
+    last_updated: serverTimestamp(),
+    ...buildReviewMeta(contributor, 'update'),
+    previous_version: previousVersion,
+  });
 }
 
 // Same deterministic-ID convention used by UploadPage.js's CSV import.
@@ -389,7 +500,7 @@ export async function generateDrugOnce({ genericName, drugClass, endpoint = '/ap
 // saveParsedDrug: patches ONLY missing fields into the existing Firestore doc.
 // Existing populated fields are NEVER overwritten — this is a surgical patch.
 export async function saveParsedDrug({ genericName, drugClass, parsed, existingDrug = null }) {
-  await getAuthUser();
+  const contributor = await getContributorInfo();
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
 
@@ -435,8 +546,11 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
   patch.last_updated = serverTimestamp();
 
   if (existing) {
-    // Patch — never touch existing data
-    await updateDoc(ref, patch);
+    // Patch — never touch existing data. This never overwrites anything
+    // already there, so there's nothing to snapshot — but a non-admin patch
+    // still gets flagged so the newly-added fields get a look before they're
+    // trusted the same as verified content.
+    await updateDoc(ref, { ...patch, ...buildReviewMeta(contributor, 'update') });
   } else {
     // Brand-new drug — full write
     await setDoc(ref, {
@@ -449,6 +563,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
       created_at:          serverTimestamp(),
       ...parsed,
       ...patch,
+      ...buildReviewMeta(contributor, 'new'),
     });
   }
 
@@ -517,7 +632,7 @@ export async function ensureDrugComplete({ drug, endpoint = '/api/drug-ai-detail
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
-  await getAuthUser();
+  const contributor = await getContributorInfo();
 
   // Reject outright refusals ("not a recognized drug", "not available",
   // etc.) before ever parsing/saving anything — a failed lookup must never
@@ -546,6 +661,16 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
   // duplicate detector. Genuine "not found" responses are rejected above,
   // before reaching this point.
   const existing = await getDoc(ref);
+  const existingData = existing.exists() ? existing.data() : null;
+
+  // If a non-admin write is about to replace a record that was previously
+  // clean (admin-authored or already-reviewed), snapshot it first so the
+  // review queue can restore it exactly instead of just deleting the new
+  // (possibly wrong) version and losing the old one too.
+  const previousVersion = (!contributor.isAdmin && existingData && !existingData.needs_review)
+    ? existingData
+    : (existingData?.previous_version ?? null);
+
   await setDoc(ref, {
     ...parsed,
     generic_name:        genericName,
@@ -556,9 +681,11 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
     source:              'AI Generated',
     status:              'Active',
     created_at:  existing.exists()
-      ? (existing.data().created_at || serverTimestamp())
+      ? (existingData.created_at || serverTimestamp())
       : serverTimestamp(),
     last_updated: serverTimestamp(),
+    ...buildReviewMeta(contributor, existing.exists() ? 'update' : 'new'),
+    previous_version: previousVersion,
   }, { merge: false });
 
   // Auto-tag this drug onto any conditions whose keywords match its

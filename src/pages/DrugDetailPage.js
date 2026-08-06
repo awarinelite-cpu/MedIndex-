@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
-import { needsStrengthOnly, fetchPronunciationText, savePronunciation } from '../utils/aiDrugSave';
+import { needsStrengthOnly, fetchPronunciationText, savePronunciation, saveTabAiInsight } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
@@ -644,24 +644,19 @@ function AiInsightsTab({ drug }) {
       setState('done');
 
       // Non-admins never see the Save button, a "✓ Saved" badge, or a page
-      // reload — but this still saves in the background, using the exact
-      // same write behavior as admin's own Save button (writeToFirestore):
-      // parsed fields are written as-is, no merge, no skip-if-would-overwrite,
-      // no confirm step. Just silent.
+      // reload — but this still saves in the background. Unlike before, it
+      // no longer overwrites fields blind: saveTabAiInsight snapshots
+      // whatever was there first (if it was previously clean/admin-set) and
+      // flags the record `needs_review` so it surfaces on /admin/review
+      // instead of silently replacing verified content.
       if (!isAdmin) {
         try {
           const parsedFields = parseAiDrugDetail(full);
+          const drugId = drug.firestoreId || drug.id;
           if (needsStrengthOnly(drug) && parsedFields.strength) {
-            await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
-              strength:     parsedFields.strength,
-              last_updated: serverTimestamp(),
-            });
+            await saveTabAiInsight({ drugId, drug, fields: { strength: parsedFields.strength } });
           } else {
-            await updateDoc(doc(db, 'drugs', drug.firestoreId || drug.id), {
-              ...parsedFields,
-              ai_insights:  full,
-              last_updated: serverTimestamp(),
-            });
+            await saveTabAiInsight({ drugId, drug, fields: { ...parsedFields, ai_insights: full } });
           }
         } catch {
           // Intentionally silent — this must never surface to the user.

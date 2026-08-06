@@ -122,6 +122,24 @@ export function slugifyConditionLabel(label) {
   return label.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
 }
 
+// Cheap, cached admin-role check — mirrors the same pattern used by
+// aiDrugSave.js so a condition added by a non-admin (should one ever reach
+// this function outside today's admin-gated UI) gets flagged for
+// /admin/review instead of silently landing as if pre-approved.
+let _conditionRoleCache = null; // { uid, isAdmin }
+async function isCurrentUserAdmin(user) {
+  if (_conditionRoleCache && _conditionRoleCache.uid === user.uid) return _conditionRoleCache.isAdmin;
+  let isAdmin = false;
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    isAdmin = snap.exists() && snap.data()?.role === 'admin';
+  } catch {
+    isAdmin = false;
+  }
+  _conditionRoleCache = { uid: user.uid, isAdmin };
+  return isAdmin;
+}
+
 // Adds one or more new conditions to a system's extras, skipping any whose
 // id already exists there (idempotent — safe to call again with overlap).
 export async function addCustomConditions(systemId, newConditions) {
@@ -136,6 +154,12 @@ export async function addCustomConditions(systemId, newConditions) {
   if (!user) {
     throw new Error('Not signed in. Please sign in as admin and try again.');
   }
+
+  const isAdmin = await isCurrentUserAdmin(user);
+  const reviewTag = isAdmin
+    ? {}
+    : { needs_review: true, contributed_by_email: user.email || 'unknown', contributed_by_uid: user.uid };
+  newConditions = newConditions.map(c => ({ ...c, ...reviewTag }));
 
   const ref = doc(db, ...DOC_REF_PATH);
 
@@ -182,6 +206,30 @@ export async function addCustomConditions(systemId, newConditions) {
     console.error('[addCustomConditions] ❌ Firestore error:', err.code, err.message);
     throw err;
   }
+}
+
+// Clears the review flag on a custom condition an admin has looked at and
+// is happy with — leaves the condition itself untouched.
+export async function approveCustomCondition(systemId, conditionId) {
+  await auth.authStateReady();
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in. Please sign in as admin and try again.');
+
+  const ref = doc(db, ...DOC_REF_PATH);
+  const snap = await getDoc(ref);
+  const current = snap.exists() ? snap.data() : {};
+  const systems = current.systems || {};
+  const existingForSystem = systems[systemId] || [];
+
+  await setDoc(ref, {
+    systems: {
+      ...systems,
+      [systemId]: existingForSystem.map(c => c.id === conditionId
+        ? { ...c, needs_review: false, reviewed_by: user.email || 'unknown', reviewed_at: Date.now() }
+        : c),
+    },
+    last_updated: serverTimestamp(),
+  }, { merge: true });
 }
 
 // Deletes a condition from a system's taxonomy.
