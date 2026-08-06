@@ -269,8 +269,11 @@ export default function BrowsePage() {
       </div>
 
       {/* AI lookup fallback for a selected class/subclass (from the dropdown) —
-          unaffected by the free-text box, which only narrows by taxonomy name. */}
-      {filterClass.trim() && <AiClassFallback className={filterClass} existingDrugs={classDrugs} />}
+          shown above the results only when there are no drugs to list yet;
+          otherwise it moves below the list (see after the results block). */}
+      {filterClass.trim() && filteredDrugs.length === 0 && (
+        <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
+      )}
 
       {/* Results:
           - With a class picked (dropdown) and/or a search query typed, show
@@ -296,6 +299,15 @@ export default function BrowsePage() {
         </div>
       ) : (
         <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
+      )}
+
+      {/* AI lookup fallback — moved to the end of the list once there are
+          drugs to show, so it reads as "ask for more" after what's already
+          here, rather than interrupting the list before it. */}
+      {filterClass.trim() && filteredDrugs.length > 0 && (
+        <div className="mt-6">
+          <AiClassFallback className={filterClass} existingDrugs={classDrugs} />
+        </div>
       )}
 
       {/* Bulk fast Strength fill — admin only, for classes that are otherwise complete */}
