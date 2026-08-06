@@ -5,18 +5,16 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
 import { usePrefetchDrugImages } from '../hooks/usePrefetchDrugImages';
+import { usePwaInstall } from '../hooks/usePwaInstall';
 import AiProviderDropdown from './AiProviderDropdown';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { drugs } = useDrugs();
   usePrefetchDrugImages(user ? drugs : null);
-  const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
+  const { showInstall, isInstalled, handleInstall, dismissInstall } = usePwaInstall();
   const [searchQuery,     setSearchQuery]      = useState('');
-  const [installPrompt,   setInstallPrompt]    = useState(null);   // beforeinstallprompt event
-  const [showInstall,     setShowInstall]      = useState(false);
   const [showUpdate,      setShowUpdate]       = useState(false);
-  const [isInstalled,     setIsInstalled]      = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef(null);
 
@@ -32,22 +30,10 @@ export default function Layout({ children }) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  // ── PWA install prompt ────────────────────────────────────────────────────
+  // ── SW update prompt ────────────────────────────────────────────────────
   const [waitingWorker, setWaitingWorker] = useState(null);
 
   useEffect(() => {
-    // Detect if already running as installed PWA
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-      setIsInstalled(true);
-    }
-
-    const onBeforeInstall = (e) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-      setShowInstall(true);
-    };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-
     // SW update available — store the waiting worker so we can tell it to activate
     const onUpdate = (e) => {
       setWaitingWorker(e.detail?.worker || null);
@@ -55,24 +41,10 @@ export default function Layout({ children }) {
     };
     window.addEventListener('swUpdateAvailable', onUpdate);
 
-    // Hide install banner once installed
-    window.addEventListener('appinstalled', () => {
-      setShowInstall(false);
-      setIsInstalled(true);
-    });
-
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
       window.removeEventListener('swUpdateAvailable', onUpdate);
     };
   }, []);
-
-  const handleInstall = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') setShowInstall(false);
-  };
 
   const handleUpdate = () => {
     setShowUpdate(false);
@@ -96,7 +68,6 @@ export default function Layout({ children }) {
     if (searchQuery.trim()) {
       navigate(`/browse?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery('');
-      setMobileMenuOpen(false);
     }
   };
 
@@ -156,7 +127,7 @@ export default function Layout({ children }) {
             <Download className="w-3.5 h-3.5" />
             Install
           </button>
-          <button onClick={() => setShowInstall(false)} className="text-primary-400 hover:text-white flex-shrink-0">
+          <button onClick={dismissInstall} className="text-primary-400 hover:text-white flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -295,93 +266,8 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-white/10 bg-primary-800">
-            <div className="px-4 py-3 space-y-2">
-              <form onSubmit={handleSearch} className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search..."
-                  className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg
-                             text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
-                />
-              </form>
-              {navLinks.map(link => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${
-                    isActive(link.to) ? 'bg-white/20 text-white' : 'text-white/80'
-                  }`}
-                >
-                  <link.icon className="w-4 h-4" />
-                  {link.label}
-                </Link>
-              ))}
-              {/* Return to Admin Portal — only shown to logged-in admins */}
-              {isAdmin && (
-                <Link
-                  to="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold"
-                  style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7' }}
-                >
-                  ← Admin Portal
-                </Link>
-              )}
-              {/* Dark mode toggle — mobile */}
-              <button
-                onClick={toggleTheme}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold
-                           bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-              >
-                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                {isDark ? 'Light mode' : 'Dark mode'}
-              </button>
-              {showInstall && !isInstalled && (
-                <button
-                  onClick={() => { handleInstall(); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold
-                             bg-white text-primary-900"
-                >
-                  <Download className="w-4 h-4" />
-                  Install MedIndex App
-                </button>
-              )}
-              {/* Mobile sign out */}
-              {user && (
-                <div className="border-t border-white/10 pt-2 mt-2">
-                  {/* AI Provider selector — mobile */}
-                  <div className="px-3 py-2">
-                    <p className="text-xs text-white/40 uppercase tracking-widest font-bold mb-2">AI Provider</p>
-                    <AiProviderDropdown placement="left" />
-                  </div>
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <div className="flex items-center gap-2 text-white/70 text-sm">
-                      <User className="w-4 h-4" />
-                      <span className="truncate max-w-[180px]">
-                        {user.displayName || user.email}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-lg
-                                 text-white/80 text-sm font-medium hover:bg-white/20"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      Sign Out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Mobile menu — see /more page (MorePage.js) for the full menu,
+            opened via the bottom "More" tab instead of a dropdown here. */}
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
@@ -416,13 +302,15 @@ export default function Layout({ children }) {
             {tab.label}
           </Link>
         ))}
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium text-drug-muted"
+        <Link
+          to="/more"
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
+            isActive('/more') ? 'text-primary-700' : 'text-drug-muted'
+          }`}
         >
-          <MoreHorizontal className="w-5 h-5" />
+          <MoreHorizontal className="w-5 h-5" strokeWidth={isActive('/more') ? 2.5 : 2} />
           More
-        </button>
+        </Link>
       </nav>
     </div>
   );

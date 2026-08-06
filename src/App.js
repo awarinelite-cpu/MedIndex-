@@ -26,6 +26,7 @@ import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
 import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
+import MorePage from './pages/MorePage';
 function App() {
   return (
     <ErrorBoundary>
@@ -92,6 +93,11 @@ function App() {
         <Route path="/calculators" element={
           <ProtectedUserRoute>
             <Layout><CalculatorsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/more" element={
+          <ProtectedUserRoute>
+            <Layout><MorePage /></Layout>
           </ProtectedUserRoute>
         } />
 
