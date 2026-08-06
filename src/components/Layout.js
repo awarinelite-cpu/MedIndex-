@@ -143,7 +143,7 @@ export default function Layout({ children }) {
                 <Pill className="w-6 h-6 sm:w-8 sm:h-8" />
               </span>
               <span className="min-w-0">
-                <span className="block text-3xl sm:text-4xl font-bold tracking-tight leading-tight truncate">MedIndex</span>
+                <span className="block text-4xl sm:text-5xl font-bold tracking-tight leading-tight truncate">MedIndex</span>
                 <span className="hidden sm:block text-[11px] font-medium text-primary-200 leading-tight">
                   Your Medication Database
                 </span>

@@ -103,7 +103,7 @@ export default function HomePage() {
     <div>
       {/* Hero — same flat color as the header above it, so the two read as
           one continuous blue block with no gradient/shade break between them. */}
-      <section className="bg-primary-900 text-white py-12 sm:py-16">
+      <section className="bg-primary-900 text-white pt-2 pb-12 sm:pt-3 sm:pb-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold mb-3">
             Search <span className="text-primary-300">Medications</span>
