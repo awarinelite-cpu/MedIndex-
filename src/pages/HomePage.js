@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Pill, Heart, Brain, Soup, Wind, ShieldCheck,
-  Droplet, ChevronRight,
+  Search, Pill, ChevronRight,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -11,18 +10,20 @@ import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
+import { HeartIcon, PancreasIcon, BrainIcon, StomachIcon, LungsIcon, ShieldCheckIcon } from '../components/icons/OrganIcons';
 
-// The 6-tile "Browse by Category" grid — icon/color chosen to read clearly
-// as small tinted squares; the underlying system id still drives the link
-// and the keyword-matching used everywhere else, only the tile styling and
-// display label ("... Drugs") are specific to this grid.
+// The 6-tile "Browse by Category" grid — solid, flat organ-color icons (not
+// lucide's thin outline set, which has no dedicated pancreas/stomach/lungs
+// glyphs) tinted to a soft background square; the underlying system id still
+// drives the link and the keyword-matching used everywhere else, only the
+// tile styling and display label ("... Drugs") are specific to this grid.
 const CATEGORY_TILES = [
-  { id: 'cardiovascular',   label: 'Cardiovascular Drugs',   icon: Heart,       color: 'text-red-500',    bg: 'bg-red-100'    },
-  { id: 'endocrine',        label: 'Endocrine Drugs',        icon: Droplet,     color: 'text-amber-500',  bg: 'bg-amber-100'  },
-  { id: 'neurological',     label: 'Neurological Drugs',     icon: Brain,       color: 'text-purple-500', bg: 'bg-purple-100' },
-  { id: 'gastrointestinal', label: 'Gastrointestinal Drugs', icon: Soup,        color: 'text-green-600',  bg: 'bg-green-100'  },
-  { id: 'respiratory',      label: 'Respiratory Drugs',      icon: Wind,        color: 'text-blue-500',   bg: 'bg-blue-100'   },
-  { id: 'infectious',       label: 'Anti-infective Drugs',   icon: ShieldCheck, color: 'text-teal-600',   bg: 'bg-teal-100'   },
+  { id: 'cardiovascular',   label: 'Cardiovascular Drugs',   icon: HeartIcon,       color: 'text-red-500',    bg: 'bg-red-100'    },
+  { id: 'endocrine',        label: 'Endocrine Drugs',        icon: PancreasIcon,    color: 'text-amber-500',  bg: 'bg-amber-100'  },
+  { id: 'neurological',     label: 'Neurological Drugs',     icon: BrainIcon,       color: 'text-purple-500', bg: 'bg-purple-100' },
+  { id: 'gastrointestinal', label: 'Gastrointestinal Drugs', icon: StomachIcon,     color: 'text-green-600',  bg: 'bg-green-100'  },
+  { id: 'respiratory',      label: 'Respiratory Drugs',      icon: LungsIcon,       color: 'text-blue-500',   bg: 'bg-blue-100'   },
+  { id: 'infectious',       label: 'Anti-infective Drugs',   icon: ShieldCheckIcon, color: 'text-teal-600',   bg: 'bg-teal-100'   },
 ]
   .map(tile => {
     const system = ANATOMICAL_SYSTEMS.find(s => s.id === tile.id);
@@ -247,7 +248,7 @@ export default function HomePage() {
                          border border-drug-border text-center"
             >
               <div className={`w-14 h-14 flex items-center justify-center rounded-2xl ${cat.bg}`}>
-                <cat.icon className={`w-7 h-7 ${cat.color}`} fill="currentColor" fillOpacity={0.25} strokeWidth={1.75} />
+                <cat.icon className={`w-8 h-8 ${cat.color}`} />
               </div>
               <span className="text-xs font-semibold text-drug-text leading-tight">{cat.label}</span>
             </Link>
