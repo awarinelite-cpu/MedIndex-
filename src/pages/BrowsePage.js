@@ -5,7 +5,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { fetchStrengthText, saveStrengthOnly, needsStrengthOnly } from '../utils/aiDrugSave';
 import { logSearch } from '../utils/logSearch';
-import TaxonomyBrowser from '../components/TaxonomyBrowser';
+import TaxonomyBrowser, { DrugRow } from '../components/TaxonomyBrowser';
 import AiClassFallback from '../components/AiClassInsight';
 import { DRUG_CLASS_TAXONOMY, UNCLASSIFIED_BUCKET } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
@@ -151,11 +151,11 @@ export default function BrowsePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, filterClass, filterStatus]);
 
-  // This page's free-text search box matches ONLY drug class / subclass
-  // names from the 21-chapter taxonomy — not drug names, indications, or
-  // conditions (that lives on the home page search instead). Typing e.g.
-  // "Laxatives" matches the subclass by that name; typing a top-level class
-  // name matches every drug across all of its subclasses.
+  // This page's free-text search box matches drug NAMES directly, as well as
+  // drug class / subclass names from the 21-chapter taxonomy. Typing e.g.
+  // "Losartan" matches that drug by name; typing "Laxatives" matches the
+  // subclass by that name; typing a top-level class name matches every drug
+  // across all of its subclasses.
   const matchingTaxonomy = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
@@ -182,14 +182,18 @@ export default function BrowsePage() {
       return matchesClass && matchesStatus;
     });
 
-    // Then restrict to drugs classified under a matching class/subclass name
-    if (searchQuery.trim() && matchingTaxonomy) {
+    // Then restrict to drugs matching the search box — by drug name directly,
+    // OR by belonging to a class/subclass whose name matches.
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
       const { classIds, subclassKeys } = matchingTaxonomy;
-      pool = pool.filter(drug =>
-        classifyDrugTaxonomyAll(drug).some(({ classId, subclassId }) =>
+      pool = pool.filter(drug => {
+        const nameMatch = (drug.generic_name || '').toLowerCase().includes(q);
+        const classMatch = classifyDrugTaxonomyAll(drug).some(({ classId, subclassId }) =>
           classIds.has(classId) || subclassKeys.has(`${classId}::${subclassId}`)
-        )
-      );
+        );
+        return nameMatch || classMatch;
+      });
     }
 
     return pool;
@@ -233,7 +237,7 @@ export default function BrowsePage() {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by drug class or subclass…"
+            placeholder="Search by drug name, class or subclass…"
             className="flex-1 px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
           />
           <select
@@ -268,17 +272,27 @@ export default function BrowsePage() {
           unaffected by the free-text box, which only narrows by taxonomy name. */}
       {filterClass.trim() && <AiClassFallback className={filterClass} existingDrugs={classDrugs} />}
 
-      {/* Results — grouped into the 21 formulary classes & their subclasses */}
+      {/* Results:
+          - With a class picked (dropdown) and/or a search query typed, show
+            the matching drugs directly as a flat list — that's what the
+            person just asked to see, not the whole 21-chapter tree.
+          - With neither active, show the full taxonomy tree to explore. */}
       {filteredDrugs.length === 0 ? (
         <div className="text-center py-20">
           <Pill className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <p className="text-drug-muted text-lg">
-            {searchQuery.trim() ? `No drug class or subclass matches "${searchQuery}".` : 'No drugs match your search.'}
+            {searchQuery.trim() ? `No drug, class, or subclass matches "${searchQuery}".` : 'No drugs match your search.'}
           </p>
           <button onClick={() => { setSearchQuery(''); setFilterClass(''); setFilterStatus(''); }}
                   className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700">
             Clear filters
           </button>
+        </div>
+      ) : (searchQuery.trim() || filterClass.trim()) ? (
+        <div className="bg-white border border-drug-border rounded-xl divide-y divide-drug-border overflow-hidden">
+          {[...filteredDrugs]
+            .sort((a, b) => (a.generic_name || '').localeCompare(b.generic_name || ''))
+            .map(drug => <DrugRow key={drug.id} drug={drug} />)}
         </div>
       ) : (
         <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />

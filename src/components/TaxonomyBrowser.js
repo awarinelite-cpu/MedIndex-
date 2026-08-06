@@ -50,7 +50,7 @@ function statusBadgeClass(status) {
   return STATUS_BADGE[status] || 'bg-blue-100 text-blue-700';
 }
 
-function DrugRow({ drug }) {
+export function DrugRow({ drug }) {
   return (
     <Link
       to={`/drug/${drug.id}`}
