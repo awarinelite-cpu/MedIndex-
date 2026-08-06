@@ -134,16 +134,16 @@ export default function Layout({ children }) {
       )}
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header className="bg-gradient-to-r from-primary-900 to-primary-700 text-white sticky top-0 z-40 shadow-lg">
+      <header className="bg-primary-900 text-white sticky top-0 z-40">
         {/* Brand row — app identity + notifications, mirrors the native app bar */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16 border-b border-white/10 md:border-0">
+          <div className="flex items-center justify-between h-16 sm:h-20">
             <Link to="/" className="flex items-center gap-2.5 flex-shrink-0 min-w-0">
               <span className="p-1.5 bg-white/10 rounded-lg flex-shrink-0">
-                <Pill className="w-5 h-5 sm:w-6 sm:h-6" />
+                <Pill className="w-6 h-6 sm:w-8 sm:h-8" />
               </span>
               <span className="min-w-0">
-                <span className="block text-lg sm:text-xl font-bold tracking-tight leading-tight truncate">MedIndex</span>
+                <span className="block text-3xl sm:text-4xl font-bold tracking-tight leading-tight truncate">MedIndex</span>
                 <span className="hidden sm:block text-[11px] font-medium text-primary-200 leading-tight">
                   Your Medication Database
                 </span>
