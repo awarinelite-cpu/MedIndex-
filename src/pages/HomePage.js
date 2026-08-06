@@ -101,6 +101,19 @@ export default function HomePage() {
 
   return (
     <div>
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 text-white py-12 sm:py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-3xl sm:text-4xl font-bold mb-3">
+            Search <span className="text-primary-300">Medications</span>
+          </h1>
+          <p className="text-primary-100 max-w-xl mx-auto">
+            Comprehensive Nigerian clinical drug reference and Medsurge covering class,
+            dosages, interactions, nursing considerations, and safety information.
+          </p>
+        </div>
+      </section>
+
       {/* Search bar — sits directly under the app header, app-bar style */}
       <section className="bg-white border-b border-drug-border py-4 sm:py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
