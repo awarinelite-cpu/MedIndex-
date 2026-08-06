@@ -276,7 +276,7 @@ export default function Layout({ children }) {
       </main>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <footer className="hidden md:block bg-white border-t border-drug-border py-6">
+      <footer className="bg-white border-t border-drug-border py-6 pb-20 md:pb-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-drug-muted">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Pill className="w-4 h-4" />
