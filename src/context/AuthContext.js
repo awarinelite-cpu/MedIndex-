@@ -12,20 +12,24 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      // Resolve the loading screen the moment auth itself settles — don't
+      // make the splash screen wait on a Firestore round-trip (admin lookup)
+      // on top of that. Firestore's persistent multi-tab cache can take a
+      // while (or occasionally hang) to acquire its lease on first load,
+      // especially over a flaky mobile connection, and there's no reason
+      // the whole app should sit on a spinner for that: nothing before the
+      // admin-only UI needs isAdmin to be known yet.
+      setUser(firebaseUser);
+      setLoading(false);
+
       if (firebaseUser) {
-        setUser(firebaseUser);
-        try {
-          const snap = await getDoc(doc(db, 'admins', firebaseUser.email));
-          setIsAdmin(snap.exists() && snap.data()?.role === 'admin');
-        } catch {
-          setIsAdmin(false);
-        }
+        getDoc(doc(db, 'admins', firebaseUser.email))
+          .then(snap => setIsAdmin(snap.exists() && snap.data()?.role === 'admin'))
+          .catch(() => setIsAdmin(false));
       } else {
-        setUser(null);
         setIsAdmin(false);
       }
-      setLoading(false);
     });
     return unsub;
   }, []);
