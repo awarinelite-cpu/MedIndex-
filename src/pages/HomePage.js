@@ -247,7 +247,7 @@ export default function HomePage() {
                          border border-drug-border text-center"
             >
               <div className={`w-14 h-14 flex items-center justify-center rounded-2xl ${cat.bg}`}>
-                <cat.icon className={`w-6 h-6 ${cat.color}`} />
+                <cat.icon className={`w-7 h-7 ${cat.color}`} fill="currentColor" fillOpacity={0.25} strokeWidth={1.75} />
               </div>
               <span className="text-xs font-semibold text-drug-text leading-tight">{cat.label}</span>
             </Link>
