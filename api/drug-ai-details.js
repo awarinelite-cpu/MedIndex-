@@ -34,13 +34,6 @@ async function coreHandler(req) {
     });
   }
 
-  const model = await resolveModel({
-    field: 'geminiModel',
-    allowed: ALLOWED_MODELS,
-    envVar: 'GEMINI_MODEL',
-    fallback: DEFAULT_MODEL,
-  });
-
   let body;
   try {
     body = await req.json();
@@ -57,6 +50,24 @@ async function coreHandler(req) {
     className, parentClassName, knownDrugNames,
     sectionHeaders, sectionLabel,
   } = body || {};
+
+  // clinical_plan is pinned to DEFAULT_MODEL regardless of whatever the
+  // admin panel has geminiModel set to for MedIndex's own reference
+  // features, and skips the Firestore round-trip resolveModel() would
+  // otherwise make. This mode is shared with NACON-EMR's patient-safety-
+  // facing AI Drug Insight, which originally always ran on a hardcoded
+  // gemini-2.5-flash-lite before this endpoint became the shared engine —
+  // letting it silently inherit whatever model an admin picks for
+  // unrelated MedIndex browsing features would change clinical-suggestion
+  // behavior without anyone deciding that on purpose.
+  const model = mode === 'clinical_plan'
+    ? DEFAULT_MODEL
+    : await resolveModel({
+        field: 'geminiModel',
+        allowed: ALLOWED_MODELS,
+        envVar: 'GEMINI_MODEL',
+        fallback: DEFAULT_MODEL,
+      });
 
   let prompt;
 
