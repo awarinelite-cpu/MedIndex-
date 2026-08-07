@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, Sun, Moon, ChevronRight,
+  LogOut, User, Sun, Moon, ChevronRight, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -17,10 +17,11 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import AiProviderDropdown from '../components/AiProviderDropdown';
 
 const NAV_LINKS = [
-  { to: '/',            label: 'Home',        icon: Home         },
-  { to: '/browse',      label: 'Browse',      icon: Grid3X3      },
-  { to: '/labs',        label: 'Lab Ref',     icon: FlaskConical },
-  { to: '/calculators', label: 'Calculators', icon: Calculator   },
+  { to: '/',            label: 'Home',              icon: Home         },
+  { to: '/browse',      label: 'Browse',            icon: Grid3X3      },
+  { to: '/ai-consult',  label: 'AI Clinical Consult', icon: Sparkles   },
+  { to: '/labs',        label: 'Lab Ref',           icon: FlaskConical },
+  { to: '/calculators', label: 'Calculators',       icon: Calculator   },
 ];
 
 export default function MorePage() {

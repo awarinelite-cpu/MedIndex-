@@ -28,6 +28,7 @@ import SystemPage from './pages/SystemPage';
 import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
+import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
 function App() {
   return (
     <ErrorBoundary>
@@ -99,6 +100,11 @@ function App() {
         <Route path="/more" element={
           <ProtectedUserRoute>
             <Layout><MorePage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/ai-consult" element={
+          <ProtectedUserRoute>
+            <Layout><AiClinicalConsultPage /></Layout>
           </ProtectedUserRoute>
         } />
 
