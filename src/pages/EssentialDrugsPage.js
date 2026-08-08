@@ -5,6 +5,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { isEssentialDrug } from '../data/essentialMedicines';
 import { quickSearch } from '../utils/searchDrugs';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 
 export default function EssentialDrugsPage() {
   const { drugs: ALL_DRUGS, loading } = useDrugs();
@@ -69,13 +70,16 @@ export default function EssentialDrugsPage() {
                 <div className="p-2 bg-green-50 rounded-lg">
                   <Pill className="w-5 h-5 text-green-600" />
                 </div>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${
-                  drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-                  drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                               'bg-blue-100 text-blue-700'
-                }`}>
-                  {drug.prescription_status}
-                </span>
+                <div className="flex items-center gap-1">
+                  <AddToFavoritesHeart drug={drug} />
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${
+                    drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
+                    drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
+                                                                 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {drug.prescription_status}
+                  </span>
+                </div>
               </div>
               <h3 className="text-lg font-bold group-hover:text-green-700 transition-colors">{drug.generic_name}</h3>
               <p className="text-sm text-primary-600 font-medium mt-1">{getDisplayDrugClass(drug)}</p>

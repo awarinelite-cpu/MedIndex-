@@ -14,6 +14,7 @@ import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { useCustomConditions, normalizeConditionLabel, slugifyConditionLabel, addCustomConditions, removeCondition } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionSection from './ConditionSection';
+import AddToFavoritesHeart from './AddToFavoritesHeart';
 
 /* ── AI condition insight: intro/etiology/pathophysiology + drug list ────── */
 /* Shown above search results whenever there's an active search query, so a  */
@@ -533,6 +534,13 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
                     <div className="font-semibold text-sm truncate">{item.name}</div>
                     <div className="text-xs text-drug-muted truncate">{item.subclass || item.note}</div>
                   </Link>
+                  <AddToFavoritesHeart
+                    drug={{
+                      id: existing?.id || existing?.firestoreId,
+                      generic_name: item.name,
+                      drug_class: item.subclass || '',
+                    }}
+                  />
                   {isNew ? (
                     isAdmin ? (
                       saved === 'saving' ? (

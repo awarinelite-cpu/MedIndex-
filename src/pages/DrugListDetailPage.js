@@ -141,12 +141,19 @@ export default function DrugListDetailPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <Link
-                      to={`/drug/${drug.drugId}`}
-                      className="font-semibold text-drug-text hover:text-primary-600 transition-colors"
-                    >
-                      {drug.drugName}
-                    </Link>
+                    {drug.drugId?.startsWith('ai_') ? (
+                      <span className="font-semibold text-drug-text inline-flex items-center gap-1.5">
+                        {drug.drugName}
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">AI</span>
+                      </span>
+                    ) : (
+                      <Link
+                        to={`/drug/${drug.drugId}`}
+                        className="font-semibold text-drug-text hover:text-primary-600 transition-colors"
+                      >
+                        {drug.drugName}
+                      </Link>
+                    )}
                     {drug.drugClass && (
                       <p className="text-xs text-primary-600 font-medium mt-0.5">{drug.drugClass}</p>
                     )}

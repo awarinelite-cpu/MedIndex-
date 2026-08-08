@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { saveAiDrugToDatabase, isDrugNotFoundText } from '../utils/aiDrugSave';
+import AddToFavoritesHeart from './AddToFavoritesHeart';
 
 /* ── AI fallback lookup for drugs not yet in the database ───────────────── */
 /* Shared between BrowsePage and HomePage — offers to look a term up with   */
@@ -153,6 +154,9 @@ export default function AiSearchFallback({ searchQuery }) {
             <span className="text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
               ✓ Saved to database
             </span>
+          )}
+          {state === 'done' && !notFound && (
+            <AddToFavoritesHeart drug={{ generic_name: queriedFor, drug_class: '' }} />
           )}
         </div>
 

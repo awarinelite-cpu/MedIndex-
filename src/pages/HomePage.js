@@ -10,6 +10,7 @@ import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
+import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { HeartIcon, PancreasIcon, BrainIcon, StomachIcon, LungsIcon, ShieldCheckIcon } from '../components/icons/OrganIcons';
 
 // The 6-tile "Browse by Category" grid — solid, flat organ-color icons (not
@@ -152,6 +153,7 @@ export default function HomePage() {
                         <div className="text-xs text-gray-500 truncate">{getDisplayDrugClass(drug)}</div>
                       )}
                     </div>
+                    <AddToFavoritesHeart drug={drug} />
                     <RxBadge status={drug.prescription_status} />
                   </Link>
                 ))}
@@ -223,6 +225,7 @@ export default function HomePage() {
                       <div className="text-xs text-gray-500 truncate">{getDisplayDrugClass(drug)}</div>
                     )}
                   </div>
+                  <AddToFavoritesHeart drug={drug} />
                   <RxBadge status={drug.prescription_status} />
                 </Link>
               ))}
@@ -282,6 +285,7 @@ export default function HomePage() {
                   <div className="font-bold text-sm text-drug-text truncate">{drug.generic_name}</div>
                   <div className="text-xs text-drug-muted truncate">{getDisplayDrugClass(drug)}</div>
                 </div>
+                <AddToFavoritesHeart drug={drug} />
                 <RxBadge status={drug.prescription_status} />
                 <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
               </Link>

@@ -10,6 +10,7 @@ import { DRUG_CLASS_TAXONOMY, UNCLASSIFIED_BUCKET } from '../data/drugClassTaxon
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import AiClassInsight from './AiClassInsight';
+import AddToFavoritesHeart from './AddToFavoritesHeart';
 
 // Icon + tint for each of the 21 formulary chapters — purely visual, keyed
 // off the taxonomy's own class id, so it doesn't touch the taxonomy data
@@ -63,6 +64,7 @@ export function DrugRow({ drug }) {
         <p className="font-semibold text-sm truncate group-hover:text-primary-700">{drug.generic_name}</p>
         <p className="text-xs text-drug-muted truncate">{getDisplayDrugClass(drug)}</p>
       </div>
+      <AddToFavoritesHeart drug={drug} />
       {drug.prescription_status && (
         <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${statusBadgeClass(drug.prescription_status)}`}>
           {drug.prescription_status}
