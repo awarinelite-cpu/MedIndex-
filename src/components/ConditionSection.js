@@ -18,6 +18,7 @@ import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import { getDrugTherapyRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
+import AddToFavoritesHeart from './AddToFavoritesHeart';
 
 export function RxBadge({ status }) {
   const cls =
@@ -791,6 +792,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                                   <Pill className="w-4 h-4 text-primary-600" />
                                 </div>
                                 <div className="flex items-center gap-1">
+                                  <AddToFavoritesHeart drug={drug} />
                                   <RxBadge status={drug.prescription_status} />
                                   {isAdmin && (
                                     <button
@@ -851,6 +853,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                                   {drug.drug_subclass || getDisplayDrugClass(drug)}
                                 </div>
                               </div>
+                              <AddToFavoritesHeart drug={drug} />
                               <RxBadge status={drug.prescription_status} />
                               {isAdmin && (
                                 <button
