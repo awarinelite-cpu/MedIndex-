@@ -3,7 +3,7 @@
 //
 // A free-text clinical decision-support tool: describe a complaint/note,
 // get a Diagnosis + Main/Adjunct/Combination Therapy plan, then build a
-// combined Drug Course Chart from whichever suggestions you pick. This is
+// combined "Give This" plan from whichever suggestions you pick. This is
 // the SAME engine (mode: 'clinical_plan' on /api/drug-ai-details) that
 // powers NACON-EMR's patient-record consultation screen — grounded here in
 // MedIndex's own live drug list rather than a patient record, since
@@ -230,7 +230,7 @@ export default function AiClinicalConsultPage() {
                   {categoryRows?.length > 0 && (
                     <div className="mt-2 flex flex-col gap-1.5">
                       <div className="text-[10.5px] font-bold text-drug-muted">
-                        Select for the course chart:
+                        Select for "Give This":
                       </div>
                       {categoryRows.map(r => {
                         const key = rowKey(r);
@@ -291,11 +291,11 @@ export default function AiClinicalConsultPage() {
           {rows.length > 0 && (
             <div className="mt-1 mb-3">
               <div className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-0.5 rounded-full mb-2 bg-drug-bg text-drug-text border border-drug-border">
-                <Table2 className="w-3 h-3" /> Drug Course Chart
+                <Table2 className="w-3 h-3" /> Give This
               </div>
               {chosenRows.length === 0 ? (
                 <div className="text-xs text-drug-muted">
-                  Nothing selected yet — tick drugs above to build the combined course chart.
+                  Nothing selected yet — tick drugs above to build "Give This".
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -335,7 +335,7 @@ export default function AiClinicalConsultPage() {
 
           <button
             onClick={() => {
-              if (!chosenRows.length) { showToast('Select at least one drug for the course chart first'); return; }
+              if (!chosenRows.length) { showToast('Select at least one drug for "Give This" first'); return; }
               if (unresolvedConflicts.length) {
                 showToast(`Acknowledge the allergy conflict on ${unresolvedConflicts.map(r => r.name).join(', ')} first`);
                 return;
@@ -345,7 +345,7 @@ export default function AiClinicalConsultPage() {
             disabled={!chosenRows.length}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-drug-success disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
           >
-            <Check className="w-4 h-4" /> Confirm course chart ({chosenRows.length} drug{chosenRows.length === 1 ? '' : 's'})
+            <Check className="w-4 h-4" /> Confirm — Give This ({chosenRows.length} drug{chosenRows.length === 1 ? '' : 's'})
           </button>
         </div>
       )}
