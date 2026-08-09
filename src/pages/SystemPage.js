@@ -704,8 +704,54 @@ export default function SystemPage() {
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
-  // Only one condition accordion open at a time; none open by default.
-  const [openConditionId, setOpenConditionId] = useState(null);
+  // Only one condition accordion open at a time; none open by default —
+  // EXCEPT restored from sessionStorage, so navigating to a drug from an
+  // open condition card and pressing Back lands you right back on it
+  // instead of resetting to fully collapsed. Scoped per systemId so
+  // switching systems doesn't leak one system's open card into another's.
+  const [openConditionId, setOpenConditionId] = useState(
+    () => sessionStorage.getItem(`system_open_condition_${systemId}`) || null
+  );
+
+  useEffect(() => {
+    if (openConditionId) {
+      sessionStorage.setItem(`system_open_condition_${systemId}`, openConditionId);
+    } else {
+      sessionStorage.removeItem(`system_open_condition_${systemId}`);
+    }
+  }, [openConditionId, systemId]);
+
+  // Scroll position — saved continuously while scrolling (not just on
+  // unmount) because a real back-navigation via Link tears this component
+  // down without a clean "leaving the page" moment to hook into.
+  // Restoration waits until drug data has finished loading AND the
+  // previously-open condition card (above) has had a chance to render at
+  // its expanded height — otherwise the page is still short and the
+  // scrollTo lands in the wrong spot.
+  useEffect(() => {
+    const key = `system_scroll_${systemId}`;
+    const onScroll = () => sessionStorage.setItem(key, String(window.scrollY));
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [systemId]);
+
+  useEffect(() => {
+    if (loading) return;
+    const key = `system_scroll_${systemId}`;
+    const saved = sessionStorage.getItem(key);
+    if (!saved) return;
+    // Two rAFs: one for this render's DOM to commit, one more for the
+    // expanded condition card's own content (drug rows) to lay out.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, Number(saved) || 0);
+      });
+    });
+    // Only re-run when loading finishes for this system — not on every
+    // scroll-driven sessionStorage write, or this would fight the user's
+    // own scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, systemId]);
 
   const system = getSystemById(systemId);
 
