@@ -29,6 +29,7 @@ import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
 import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
+import AiCreditsPage from './pages/AiCreditsPage';
 function App() {
   return (
     <ErrorBoundary>
@@ -105,6 +106,11 @@ function App() {
         <Route path="/ai-consult" element={
           <ProtectedUserRoute>
             <Layout><AiClinicalConsultPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/ai-credits" element={
+          <ProtectedUserRoute>
+            <Layout><AiCreditsPage /></Layout>
           </ProtectedUserRoute>
         } />
 

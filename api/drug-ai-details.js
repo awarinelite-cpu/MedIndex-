@@ -378,6 +378,49 @@ Output nothing except the ## headers and bullet points themselves — no introdu
       });
     }
 
+    // ── AI credits gate ──────────────────────────────────────────────────
+    // This is the metered, patient-facing feature (AI Clinical Consult /
+    // AI Drug Insight) — every other mode on this endpoint is content-
+    // curation tooling and stays free. Delegates the actual charge to
+    // /api/ai-credits, a Node.js function (this one runs on the Edge
+    // runtime, which firebase-admin can't run on), forwarding the caller's
+    // own Authorization header so the same identity/admin-exemption check
+    // applies. Any caller of this endpoint — MedIndex or NACON-EMR, both
+    // sharing the same Firebase project — goes through this same gate.
+    {
+      const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: 'Please sign in to use AI Clinical Consult.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      try {
+        const creditsUrl = new URL('/api/ai-credits', req.url).toString();
+        const creditRes = await fetch(creditsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+          body: JSON.stringify({ action: 'consume' }),
+        });
+        if (!creditRes.ok) {
+          const creditErr = await creditRes.json().catch(() => ({}));
+          return new Response(JSON.stringify({
+            error: creditErr.error || 'Not enough AI credits. Buy more to continue.',
+            balance: creditErr.balance,
+            code: 'insufficient_credits',
+          }), {
+            status: creditRes.status === 402 ? 402 : creditRes.status,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'Could not verify AI credits. Please try again.' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const contextLines = [
       age ? `Age: ${age}` : null,
       sex ? `Sex: ${sex}` : null,

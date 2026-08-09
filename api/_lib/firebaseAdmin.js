@@ -124,3 +124,44 @@ export async function requireAdmin(req) {
 
   return { uid: decoded.uid, email };
 }
+
+// Verifies the caller sent a valid Firebase ID token, same as requireAdmin,
+// but for any signed-in user — no admins/{email} check. Used by endpoints
+// that meter or gate per-user resources (e.g. AI credits) rather than
+// admin-only tools. Also returns whether the caller happens to be an admin,
+// since admins are exempt from credit charges.
+export async function requireUser(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    const err = new Error('Missing Authorization header — please sign in.');
+    err.status = 401;
+    throw err;
+  }
+
+  let authClient;
+  try {
+    authClient = adminAuth();
+  } catch (e) {
+    e.status = 500;
+    throw e;
+  }
+
+  let decoded;
+  try {
+    decoded = await authClient.verifyIdToken(token);
+  } catch {
+    const err = new Error('Invalid or expired session — please sign in again.');
+    err.status = 401;
+    throw err;
+  }
+
+  const email = decoded.email || null;
+  let isAdmin = false;
+  if (email) {
+    const adminSnap = await adminDb().collection('admins').doc(email).get();
+    isAdmin = adminSnap.exists && adminSnap.data()?.role === 'admin';
+  }
+
+  return { uid: decoded.uid, email, isAdmin };
+}

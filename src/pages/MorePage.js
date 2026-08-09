@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, Sun, Moon, ChevronRight, Sparkles,
+  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -20,6 +20,7 @@ const NAV_LINKS = [
   { to: '/',            label: 'Home',              icon: Home         },
   { to: '/browse',      label: 'Browse',            icon: Grid3X3      },
   { to: '/ai-consult',  label: 'AI Clinical Consult', icon: Sparkles   },
+  { to: '/ai-credits',  label: 'AI Credits',        icon: Coins        },
   { to: '/labs',        label: 'Lab Ref',           icon: FlaskConical },
   { to: '/calculators', label: 'Calculators',       icon: Calculator   },
 ];

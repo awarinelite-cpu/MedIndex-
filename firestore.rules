@@ -42,10 +42,28 @@ service cloud.firestore {
       allow read:  if request.auth != null && (request.auth.uid == uid || isAdmin());
       allow write: if request.auth != null && request.auth.uid == uid;
 
+      // AI credit wallet — read-only for the owner (or admin); writes are
+      // never allowed from the client, only from server routes using the
+      // Admin SDK (which bypasses these rules entirely). This is what
+      // actually stops someone from editing their own balance in devtools.
+      match /wallet/{doc} {
+        allow read:  if request.auth != null && (request.auth.uid == uid || isAdmin());
+        allow write: if false;
+      }
+
       match /{document=**} {
         allow read:  if request.auth != null && (request.auth.uid == uid || isAdmin());
         allow write: if request.auth != null && request.auth.uid == uid;
       }
+    }
+
+    // Credit purchase ledger — one doc per Paystack reference, written only
+    // by the server (verify/webhook routes) to guard against double-
+    // crediting. A user can read their own purchase history; nobody can
+    // write to it from the client.
+    match /credit_purchases/{reference} {
+      allow read:  if request.auth != null && (resource.data.uid == request.auth.uid || isAdmin());
+      allow write: if false;
     }
 
     // Search history — any signed-in user can log their own searches;

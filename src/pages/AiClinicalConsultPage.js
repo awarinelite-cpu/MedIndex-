@@ -10,8 +10,10 @@
 // MedIndex has no patient/consultation-note model of its own.
 
 import React, { useState } from 'react';
-import { Sparkles, Loader2, Wand2, AlertTriangle, ShieldAlert, Table2, Check, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Sparkles, Loader2, Wand2, AlertTriangle, ShieldAlert, Table2, Check, X, Coins } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAiCredits } from '../hooks/useAiCredits';
 import { getClinicalPlan, lookupDrugByName } from '../utils/clinicalPlan';
 import { splitIntoSections, extractAllDrugRows, SECTION_META } from '../utils/parseClinicalPlan';
 import { parseAllergyList, flagAllergicRows } from '../utils/allergyGuard';
@@ -50,6 +52,7 @@ function useToast() {
 
 export default function AiClinicalConsultPage() {
   const { drugs } = useDrugs();
+  const { balance, unlimited, refresh: refreshCredits } = useAiCredits();
   const [toast, showToast, dismissToast] = useToast();
 
   const [noteText, setNoteText] = useState('');
@@ -109,9 +112,14 @@ export default function AiClinicalConsultPage() {
       if (flagged.some(r => r.allergyConflict)) {
         showToast('AI suggested a drug that conflicts with a recorded allergy — review flagged item(s)');
       }
+      refreshCredits();
     } catch (e) {
       console.error('AI clinical consult', e);
-      showToast(e?.message || 'AI suggestion failed');
+      if (e?.code === 'insufficient_credits') {
+        showToast('Out of AI credits — buy more to keep using AI Clinical Consult');
+      } else {
+        showToast(e?.message || 'AI suggestion failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -142,9 +150,18 @@ export default function AiClinicalConsultPage() {
           <button onClick={dismissToast}><X className="w-3.5 h-3.5" /></button>
         </div>
       )}
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="w-5 h-5 text-primary-600" />
-        <h1 className="text-xl font-bold text-drug-text">AI Clinical Consult</h1>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary-600" />
+          <h1 className="text-xl font-bold text-drug-text">AI Clinical Consult</h1>
+        </div>
+        <Link
+          to="/ai-credits"
+          className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors flex-shrink-0"
+        >
+          <Coins className="w-3.5 h-3.5" />
+          {unlimited ? 'Unlimited' : balance === null ? '…' : `${balance} credit${balance === 1 ? '' : 's'}`}
+        </Link>
       </div>
       <p className="text-sm text-drug-muted mb-5">
         Describe a complaint or consultation note and get a diagnosis-led management plan, grounded in this app's drug database. Decision support only — not a prescription.

@@ -15,6 +15,7 @@
 
 import { apiUrl } from '../config/apiBase';
 import { parseAllergyList, filterAllergicDrugs } from './allergyGuard';
+import { auth } from '../firebase';
 
 function scoreDrug(drug, keywords) {
   const haystack = [drug.generic_name, drug.drug_class, drug.drug_subclass, drug.primary_indications, drug.indications, drug.overview]
@@ -91,9 +92,16 @@ export async function getClinicalPlan({ noteText, allergies, primaryDiagnosis, a
   const medIndexDrugsRaw = findRelevantDrugs(drugs, { noteText, primaryDiagnosis }, 25);
   const { safe: medIndexDrugs, excluded: medIndexExcluded } = filterAllergicDrugs(medIndexDrugsRaw, allergies);
 
+  // This mode is metered (AI credits) — the endpoint identifies the caller
+  // from this token, both to charge the right wallet and to exempt admins.
+  if (!auth.currentUser) {
+    throw new Error('Please sign in to use AI Clinical Consult.');
+  }
+  const idToken = await auth.currentUser.getIdToken();
+
   const res = await fetch(apiUrl('/api/drug-ai-details'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
     body: JSON.stringify({
       mode: 'clinical_plan',
       noteText,
@@ -113,9 +121,15 @@ export async function getClinicalPlan({ noteText, allergies, primaryDiagnosis, a
   });
 
   if (!res.ok || !res.body) {
-    let detail = '';
-    try { detail = (await res.json())?.error || ''; } catch {}
-    throw new Error(detail || `AI request failed (${res.status}).`);
+    let payload = {};
+    try { payload = await res.json(); } catch {}
+    if (res.status === 402) {
+      const err = new Error(payload.error || 'Not enough AI credits. Buy more to continue.');
+      err.code = 'insufficient_credits';
+      err.balance = payload.balance;
+      throw err;
+    }
+    throw new Error(payload.error || `AI request failed (${res.status}).`);
   }
 
   const reader = res.body.getReader();
