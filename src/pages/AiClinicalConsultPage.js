@@ -11,12 +11,13 @@
 
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Loader2, Wand2, AlertTriangle, ShieldAlert, Table2, Check, X, Coins } from 'lucide-react';
+import { Sparkles, Loader2, Wand2, AlertTriangle, ShieldAlert, Table2, Check, X, Coins, Share2 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAiCredits } from '../hooks/useAiCredits';
 import { getClinicalPlan, lookupDrugByName } from '../utils/clinicalPlan';
 import { splitIntoSections, extractAllDrugRows, SECTION_META } from '../utils/parseClinicalPlan';
 import { parseAllergyList, flagAllergicRows } from '../utils/allergyGuard';
+import { shareCourseChartPdf } from '../utils/exportCourseChartPdf';
 
 function renderFormattedText(text) {
   const lines = (text || '').split('\n');
@@ -65,6 +66,7 @@ export default function AiClinicalConsultPage() {
   const [rows, setRows] = useState([]);
   const [acknowledged, setAcknowledged] = useState({});
   const [selected, setSelected] = useState({});
+  const [sharingChart, setSharingChart] = useState(false);
 
   const allergyList = parseAllergyList(allergies);
   const hasAllergyHistory = allergyList.length > 0;
@@ -133,6 +135,23 @@ export default function AiClinicalConsultPage() {
   };
   const chosenRows = rows.filter(r => selected[rowKey(r)]);
   const unresolvedConflicts = chosenRows.filter(r => r.allergyConflict && !acknowledged[r.name.toLowerCase()]);
+  const diagnosisText = sections.find(s => s.header === 'DIAGNOSIS')?.lines.join('\n').trim() || '';
+
+  const handleShareCourseChart = async () => {
+    if (!chosenRows.length) { showToast('Select at least one drug for "Give This" first'); return; }
+    if (unresolvedConflicts.length) {
+      showToast(`Acknowledge the allergy conflict on ${unresolvedConflicts.map(r => r.name).join(', ')} first`);
+      return;
+    }
+    setSharingChart(true);
+    try {
+      await shareCourseChartPdf({ noteText, diagnosis: diagnosisText, age, sex, allergies, rows: chosenRows });
+    } catch (e) {
+      showToast(e?.message || 'Failed to build the course chart PDF');
+    } finally {
+      setSharingChart(false);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -350,20 +369,31 @@ export default function AiClinicalConsultPage() {
             AI suggestion only — not a prescription. Confirm against allergy history, dosage, and local protocol before prescribing.
           </div>
 
-          <button
-            onClick={() => {
-              if (!chosenRows.length) { showToast('Select at least one drug for "Give This" first'); return; }
-              if (unresolvedConflicts.length) {
-                showToast(`Acknowledge the allergy conflict on ${unresolvedConflicts.map(r => r.name).join(', ')} first`);
-                return;
-              }
-              showToast(`Course chart confirmed with ${chosenRows.length} drug${chosenRows.length === 1 ? '' : 's'}`, 'success');
-            }}
-            disabled={!chosenRows.length}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-drug-success disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
-          >
-            <Check className="w-4 h-4" /> Confirm — Give This ({chosenRows.length} drug{chosenRows.length === 1 ? '' : 's'})
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (!chosenRows.length) { showToast('Select at least one drug for "Give This" first'); return; }
+                if (unresolvedConflicts.length) {
+                  showToast(`Acknowledge the allergy conflict on ${unresolvedConflicts.map(r => r.name).join(', ')} first`);
+                  return;
+                }
+                showToast(`Course chart confirmed with ${chosenRows.length} drug${chosenRows.length === 1 ? '' : 's'}`, 'success');
+              }}
+              disabled={!chosenRows.length}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-drug-success disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
+            >
+              <Check className="w-4 h-4" /> Confirm — Give This ({chosenRows.length} drug{chosenRows.length === 1 ? '' : 's'})
+            </button>
+            <button
+              onClick={handleShareCourseChart}
+              disabled={!chosenRows.length || sharingChart}
+              title="Share the confirmed course chart as a MedIndex-branded PDF"
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 border border-drug-border hover:bg-drug-bg disabled:opacity-50 text-drug-text text-sm font-bold rounded-lg transition-colors flex-shrink-0"
+            >
+              <Share2 className={`w-4 h-4 ${sharingChart ? 'animate-pulse' : ''}`} />
+              {sharingChart ? '…' : 'Share'}
+            </button>
+          </div>
         </div>
       )}
     </div>
