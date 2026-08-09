@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
   Pill, Grid3X3, List, ArrowLeft,
-  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge, X,
+  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge, X, Share2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,7 @@ import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/us
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import ConditionSection from '../components/ConditionSection';
+import { shareSystemNotePdf } from '../utils/exportSystemNotePdf';
 
 const ICONS = {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -796,6 +797,8 @@ export default function SystemPage() {
   );
 
   const [retryingEmpty, setRetryingEmpty] = useState(false);
+  const [sharingNote, setSharingNote] = useState(false);
+  const [shareNoteError, setShareNoteError] = useState('');
 
   // Shared by the automatic on-visit sweep below AND the manual "Retry"
   // button (admin-only) — resetFirst clears this system's entries from the
@@ -982,6 +985,25 @@ export default function SystemPage() {
     link.click();
   }
 
+  async function handleShareSystemNote() {
+    setSharingNote(true);
+    setShareNoteError('');
+    try {
+      // Same list the page itself renders (respects merges/custom
+      // conditions), sorted A→Z so the note's table of contents reads
+      // predictably rather than in whatever order Firestore happened
+      // to return conditions in.
+      const orderedEntries = [...conditionGroups.values()]
+        .slice()
+        .sort((a, b) => a.condition.label.localeCompare(b.condition.label));
+      await shareSystemNotePdf(system, orderedEntries, clinicalInfoByCondition);
+    } catch (e) {
+      setShareNoteError(e.message || 'Failed to build the system note.');
+    } finally {
+      setSharingNote(false);
+    }
+  }
+
   if (!system) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
@@ -1109,6 +1131,16 @@ export default function SystemPage() {
           <Grid3X3 className="w-5 h-5" />
         </button>
 
+        <button
+          onClick={handleShareSystemNote}
+          disabled={sharingNote || loading || conditionGroups.size === 0}
+          className="btn-secondary flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+          title="Build a PDF note with every condition in this system — tap a condition in the PDF's contents to jump straight to its full write-up, just like opening it in the app"
+        >
+          <Share2 className={`w-4 h-4 ${sharingNote ? 'animate-pulse' : ''}`} />
+          {sharingNote ? 'Building note…' : 'Share'}
+        </button>
+
         {isAdmin && (
           <button
             onClick={downloadSystemTemplate}
@@ -1119,6 +1151,12 @@ export default function SystemPage() {
           </button>
         )}
       </div>
+
+      {shareNoteError && (
+        <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+          {shareNoteError}
+        </div>
+      )}
 
       {/* Filter summary */}
       {(classFilter || nameSearch) && (
