@@ -206,6 +206,134 @@ function extractText(raw, provider) {
   }
 }
 
+// ── Generic "call this provider with this prompt, get back raw text" ──────
+// Extracted so both the main interaction check and the small enrichment
+// call below (for admin-restriction backstop hits) share one code path
+// instead of duplicating the provider-routing switch.
+async function callProviderForText(provider, prompt, maxTokens) {
+  let aiRes;
+  try {
+    if (provider === 'gemini') {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return { aiUnavailable: true, aiFailureMessage: 'Server is not configured with a GEMINI_API_KEY.' };
+      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+      aiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: maxTokens },
+          }),
+        }
+      );
+    } else if (provider === 'claude') {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return { aiUnavailable: true, aiFailureMessage: 'Server is not configured with an ANTHROPIC_API_KEY.' };
+      const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+      aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+      });
+    } else if (provider === 'openai') {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) return { aiUnavailable: true, aiFailureMessage: 'Server is not configured with an OPENAI_API_KEY.' };
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+      });
+    } else if (provider === 'deepseek') {
+      const apiKey = process.env.DEEPSEEK_API_KEY;
+      if (!apiKey) return { aiUnavailable: true, aiFailureMessage: 'Server is not configured with a DEEPSEEK_API_KEY.' };
+      const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+      });
+    } else if (provider === 'kimi') {
+      const apiKey = process.env.KIMI_API_KEY;
+      if (!apiKey) return { aiUnavailable: true, aiFailureMessage: 'Server is not configured with a KIMI_API_KEY.' };
+      const model = process.env.KIMI_MODEL || 'moonshot-v1-8k';
+      aiRes = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+      });
+    } else {
+      return { aiUnavailable: true, aiFailureMessage: `Unknown provider: ${provider}` };
+    }
+  } catch (err) {
+    console.error(`[drug-interaction-check] fetch to ${provider} failed:`, err);
+    return { aiUnavailable: true, aiFailureMessage: 'Could not reach the AI service.' };
+  }
+
+  if (!aiRes.ok) {
+    let detail = '';
+    try { detail = await aiRes.text(); } catch {}
+    console.error(`[drug-interaction-check] ${provider} error ${aiRes.status}:`, detail);
+    return {
+      aiUnavailable: true,
+      aiFailureMessage: aiRes.status === 429 ? 'AI rate limit reached.' : `AI service error (${aiRes.status}).`,
+    };
+  }
+
+  let raw;
+  try { raw = await aiRes.json(); }
+  catch { return { aiUnavailable: true, aiFailureMessage: 'Failed to parse AI response.' }; }
+
+  return { aiUnavailable: false, text: extractText(raw, provider).trim() };
+}
+
+function stripJsonFences(text) {
+  return String(text || '').replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+}
+
+// ── Enrichment call for administration-restriction backstop hits ──────────
+// The backstop above guarantees the SEVERITY is right (contraindicated),
+// but a bare "the drug's own instructions restrict this" is a weak
+// explanation — the AI generally does know the real pharmacological reason
+// (as a plain web search for the same question shows: dextrose/glucose
+// solutions can cause protein degradation or precipitation with monoclonal
+// antibodies like bevacizumab), it just was never specifically asked for it
+// once the verdict was already known. This makes one small, targeted call
+// asking exactly that question. Best-effort: on any failure, the caller
+// falls back to the plain source-quote text, so the guarantee never
+// depends on this succeeding.
+async function enrichAdministrationRestriction(provider, primaryName, selectedName, sourceSentence) {
+  const prompt = `You are a clinical pharmacologist. It is documented (in "${primaryName}"'s own administration/handling instructions) that "${primaryName}" must not be combined with "${selectedName}": "${sourceSentence}"
+
+Explain, from your own pharmacological knowledge, WHY this restriction most likely exists (e.g. chemical/physical incompatibility, precipitate formation, protein degradation or aggregation, pH incompatibility, osmolarity mismatch, stability concerns) and what the clinical consequence would be if it were done anyway.
+
+Return ONLY a JSON object with exactly these keys, no markdown, no code fences, no preamble:
+- "mechanism": the likely chemical/pharmacological basis for the restriction (1-2 sentences)
+- "effect": the clinical consequence if combined anyway (1-2 sentences)
+- "recommendation": what a clinician should do in practice (1 sentence)`;
+
+  try {
+    const { aiUnavailable, text } = await callProviderForText(provider, prompt, 400);
+    if (aiUnavailable || !text) return null;
+    const parsed = JSON.parse(stripJsonFences(text));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      mechanism: parsed.mechanism || null,
+      effect: parsed.effect || null,
+      recommendation: parsed.recommendation || null,
+    };
+  } catch (e) {
+    console.error('[drug-interaction-check] enrichment call failed:', e.message);
+    return null;
+  }
+}
+
 async function coreHandler(req) {
   if (req.method !== 'POST') {
     return jsonResp({ error: 'Method not allowed' }, 405);
@@ -264,108 +392,22 @@ async function coreHandler(req) {
   // entry, so they run larger than the flat per-drug list modes.
   const maxTokens = mode === 'indication_synergy' ? 3000 : 2000;
 
-  // ── Route to the right AI provider ──────────────────────────────────────────
-  let aiRes;
-  let aiUnavailable = false;
-  let aiFailureMessage = '';
+  // ── Call the AI provider ────────────────────────────────────────────────
+  const callResult = await callProviderForText(provider, prompt, maxTokens);
+  let aiUnavailable = !!callResult.aiUnavailable;
+  let aiFailureMessage = callResult.aiFailureMessage || '';
+  const text = callResult.text || '';
 
-  try {
-    if (provider === 'gemini') {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) return jsonResp({ error: 'Server is not configured with a GEMINI_API_KEY.' }, 500);
-      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
-      aiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: maxTokens },
-          }),
-        }
-      );
-
-    } else if (provider === 'claude') {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) return jsonResp({ error: 'Server is not configured with an ANTHROPIC_API_KEY.' }, 500);
-      const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
-      aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-
-    } else if (provider === 'openai') {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) return jsonResp({ error: 'Server is not configured with an OPENAI_API_KEY.' }, 500);
-      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-      aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
-      });
-
-    } else if (provider === 'deepseek') {
-      const apiKey = process.env.DEEPSEEK_API_KEY;
-      if (!apiKey) return jsonResp({ error: 'Server is not configured with a DEEPSEEK_API_KEY.' }, 500);
-      const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-      aiRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
-      });
-
-    } else if (provider === 'kimi') {
-      const apiKey = process.env.KIMI_API_KEY;
-      if (!apiKey) return jsonResp({ error: 'Server is not configured with a KIMI_API_KEY.' }, 500);
-      const model = process.env.KIMI_MODEL || 'moonshot-v1-8k';
-      aiRes = await fetch('https://api.moonshot.cn/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
-      });
-
-    } else {
-      return jsonResp({ error: `Unknown provider: ${provider}` }, 400);
-    }
-
-  } catch (err) {
-    console.error(`[drug-interaction-check] fetch to ${provider} failed:`, err);
-    aiUnavailable = true;
-    aiFailureMessage = 'Could not reach the AI service.';
+  if (aiUnavailable && /not configured with an?\s/i.test(aiFailureMessage)) {
+    return jsonResp({ error: aiFailureMessage }, 500);
   }
-
-  // ── Parse response ───────────────────────────────────────────────────────────
-  let text = '';
-  if (!aiUnavailable) {
-    if (!aiRes.ok) {
-      let detail = '';
-      try { detail = await aiRes.text(); } catch {}
-      console.error(`[drug-interaction-check] ${provider} error ${aiRes.status}:`, detail);
-      aiUnavailable = true;
-      aiFailureMessage = aiRes.status === 429
-        ? 'AI rate limit reached.'
-        : `AI service error (${aiRes.status}).`;
-    } else {
-      let raw;
-      try { raw = await aiRes.json(); }
-      catch { aiUnavailable = true; aiFailureMessage = 'Failed to parse AI response.'; }
-      if (raw) text = extractText(raw, provider).trim();
-    }
+  if (aiUnavailable && aiFailureMessage.startsWith('Unknown provider')) {
+    return jsonResp({ error: aiFailureMessage }, 400);
   }
 
   let results = [];
   if (!aiUnavailable) {
-    const clean = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    const clean = stripJsonFences(text);
     try {
       results = JSON.parse(clean);
       if (!Array.isArray(results)) throw new Error('Expected JSON array');
@@ -426,15 +468,25 @@ async function coreHandler(req) {
         if (idx >= 0) results[idx] = forced; else results.push(forced);
       } else if (adminHit) {
         // The primary drug's own stored administration text explicitly
-        // restricts something this selected drug's name matches — force
-        // the verdict regardless of what the AI concluded, and quote the
-        // exact source sentence so the reasoning is checkable, not asserted.
+        // restricts something this selected drug's name matches — the
+        // severity is forced regardless of what the AI concluded (that part
+        // is the real guarantee). The explanation, though, is worth getting
+        // right rather than settling for a generic placeholder: ask the AI
+        // one small, targeted question — now that the restriction is known
+        // to be real — for the likely pharmacological reason. Falls back to
+        // the plain source quote if that call fails for any reason.
+        const enriched = !aiUnavailable
+          ? await enrichAdministrationRestriction(provider, primaryDrug.generic_name, sel.generic_name, adminHit.sentence)
+          : null;
+        const sourceNote = `Per ${primaryDrug.generic_name}'s own administration notes: "${adminHit.sentence}"`;
         const forced = {
           drug: sel.generic_name,
           severity: 'contraindicated',
-          mechanism: `${primaryDrug.generic_name}'s own administration/dilution instructions restrict this.`,
-          effect: `Combining or diluting with this may violate ${primaryDrug.generic_name}'s documented handling requirements.`,
-          recommendation: `⚠ FROM ${primaryDrug.generic_name.toUpperCase()}'S OWN ADMINISTRATION NOTES: "${adminHit.sentence}"`,
+          mechanism: enriched?.mechanism || `${primaryDrug.generic_name}'s own administration/dilution instructions restrict this.`,
+          effect: enriched?.effect || `Combining or diluting with this may violate ${primaryDrug.generic_name}'s documented handling requirements.`,
+          recommendation: enriched?.recommendation
+            ? `⚠ ${enriched.recommendation} (${sourceNote})`
+            : `⚠ ${sourceNote}`,
         };
         const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
         if (idx >= 0) results[idx] = forced; else results.push(forced);
