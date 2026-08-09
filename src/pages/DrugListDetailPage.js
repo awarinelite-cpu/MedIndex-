@@ -9,15 +9,47 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { useDrugs } from '../hooks/useDrugs';
+import { shareListPdf } from '../utils/exportListPdf';
 import {
   Pill, Trash2, ChevronLeft,
-  Check, X, StickyNote, BookOpen,
+  Check, X, StickyNote, BookOpen, Share2, Loader2,
 } from 'lucide-react';
+
+function ShareListButton({ list, allDrugs }) {
+  const [state, setState] = useState('idle'); // idle | working | error
+
+  const handleShare = async () => {
+    setState('working');
+    try {
+      await shareListPdf(list, allDrugs);
+      setState('idle');
+    } catch (e) {
+      console.error('Share list PDF error:', e);
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleShare}
+      disabled={state === 'working'}
+      title="Share list as PDF"
+      className="p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0"
+    >
+      {state === 'working'
+        ? <Loader2 className="w-4 h-4 animate-spin" />
+        : <Share2 className="w-4 h-4" />}
+    </button>
+  );
+}
 
 export default function DrugListDetailPage() {
   const { listId }     = useParams();
   const { user }       = useAuth();
   const navigate       = useNavigate();
+  const { drugs: allDrugs } = useDrugs();
 
   const [list,        setList]        = useState(null);
   const [loading,     setLoading]     = useState(true);
@@ -87,9 +119,12 @@ export default function DrugListDetailPage() {
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
       {/* Back */}
-      <Link to="/lists" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium">
-        <ChevronLeft className="w-4 h-4" /> My Lists
-      </Link>
+      <div className="flex items-center justify-between mb-6">
+        <Link to="/lists" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium">
+          <ChevronLeft className="w-4 h-4" /> My Lists
+        </Link>
+        <ShareListButton list={list} allDrugs={allDrugs} />
+      </div>
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-2">
