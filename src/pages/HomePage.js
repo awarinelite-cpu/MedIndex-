@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search, Pill, ChevronRight,
@@ -61,37 +61,46 @@ export default function HomePage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const resultsRef = React.useRef(null);
 
+  // The input itself is bound directly to searchQuery, so every keystroke
+  // paints immediately no matter how slow the search below it is. Every
+  // downstream computation (dropdown, full match list, exact-match check,
+  // the condition insight card, the AI fallback) instead reads this
+  // deferred copy — React keeps it a render behind while typing is in
+  // progress, so a big synonym-matching pass over hundreds of drugs never
+  // blocks the next keystroke from showing up on screen.
+  const deferredQuery = useDeferredValue(searchQuery);
+
   // Keep the URL in sync (replace, not push) so a search here is shareable/
   // bookmarkable and links from elsewhere (e.g. an AI-suggested drug not yet
   // in the database) land with the search already filled in.
   useEffect(() => {
     const next = new URLSearchParams();
-    if (searchQuery) next.set('q', searchQuery);
+    if (deferredQuery) next.set('q', deferredQuery);
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [deferredQuery]);
 
   // Live search — relevance ranked, searches name + ALL indication fields + class + overview
   const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    return quickSearch(ALL_DRUGS, searchQuery, 8);
-  }, [ALL_DRUGS, searchQuery]);
+    if (!deferredQuery.trim()) return [];
+    return quickSearch(ALL_DRUGS, deferredQuery, 8);
+  }, [ALL_DRUGS, deferredQuery]);
 
   // Full, uncapped list of every matching drug — shown further down the page
   // so a search never has to leave the home page to see everything that matched.
   const allMatchingDrugs = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    return searchDrugs(ALL_DRUGS, searchQuery);
-  }, [ALL_DRUGS, searchQuery]);
+    if (!deferredQuery.trim()) return [];
+    return searchDrugs(ALL_DRUGS, deferredQuery);
+  }, [ALL_DRUGS, deferredQuery]);
 
   // Whether the search text is an exact drug name — if so, the instant
   // dropdown above already covers it and the AI "not in our database yet"
   // fallback below stays hidden; if not, this is likely a condition search.
   const hasExactDrugMatch = useMemo(() => {
-    const q = normalizeConditionDrugName(searchQuery);
+    const q = normalizeConditionDrugName(deferredQuery);
     if (!q) return true;
     return ALL_DRUGS.some(d => normalizeConditionDrugName(d.generic_name) === q);
-  }, [ALL_DRUGS, searchQuery]);
+  }, [ALL_DRUGS, deferredQuery]);
 
   // Everything for a search already renders on this page — submitting just
   // closes the instant dropdown and scrolls down to the full results/insight.
@@ -197,8 +206,8 @@ export default function HomePage() {
           instead. Only the main hero search bar does this. */}
       {searchQuery.trim() && (
         <section ref={resultsRef} className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 scroll-mt-6">
-          <ConditionInsightCard searchQuery={searchQuery} existingDrugs={ALL_DRUGS} />
-          {!hasExactDrugMatch && <AiSearchFallback searchQuery={searchQuery} />}
+          <ConditionInsightCard searchQuery={deferredQuery} existingDrugs={ALL_DRUGS} />
+          {!hasExactDrugMatch && <AiSearchFallback searchQuery={deferredQuery} />}
 
           {/* Every matching drug by name/indication/class — not just the top 8
               shown in the dropdown while typing — so nothing requires leaving
