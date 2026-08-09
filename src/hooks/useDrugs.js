@@ -12,7 +12,7 @@
 // the same live snapshot instead of each doing their own fetch.
 
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import SEED_DRUGS from '../data/seedDrugs.json';
 
@@ -39,7 +39,12 @@ function notifyAll(drugs) {
 
 function ensureListener() {
   if (unsubscribe) return; // already listening — reuse it
-  const q = query(collection(db, 'drugs'), orderBy('last_updated', 'desc'), limit(2000));
+  // No limit here on purpose: this hook backs Home, Browse, System, and
+  // Drug Detail app-wide, so capping it silently hides whichever drugs
+  // fall outside the window (previously the 2000 least-recently-updated
+  // ones were invisible everywhere, not just undercounted). Firestore's
+  // own per-listener document cap (~1M) is the only real ceiling here.
+  const q = query(collection(db, 'drugs'), orderBy('last_updated', 'desc'));
   unsubscribe = onSnapshot(
     q,
     (snap) => {
