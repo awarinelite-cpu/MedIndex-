@@ -8,11 +8,17 @@ export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { withCors } from './_lib/cors.js';
 
-const PROMPT = (primaryName, drugList) =>
+const PROMPT = (primaryName, drugList, groundingText) =>
   `You are a clinical pharmacologist. Analyze drug interactions between "${primaryName}" and each of the following drugs: ${drugList}.
 
 Identify "${primaryName}"'s drug class yourself from your own clinical knowledge — do not assume any class hint that may be provided elsewhere is complete or correct.
-
+${groundingText ? `
+AUTHORITATIVE SOURCE DATA — this is "${primaryName}"'s own administration/dilution/compatibility text, taken directly from our clinical database:
+"""
+${groundingText}
+"""
+This is the single most reliable source you have for this specific drug. If it states a restriction (e.g. "do not dilute with X-containing solutions", "incompatible with Y", a required diluent, an infusion-line restriction), and any of the drugs listed above match or fall into that restricted category, that MUST be reflected as "contraindicated" (or "monitor" if the restriction is about caution rather than an outright prohibition) for that drug — even if your own general knowledge alone would have suggested "safe". Treat this source as overriding your own general knowledge whenever the two conflict.
+` : ''}
 For EACH drug, return a JSON array. Each element must have exactly these keys:
 - "drug": the drug name exactly as given
 - "severity": one of "safe", "monitor", "contraindicated", or "unknown"
@@ -24,9 +30,15 @@ Be thorough and err toward caution: if there is a well-documented interaction co
 
 Return ONLY the JSON array. No markdown, no code fences, no preamble.`;
 
-const LIST_PROMPT = (primaryName) =>
+const LIST_PROMPT = (primaryName, groundingText) =>
   `You are a clinical pharmacologist. Identify "${primaryName}"'s drug class yourself from your own clinical knowledge, then list the clinically significant drug interactions for it — medications or drug classes that are either contraindicated with it or require caution/monitoring when combined, including IV compatibility issues (e.g. precipitate formation) as well as pharmacokinetic/pharmacodynamic interactions. Do not include drugs that are simply safe to combine; only list ones with a real interaction concern.
-
+${groundingText ? `
+AUTHORITATIVE SOURCE DATA — this is "${primaryName}"'s own administration/dilution/compatibility text, taken directly from our clinical database:
+"""
+${groundingText}
+"""
+This is the single most reliable source you have for this specific drug. Make sure every restriction it states (diluent requirements, incompatible solutions, infusion-line restrictions, drugs/classes it must not be combined with) is represented as its own entry in the list below, in addition to whatever else you know from general clinical knowledge.
+` : ''}
 Return a JSON array, ordered most severe first. Each element must have exactly these keys:
 - "drug": the specific generic drug name, or a well-known drug class if the interaction applies broadly to the class (e.g. "NSAIDs", "MAO inhibitors")
 - "severity": "contraindicated" or "monitor" only — do not include "safe" or "unknown" entries in this list
@@ -100,6 +112,55 @@ function normalizeDrugToken(name) {
   return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// ── Deterministic backstop: honor the drug's OWN stored administration text ──
+// The grounding text injected into the prompt above asks the AI to defer to
+// the drug's own administration/dilution notes, but (same reasoning as the
+// ABSOLUTE_CONTRAINDICATIONS block below) prompt instructions aren't a
+// guarantee on every call. This scans the primary drug's own administration
+// text for an explicit restriction sentence ("do not dilute/mix/administer/
+// infuse with X", "incompatible with X", etc.) and, if a selected drug's
+// name shares a significant word with that restricted sentence (e.g.
+// "dextrose" in both "Dextrose 5% in Water (D5W)" and "do not dilute with
+// dextrose-containing solutions"), forces that pair to "contraindicated"
+// regardless of what the AI concluded. Deliberately name-based rather than a
+// fixed pair list, so it generalizes to any drug's stored admin notes instead
+// of only the one pair a developer happened to hardcode.
+const RESTRICTION_TRIGGER = /\b(do not|does not|must not|should not|avoid|not be|contraindicated|incompatible)\b/i;
+const RESTRICTION_ACTION  = /\b(dilut\w*|mix\w*|combin\w*|infus\w*|reconstitut\w*|coadminist\w*|co-administ\w*|administ\w*)\b/i;
+const TOKEN_STOPWORDS = new Set([
+  'with','from','into','this','that','drug','used','once','daily','twice','only','over','under','than','then',
+  'given','shall','will','when','should','avoid','solution','solutions','water','sodium','contain','containing',
+  'administration','administered','dilute','diluted','mixed','combine','combined','infuse','infusion','million',
+]);
+
+function significantTokens(name) {
+  return String(name || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(t => t.length >= 4 && !TOKEN_STOPWORDS.has(t));
+}
+
+function restrictedSentences(administrationText) {
+  if (!administrationText) return [];
+  return administrationText
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 8 && RESTRICTION_TRIGGER.test(s) && RESTRICTION_ACTION.test(s));
+}
+
+function checkAdministrationRestriction(primaryDrug, selectedDrug) {
+  const sentences = restrictedSentences(primaryDrug?.administration);
+  if (!sentences.length) return null;
+  const tokens = significantTokens(selectedDrug?.generic_name);
+  if (!tokens.length) return null;
+  for (const sentence of sentences) {
+    const lower = sentence.toLowerCase();
+    const hit = tokens.find(t => lower.includes(t));
+    if (hit) return { sentence };
+  }
+  return null;
+}
+
 const ABSOLUTE_CONTRAINDICATIONS = [
   {
     a: ['ceftriaxone', 'rocephin'],
@@ -156,6 +217,22 @@ async function coreHandler(req) {
 
   const { primaryDrug, selectedDrugs, conditionLabel, systemName, provider = 'gemini', mode = 'pair' } = body || {};
 
+  // Ground the AI in the drug's own stored administration/overview text
+  // (dilution requirements, incompatible solutions, infusion restrictions)
+  // rather than relying purely on the model's general knowledge — that's
+  // what was missing when a drug like bevacizumab, whose own admin notes
+  // say "do not dilute with dextrose-containing solutions," still came back
+  // "safe" against D5W: the checker never saw that text in the first place.
+  // Capped to keep prompt size sane if a record's notes run very long.
+  function groundingFor(d) {
+    if (!d) return '';
+    const parts = [];
+    if (d.administration) parts.push(`Administration:\n${d.administration}`);
+    if (d.overview) parts.push(`Overview:\n${d.overview}`);
+    const joined = parts.join('\n\n').trim();
+    return joined.length > 4000 ? joined.slice(0, 4000) + '…' : joined;
+  }
+
   let prompt;
   if (mode === 'indication_synergy') {
     if (!conditionLabel || typeof conditionLabel !== 'string') {
@@ -164,7 +241,7 @@ async function coreHandler(req) {
     prompt = INDICATION_SYNERGY_PROMPT(conditionLabel, systemName);
   } else if (mode === 'list') {
     if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
-    prompt = LIST_PROMPT(primaryDrug.generic_name);
+    prompt = LIST_PROMPT(primaryDrug.generic_name, groundingFor(primaryDrug));
   } else if (mode === 'synergy') {
     if (!primaryDrug?.generic_name) return jsonResp({ error: 'primaryDrug is required.' }, 400);
     prompt = SYNERGY_PROMPT(primaryDrug.generic_name);
@@ -178,7 +255,8 @@ async function coreHandler(req) {
     }
     prompt = PROMPT(
       primaryDrug.generic_name,
-      selectedDrugs.map(d => `"${d.generic_name}"`).join(', ')
+      selectedDrugs.map(d => `"${d.generic_name}"`).join(', '),
+      groundingFor(primaryDrug)
     );
   }
 
@@ -335,6 +413,7 @@ async function coreHandler(req) {
     // forms a known absolute contraindication with the primary drug.
     for (const sel of selectedDrugs) {
       const rule = checkAbsoluteContraindication(primaryDrug.generic_name, sel.generic_name);
+      const adminHit = !rule ? checkAdministrationRestriction(primaryDrug, sel) : null;
       if (rule) {
         const forced = {
           drug: sel.generic_name,
@@ -342,6 +421,20 @@ async function coreHandler(req) {
           mechanism: rule.mechanism,
           effect: rule.effect,
           recommendation: '⚠ VERIFIED CONTRAINDICATION: ' + rule.recommendation,
+        };
+        const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
+        if (idx >= 0) results[idx] = forced; else results.push(forced);
+      } else if (adminHit) {
+        // The primary drug's own stored administration text explicitly
+        // restricts something this selected drug's name matches — force
+        // the verdict regardless of what the AI concluded, and quote the
+        // exact source sentence so the reasoning is checkable, not asserted.
+        const forced = {
+          drug: sel.generic_name,
+          severity: 'contraindicated',
+          mechanism: `${primaryDrug.generic_name}'s own administration/dilution instructions restrict this.`,
+          effect: `Combining or diluting with this may violate ${primaryDrug.generic_name}'s documented handling requirements.`,
+          recommendation: `⚠ FROM ${primaryDrug.generic_name.toUpperCase()}'S OWN ADMINISTRATION NOTES: "${adminHit.sentence}"`,
         };
         const idx = results.findIndex(r => normalizeDrugToken(r.drug) === normalizeDrugToken(sel.generic_name));
         if (idx >= 0) results[idx] = forced; else results.push(forced);
