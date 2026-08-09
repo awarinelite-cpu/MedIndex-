@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Pill, ChevronRight, BookOpen, Wand2,
+  Search, Pill, ChevronRight,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -116,25 +116,6 @@ export default function HomePage() {
             condition clinical write-ups, and AI Clinical Consult for diagnosis-led
             management plans.
           </p>
-
-          {/* Quick links to the two capabilities that live off the search
-              bar / category grid and are otherwise easy to miss on first
-              visit: per-condition clinical write-ups (found inside each
-              body system) and the AI Clinical Consult tool. */}
-          <div className="flex flex-wrap justify-center gap-2.5 mt-4">
-            <Link
-              to="/systems"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors"
-            >
-              <BookOpen className="w-3.5 h-3.5" /> Condition Clinical Info
-            </Link>
-            <Link
-              to="/ai-consult"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors"
-            >
-              <Wand2 className="w-3.5 h-3.5" /> AI Clinical Consult
-            </Link>
-          </div>
         </div>
       </section>
 
