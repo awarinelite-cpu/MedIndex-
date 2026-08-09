@@ -4,6 +4,7 @@ import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
   Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
+  Upload,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -16,7 +17,7 @@ import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectio
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
-  findRealDrugImage, saveFoundDrugImage,
+  findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest,
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
@@ -370,6 +371,7 @@ function DrugImageCard({ drug }) {
   const [showUrlField, setShowUrlField] = useState(false);
   // idle | searching | not-found | error
   const [findState, setFindState] = useState('idle');
+  const [uploadState, setUploadState] = useState('idle'); // idle | uploading | error
 
   const handleFindReal = async () => {
     setFindState('searching');
@@ -423,6 +425,24 @@ function DrugImageCard({ drug }) {
     }
   };
 
+  const handlePhotoSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setUploadState('uploading');
+    setError('');
+    try {
+      const hostedUrl = await uploadImageToImgChest({ file });
+      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
+      // Live listener will push the new image_url in automatically.
+      setUploadState('idle');
+      setShowUrlField(false);
+    } catch (err) {
+      setError(err.message || 'Failed to upload photo.');
+      setUploadState('error');
+    }
+  };
+
   // Already has a saved image — show it to everyone automatically.
   if (drug.image_url) {
     return (
@@ -469,21 +489,42 @@ function DrugImageCard({ drug }) {
           </p>
         )}
         {isAdmin && showUrlField && (
-          <div className="mt-4 flex flex-col sm:flex-row gap-2">
-            <input
-              type="url"
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-              placeholder="Paste image link (e.g. from imgur.com)"
-              className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
-            />
-            <button
-              onClick={handleSaveUrl}
-              disabled={urlState === 'saving' || !urlInput.trim()}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold text-sm hover:bg-primary-700 disabled:opacity-60"
-            >
-              {urlState === 'saving' ? 'Saving…' : 'Save Link'}
-            </button>
+          <div className="mt-4 flex flex-col gap-2 max-w-md mx-auto">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder="Paste image link (e.g. from imgur.com)"
+                className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
+              />
+              <button
+                onClick={handleSaveUrl}
+                disabled={urlState === 'saving' || !urlInput.trim()}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold text-sm hover:bg-primary-700 disabled:opacity-60"
+              >
+                {urlState === 'saving' ? 'Saving…' : 'Save Link'}
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-drug-border" />
+              <span className="text-xs text-drug-muted">or</span>
+              <div className="flex-1 h-px bg-drug-border" />
+            </div>
+            <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
+              {uploadState === 'uploading' ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+              ) : (
+                <><Upload className="w-4 h-4" /> Upload Photo</>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoSelected}
+                disabled={uploadState === 'uploading'}
+                className="hidden"
+              />
+            </label>
           </div>
         )}
         {error && <p className="text-xs text-red-600 mt-2 text-center">{error}</p>}
@@ -549,6 +590,25 @@ function DrugImageCard({ drug }) {
           {urlState === 'saving' ? 'Saving…' : 'Save Link'}
         </button>
       </div>
+      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
+        {uploadState === 'uploading' ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+        ) : (
+          <><Upload className="w-4 h-4" /> Upload Photo</>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handlePhotoSelected}
+          disabled={uploadState === 'uploading'}
+          className="hidden"
+        />
+      </label>
       {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
     </div>
   );

@@ -80,9 +80,41 @@ export function normalizeImageUrl(url) {
   return url;
 }
 
+// Reads a File (from an <input type="file">) into a base64 data: URL.
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read the selected file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Uploads a photo the admin picked from their device to ImgChest (via our
+// serverless proxy, so the ImgChest token stays server-side) and returns the
+// direct image link. Second option alongside pasting an existing link.
+export async function uploadImageToImgChest({ file }) {
+  if (!file) throw new Error('No file selected.');
+  if (!file.type?.startsWith('image/')) {
+    throw new Error('Please choose an image file.');
+  }
+  const imageDataUrl = await fileToDataUrl(file);
+
+  const res = await fetch(apiUrl('/api/imgchest-upload'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, filename: file.name }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to upload image.');
+  if (!data.url) throw new Error('Upload succeeded but no image link was returned.');
+  return data.url;
+}
+
 // Saves an admin-supplied externally-hosted image link (e.g. an Imgur direct
-// image URL) straight onto the drug's Firestore document — no re-upload to
-// Firebase Storage needed since it's already hosted.
+// image URL, or one just returned by uploadImageToImgChest) straight onto
+// the drug's Firestore document — no re-upload to Firebase Storage needed
+// since it's already hosted.
 export async function saveDrugImageUrl({ docId, url }) {
   await getAuthUser();
   const trimmed = normalizeImageUrl((url || '').trim());
