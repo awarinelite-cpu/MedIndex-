@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
-  Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2,
+  Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -13,6 +13,7 @@ import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { needsStrengthOnly, fetchPronunciationText, savePronunciation, saveTabAiInsight } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
+import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
   findRealDrugImage, saveFoundDrugImage,
@@ -1024,6 +1025,35 @@ function AddToListButton({ drug }) {
   );
 }
 
+function ShareDrugButton({ drug }) {
+  const [state, setState] = useState('idle'); // idle | working | error
+
+  const handleShare = async () => {
+    setState('working');
+    try {
+      await shareDrugPdf(drug);
+      setState('idle');
+    } catch (e) {
+      console.error('Share drug PDF error:', e);
+      setState('error');
+      setTimeout(() => setState('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleShare}
+      disabled={state === 'working'}
+      title="Share as PDF"
+      className="p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0"
+    >
+      {state === 'working'
+        ? <Loader2 className="w-4 h-4 animate-spin" />
+        : <Share2 className="w-4 h-4" />}
+    </button>
+  );
+}
+
 export default function DrugDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1079,7 +1109,10 @@ export default function DrugDetailPage() {
         >
           <ChevronLeft className="w-4 h-4" /> Back
         </button>
-        <AddToListButton drug={drug} />
+        <div className="flex items-center gap-2">
+          <ShareDrugButton drug={drug} />
+          <AddToListButton drug={drug} />
+        </div>
       </div>
 
       {/* Header */}
