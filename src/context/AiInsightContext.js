@@ -722,6 +722,7 @@ export function AiInsightProvider({ children }) {
       clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
       clinicalSweepSummary, clinicalSweepResumed, clinicalSweepEligibleCount, clinicalSweepTotalConditions,
       startClinicalInfoSweep, stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
+      allConditionsIndex, clinicalInfoByCondition,
       pendingReviewList, confirmPendingReview, rejectPendingReview,
     }}>
       {children}

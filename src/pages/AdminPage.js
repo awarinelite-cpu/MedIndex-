@@ -22,6 +22,7 @@ import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider, AI_PROVIDERS } from '../context/AiProviderContext';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
+import { saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 
 // ── AI Settings tab: which model powers each provider's lookups ───────────
 // Module-level (not component state) since it's static — keeps a stable
@@ -111,6 +112,61 @@ function downloadIncompleteCSV(incompleteDrugs, showToast) {
   link.remove();
 }
 
+// ── CSV export/import for the Clinical Info Sweep ──────────────────────────
+// Mirrors downloadIncompleteCSV's re-upload workflow: export every condition
+// still missing its clinical info panel with blank content columns, let the
+// admin fill them in externally, then re-import via the "Clinical Info CSV"
+// tab below. Matching on re-import is by `id` (the Firestore doc ID in
+// condition_clinical_info), not label/system, since ids are stable and
+// unique — label/system are included only as human-readable context.
+const CLINICAL_INFO_FIELDS = [
+  'introduction', 'types', 'organRelated', 'etiology', 'pathology',
+  'clinicalManifestation', 'diagnosis', 'management', 'surgicalManagement',
+  'nursingDiagnosis', 'nursingConsideration',
+];
+const CLINICAL_CSV_HEADERS = ['id', 'label', 'system', ...CLINICAL_INFO_FIELDS];
+
+function downloadClinicalSweepCSV(eligibleConditions, showToast) {
+  if (!eligibleConditions || eligibleConditions.length === 0) {
+    showToast && showToast('Nothing to download — every condition already has clinical info.');
+    return;
+  }
+  const rows = eligibleConditions.map(c => {
+    const row = { id: c.id, label: c.label, system: c.systemName };
+    CLINICAL_INFO_FIELDS.forEach(f => { row[f] = ''; });
+    return row;
+  });
+  const csv = Papa.unparse(rows, { columns: CLINICAL_CSV_HEADERS });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `clinical_info_sweep_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+// Validates + normalizes one parsed clinical-info CSV row against the live
+// condition index (built off allConditionsIndex, keyed by id) — so a typo'd
+// or hand-added id gets flagged instead of silently creating an orphaned
+// condition_clinical_info doc.
+function normalizeClinicalCsvRow(row, rowNum, conditionById) {
+  const id = (row.id || '').trim();
+  if (!id) return { error: { row: rowNum, message: 'Missing id' } };
+  const cond = conditionById.get(id);
+  if (!cond) return { error: { row: rowNum, message: `Unknown condition id "${id}" — id column must match the download exactly` } };
+
+  const info = {};
+  let hasContent = false;
+  CLINICAL_INFO_FIELDS.forEach(f => {
+    const v = (row[f] || '').trim();
+    info[f] = v;
+    if (v) hasContent = true;
+  });
+
+  return { entry: { rowNum, id, label: cond.label, systemName: cond.systemName, info, hasContent } };
+}
+
 // ── Bulk-add conditions via CSV ────────────────────────────────────────────
 const CONDITIONS_CSV_HEADERS = ['system', 'label', 'id', 'icon', 'keywords'];
 const VALID_SYSTEM_IDS = new Set(ANATOMICAL_SYSTEMS.map(s => s.id));
@@ -197,6 +253,7 @@ export default function AdminPage() {
     startGlobalFix, stopGlobalFix, subscribeFix,
     clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepEligibleCount,
     startClinicalInfoSweep, stopClinicalInfoSweep,
+    allConditionsIndex, clinicalInfoByCondition,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
 
@@ -235,6 +292,65 @@ export default function AdminPage() {
   const [condCsvRows,     setCondCsvRows]     = useState([]);   // normalized rows, one per CSV line
   const [condCsvErrors,   setCondCsvErrors]   = useState([]);   // hard parse/validation errors, block upload
   const [condCsvUploading, setCondCsvUploading] = useState(false);
+
+  // Clinical Info Sweep CSV re-upload — fills in condition_clinical_info
+  // docs for whatever the admin downloaded and edited externally.
+  const [clinicalCsvFile,       setClinicalCsvFile]       = useState(null);
+  const [clinicalCsvRows,       setClinicalCsvRows]       = useState([]);  // normalized entries, one per CSV line
+  const [clinicalCsvErrors,     setClinicalCsvErrors]     = useState([]);  // hard parse/validation errors
+  const [clinicalCsvUploading,  setClinicalCsvUploading]  = useState(false);
+  const [clinicalCsvSummary,    setClinicalCsvSummary]    = useState(null); // { saved, failed, skippedEmpty }
+  const clinicalCsvInputRef = useRef(null);
+
+  const eligibleClinicalConditions = useMemo(
+    () => (allConditionsIndex || []).filter(c => !clinicalInfoByCondition?.[c.id]),
+    [allConditionsIndex, clinicalInfoByCondition]
+  );
+
+  function handleClinicalCsvFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setClinicalCsvFile(file);
+    setClinicalCsvSummary(null);
+    const conditionById = new Map((allConditionsIndex || []).map(c => [c.id, c]));
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const errors = [];
+        const rows = [];
+        results.data.forEach((raw, i) => {
+          const rowNum = i + 2;
+          const { entry, error } = normalizeClinicalCsvRow(raw, rowNum, conditionById);
+          if (error) { errors.push(error); return; }
+          rows.push(entry);
+        });
+        setClinicalCsvRows(rows);
+        setClinicalCsvErrors(errors);
+      },
+      error: (err) => {
+        setClinicalCsvRows([]);
+        setClinicalCsvErrors([{ row: 0, message: 'CSV parsing error: ' + err.message }]);
+      },
+    });
+  }
+
+  async function handleClinicalCsvUpload() {
+    const toUpload = clinicalCsvRows.filter(r => r.hasContent);
+    if (toUpload.length === 0) {
+      showToast('Nothing to upload — every row is still blank.', 'error');
+      return;
+    }
+    setClinicalCsvUploading(true);
+    const settled = await parallelMap(toUpload, r => saveConditionClinicalInfo(r.id, r.info));
+    const saved = settled.filter(s => s.status === 'fulfilled').length;
+    const failed = settled.length - saved;
+    setClinicalCsvSummary({ saved, failed, skippedEmpty: clinicalCsvRows.length - toUpload.length });
+    setClinicalCsvUploading(false);
+    showToast(failed > 0
+      ? `Saved ${saved} condition${saved!==1?'s':''}, ${failed} failed.`
+      : `Saved clinical info for ${saved} condition${saved!==1?'s':''}.`);
+  }
 
   // ── AI Settings tab (which model powers each AI provider's lookups) ──────
   const [aiSettings,        setAiSettings]        = useState(
@@ -918,6 +1034,15 @@ export default function AdminPage() {
               <BookOpen className="w-4 h-4"/> Clinical Info Sweep{clinicalSweepEligibleCount>0?` (${clinicalSweepEligibleCount})`:''}
             </button>
           )}
+          {clinicalSweepEligibleCount > 0 && (
+            <button
+              onClick={() => downloadClinicalSweepCSV(eligibleClinicalConditions, showToast)}
+              className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors"
+              title="Download the conditions missing clinical info as a CSV — fill it in and re-upload from the Clinical Info CSV tab"
+            >
+              <Download className="w-4 h-4"/> Download Clinical Sweep ({clinicalSweepEligibleCount})
+            </button>
+          )}
         </div>
       </div>
 
@@ -959,6 +1084,7 @@ export default function AdminPage() {
           {id:'drugs', label:'Drug List',   icon:Database},
           {id:'ai',    label:'AI Generate', icon:Sparkles},
           {id:'conditions', label:'Conditions CSV', icon:Stethoscope},
+          {id:'clinical', label:'Clinical Info CSV', icon:BookOpen},
           {id:'settings', label:'Settings', icon:SettingsIcon},
         ].map(tab=>(
           <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
@@ -971,6 +1097,11 @@ export default function AdminPage() {
             {tab.id==='ai' && stats.incomplete>0 && (
               <span className="ml-1 px-1.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-700 rounded-full">
                 {stats.incomplete}
+              </span>
+            )}
+            {tab.id==='clinical' && clinicalSweepEligibleCount>0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-xs font-bold bg-sky-100 text-sky-700 rounded-full">
+                {clinicalSweepEligibleCount}
               </span>
             )}
           </button>
@@ -1408,6 +1539,125 @@ export default function AdminPage() {
                 ✅ Added {condCsvSummary.added} condition{condCsvSummary.added!==1?'s':''}
                 {condCsvSummary.duplicates > 0 && `, skipped ${condCsvSummary.duplicates} duplicate${condCsvSummary.duplicates!==1?'s':''}`}
                 {condCsvSummary.errors > 0 && `, ${condCsvSummary.errors} failed`}.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ CLINICAL INFO CSV TAB ═════════════════════════ */}
+      {activeTab === 'clinical' && (
+        <div className="space-y-4">
+          {/* Intro banner */}
+          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <BookOpen className="w-6 h-6 text-sky-600 flex-shrink-0 mt-0.5"/>
+              <div>
+                <h2 className="font-bold text-sky-900 mb-1">Clinical Info Sweep — CSV Round-Trip</h2>
+                <p className="text-sm text-sky-800 leading-relaxed">
+                  Download every condition still missing its clinical info panel, fill in the columns
+                  yourself (<strong>introduction, types, organRelated, etiology, pathology, clinicalManifestation,
+                  diagnosis, management, surgicalManagement, nursingDiagnosis, nursingConsideration</strong>),
+                  then re-upload here. Rows are matched by the <code>id</code> column — leave it as
+                  downloaded. A row with every clinical column still blank is skipped automatically, so
+                  it's safe to only fill in some conditions and leave the rest for later.
+                </p>
+                <button
+                  onClick={() => downloadClinicalSweepCSV(eligibleClinicalConditions, showToast)}
+                  className="mt-3 flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-sky-800"
+                >
+                  <Download className="w-3.5 h-3.5"/>Download CSV ({clinicalSweepEligibleCount} missing)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* File picker */}
+          <div className="bg-white border border-drug-border rounded-xl p-5">
+            <label className="flex items-center gap-2 text-sm font-semibold text-drug-text mb-3 cursor-pointer">
+              <Upload className="w-4 h-4 text-sky-600"/>
+              {clinicalCsvFile ? clinicalCsvFile.name : 'Choose a CSV file…'}
+              <input ref={clinicalCsvInputRef} type="file" accept=".csv,text/csv" onChange={handleClinicalCsvFile} className="hidden"/>
+            </label>
+            {!clinicalCsvFile && (
+              <button onClick={()=>clinicalCsvInputRef.current?.click()} className="px-4 py-2 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-700 flex items-center gap-2">
+                <FileText className="w-4 h-4"/>Select File
+              </button>
+            )}
+
+            {/* Parse/validation errors (block those rows only) */}
+            {clinicalCsvErrors.length > 0 && (
+              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-xs font-bold text-red-700 mb-1.5 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5"/>{clinicalCsvErrors.length} error{clinicalCsvErrors.length!==1?'s':''} — these rows will be skipped</p>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {clinicalCsvErrors.map((e, i) => (
+                    <p key={i} className="text-xs text-red-600">Row {e.row}: {e.message}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Preview */}
+            {clinicalCsvRows.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-4 mb-2 text-xs font-semibold flex-wrap">
+                  <span className="text-green-700">✅ {clinicalCsvRows.filter(r=>r.hasContent).length} filled in</span>
+                  <span className="text-amber-700">⏭ {clinicalCsvRows.filter(r=>!r.hasContent).length} still blank (will be skipped)</span>
+                </div>
+                <div className="border border-drug-border rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr className="text-left text-drug-muted">
+                        <th className="px-3 py-2">Row</th>
+                        <th className="px-3 py-2">System</th>
+                        <th className="px-3 py-2">Label</th>
+                        <th className="px-3 py-2">ID</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clinicalCsvRows.map((r) => (
+                        <tr key={r.rowNum} className="border-t border-drug-border">
+                          <td className="px-3 py-1.5 text-drug-muted">{r.rowNum}</td>
+                          <td className="px-3 py-1.5">{r.systemName}</td>
+                          <td className="px-3 py-1.5">{r.label}</td>
+                          <td className="px-3 py-1.5 text-drug-muted">{r.id}</td>
+                          <td className="px-3 py-1.5">
+                            {r.hasContent
+                              ? <span className="text-green-700 font-semibold">Ready</span>
+                              : <span className="text-amber-700 font-semibold">Blank</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center gap-3 mt-4">
+                  <button
+                    onClick={handleClinicalCsvUpload}
+                    disabled={clinicalCsvUploading || clinicalCsvRows.every(r=>!r.hasContent)}
+                    className="px-4 py-2 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {clinicalCsvUploading ? <><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</> : <><Upload className="w-4 h-4"/>Save {clinicalCsvRows.filter(r=>r.hasContent).length} condition{clinicalCsvRows.filter(r=>r.hasContent).length!==1?'s':''}</>}
+                  </button>
+                  <button
+                    onClick={()=>{ setClinicalCsvFile(null); setClinicalCsvRows([]); setClinicalCsvErrors([]); setClinicalCsvSummary(null); if (clinicalCsvInputRef.current) clinicalCsvInputRef.current.value=''; }}
+                    disabled={clinicalCsvUploading}
+                    className="px-4 py-2 border border-drug-border text-drug-text text-sm font-semibold rounded-lg hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Summary after upload */}
+            {clinicalCsvSummary && (
+              <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+                ✅ Saved {clinicalCsvSummary.saved} condition{clinicalCsvSummary.saved!==1?'s':''}
+                {clinicalCsvSummary.failed > 0 && `, ${clinicalCsvSummary.failed} failed`}
+                {clinicalCsvSummary.skippedEmpty > 0 && `, skipped ${clinicalCsvSummary.skippedEmpty} blank row${clinicalCsvSummary.skippedEmpty!==1?'s':''}`}.
               </div>
             )}
           </div>
