@@ -111,6 +111,26 @@ export async function uploadImageToImgChest({ file }) {
   return data.url;
 }
 
+// Same idea, but for a picture URL copied from a website — the server
+// fetches it and re-hosts it on ImgChest, so the admin doesn't have to
+// download the picture first and then pick it from a file dialog.
+export async function uploadImageUrlToImgChest({ sourceUrl }) {
+  const trimmed = (sourceUrl || '').trim();
+  if (!/^https?:\/\/.+/i.test(trimmed)) {
+    throw new Error('Please enter a valid image URL starting with http:// or https://');
+  }
+
+  const res = await fetch(apiUrl('/api/imgchest-upload'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sourceUrl: trimmed }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to fetch and upload that image.');
+  if (!data.url) throw new Error('Upload succeeded but no image link was returned.');
+  return data.url;
+}
+
 // Saves an admin-supplied externally-hosted image link (e.g. an Imgur direct
 // image URL, or one just returned by uploadImageToImgChest) straight onto
 // the drug's Firestore document — no re-upload to Firebase Storage needed

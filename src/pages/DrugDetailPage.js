@@ -17,7 +17,7 @@ import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectio
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
-  findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest,
+  findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
@@ -372,6 +372,8 @@ function DrugImageCard({ drug }) {
   // idle | searching | not-found | error
   const [findState, setFindState] = useState('idle');
   const [uploadState, setUploadState] = useState('idle'); // idle | uploading | error
+  const [fetchUrlInput, setFetchUrlInput] = useState('');
+  const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
 
   const handleFindReal = async () => {
     setFindState('searching');
@@ -443,6 +445,22 @@ function DrugImageCard({ drug }) {
     }
   };
 
+  const handleFetchUrlUpload = async () => {
+    setFetchUrlState('fetching');
+    setError('');
+    try {
+      const hostedUrl = await uploadImageUrlToImgChest({ sourceUrl: fetchUrlInput });
+      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
+      // Live listener will push the new image_url in automatically.
+      setFetchUrlState('idle');
+      setFetchUrlInput('');
+      setShowUrlField(false);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch and upload that image.');
+      setFetchUrlState('error');
+    }
+  };
+
   // Already has a saved image — show it to everyone automatically.
   if (drug.image_url) {
     return (
@@ -504,6 +522,31 @@ function DrugImageCard({ drug }) {
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold text-sm hover:bg-primary-700 disabled:opacity-60"
               >
                 {urlState === 'saving' ? 'Saving…' : 'Save Link'}
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-drug-border" />
+              <span className="text-xs text-drug-muted">or</span>
+              <div className="flex-1 h-px bg-drug-border" />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={fetchUrlInput}
+                onChange={e => setFetchUrlInput(e.target.value)}
+                placeholder="Paste picture URL from a website to upload"
+                className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
+              />
+              <button
+                onClick={handleFetchUrlUpload}
+                disabled={fetchUrlState === 'fetching' || !fetchUrlInput.trim()}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+              >
+                {fetchUrlState === 'fetching' ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                ) : (
+                  'Fetch & Upload'
+                )}
               </button>
             </div>
             <div className="flex items-center gap-3">
@@ -588,6 +631,31 @@ function DrugImageCard({ drug }) {
         >
           <LinkIcon className="w-4 h-4" />
           {urlState === 'saving' ? 'Saving…' : 'Save Link'}
+        </button>
+      </div>
+      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
+        <input
+          type="url"
+          value={fetchUrlInput}
+          onChange={e => setFetchUrlInput(e.target.value)}
+          placeholder="Paste picture URL from a website to upload"
+          className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
+        />
+        <button
+          onClick={handleFetchUrlUpload}
+          disabled={fetchUrlState === 'fetching' || !fetchUrlInput.trim()}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+        >
+          {fetchUrlState === 'fetching' ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+          ) : (
+            'Fetch & Upload'
+          )}
         </button>
       </div>
       <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
