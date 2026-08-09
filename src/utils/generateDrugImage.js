@@ -90,6 +90,20 @@ function fileToDataUrl(file) {
   });
 }
 
+// Shared call to our serverless proxy — posts a base64 data: URL and
+// returns the ImgChest-hosted link.
+async function postImageDataUrl(imageDataUrl, filename) {
+  const res = await fetch(apiUrl('/api/imgchest-upload'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, filename }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to upload image.');
+  if (!data.url) throw new Error('Upload succeeded but no image link was returned.');
+  return data.url;
+}
+
 // Uploads a photo the admin picked from their device to ImgChest (via our
 // serverless proxy, so the ImgChest token stays server-side) and returns the
 // direct image link. Second option alongside pasting an existing link.
@@ -99,16 +113,19 @@ export async function uploadImageToImgChest({ file }) {
     throw new Error('Please choose an image file.');
   }
   const imageDataUrl = await fileToDataUrl(file);
+  return postImageDataUrl(imageDataUrl, file.name);
+}
 
-  const res = await fetch(apiUrl('/api/imgchest-upload'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageDataUrl, filename: file.name }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Failed to upload image.');
-  if (!data.url) throw new Error('Upload succeeded but no image link was returned.');
-  return data.url;
+// Uploads an image copied to the clipboard (e.g. "Copy Image" on a website,
+// or a screenshot) — no file dialog or URL needed at all.
+export async function uploadClipboardImageToImgChest({ blob }) {
+  if (!blob) throw new Error('No image found on the clipboard.');
+  if (!blob.type?.startsWith('image/')) {
+    throw new Error('Clipboard content is not an image.');
+  }
+  const imageDataUrl = await fileToDataUrl(blob); // FileReader accepts any Blob
+  const ext = (blob.type.split('/')[1] || 'jpg').split('+')[0];
+  return postImageDataUrl(imageDataUrl, `pasted.${ext}`);
 }
 
 // Same idea, but for a picture URL copied from a website — the server

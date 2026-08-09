@@ -4,7 +4,7 @@ import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
   Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
-  Upload,
+  Upload, ClipboardPaste,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -18,6 +18,7 @@ import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
   findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
+  uploadClipboardImageToImgChest,
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
@@ -374,6 +375,7 @@ function DrugImageCard({ drug }) {
   const [uploadState, setUploadState] = useState('idle'); // idle | uploading | error
   const [fetchUrlInput, setFetchUrlInput] = useState('');
   const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
+  const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
 
   const handleFindReal = async () => {
     setFindState('searching');
@@ -461,10 +463,63 @@ function DrugImageCard({ drug }) {
     }
   };
 
+  const uploadClipboardBlob = async (blob) => {
+    setPasteState('uploading');
+    setError('');
+    try {
+      const hostedUrl = await uploadClipboardImageToImgChest({ blob });
+      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
+      // Live listener will push the new image_url in automatically.
+      setPasteState('idle');
+      setShowUrlField(false);
+    } catch (err) {
+      setError(err.message || 'Failed to paste image.');
+      setPasteState('error');
+    }
+  };
+
+  // Ctrl+V / long-press-paste anywhere on the card, when it (or a child)
+  // has focus — works when a picture is on the clipboard from "Copy Image".
+  const handlePasteEvent = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type?.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) uploadClipboardBlob(blob);
+        return;
+      }
+    }
+  };
+
+  // Explicit button using the Async Clipboard API — needed on mobile where
+  // there's often no keyboard to trigger a native paste event.
+  const handlePasteButton = async () => {
+    setPasteState('uploading');
+    setError('');
+    try {
+      if (!navigator.clipboard?.read) {
+        throw new Error('Clipboard paste isn\u2019t supported in this browser. Try Upload Photo instead.');
+      }
+      const items = await navigator.clipboard.read();
+      let blob = null;
+      for (const item of items) {
+        const imageType = item.types.find(t => t.startsWith('image/'));
+        if (imageType) { blob = await item.getType(imageType); break; }
+      }
+      if (!blob) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
+      await uploadClipboardBlob(blob);
+    } catch (err) {
+      setError(err.message || 'Failed to paste image from clipboard.');
+      setPasteState('error');
+    }
+  };
+
   // Already has a saved image — show it to everyone automatically.
   if (drug.image_url) {
     return (
-      <div className="section-card p-6">
+      <div className="section-card p-6" tabIndex={0} onPaste={handlePasteEvent}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold">Image</h2>
           {isAdmin && (
@@ -554,6 +609,22 @@ function DrugImageCard({ drug }) {
               <span className="text-xs text-drug-muted">or</span>
               <div className="flex-1 h-px bg-drug-border" />
             </div>
+            <button
+              onClick={handlePasteButton}
+              disabled={pasteState === 'uploading'}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+            >
+              {pasteState === 'uploading' ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+              ) : (
+                <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
+              )}
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-drug-border" />
+              <span className="text-xs text-drug-muted">or</span>
+              <div className="flex-1 h-px bg-drug-border" />
+            </div>
             <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
               {uploadState === 'uploading' ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
@@ -579,7 +650,7 @@ function DrugImageCard({ drug }) {
   if (!isAdmin) return null;
 
   return (
-    <div className="section-card p-6 text-center">
+    <div className="section-card p-6 text-center" tabIndex={0} onPaste={handlePasteEvent}>
       <ImageIcon className="w-8 h-8 text-primary-400 mx-auto mb-3" />
       <p className="text-sm text-drug-muted mb-4">No image yet for {drug.generic_name}.</p>
       <button
@@ -658,6 +729,22 @@ function DrugImageCard({ drug }) {
           )}
         </button>
       </div>
+      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <button
+        onClick={handlePasteButton}
+        disabled={pasteState === 'uploading'}
+        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+      >
+        {pasteState === 'uploading' ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+        ) : (
+          <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
+        )}
+      </button>
       <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
         <div className="flex-1 h-px bg-drug-border" />
         <span className="text-xs text-drug-muted">or</span>
