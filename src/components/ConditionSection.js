@@ -626,6 +626,19 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
 
   const isEmpty = filtered.length === 0;
 
+  // Which drug-class sub-groups are expanded — closed by default, keyed by
+  // "roleKey::className" so the same class name in a different role bucket
+  // (e.g. "ACE Inhibitor" under Main vs under Adjunct) toggles independently.
+  const [expandedClasses, setExpandedClasses] = useState(() => new Set());
+  const toggleClassOpen = (key, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setExpandedClasses(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <div className={`bg-white border rounded-2xl overflow-hidden ${isEmpty ? 'border-dashed border-drug-border' : 'border-drug-border shadow-sm'}`}>
       {/* Header */}
@@ -802,22 +815,36 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                     </span>
                   </div>
 
-                  {byClassWithin(roleDrugs).map(([className, classDrugs], ci) => (
+                  {byClassWithin(roleDrugs).map(([className, classDrugs], ci) => {
+                    const classKey = `${roleKey}::${className}`;
+                    const isClassOpen = expandedClasses.has(classKey);
+                    return (
                     <div key={className}>
-                      {/* Drug class sub-header */}
-                      <div className={`flex items-center justify-between px-5 py-2 bg-gray-50 ${ci > 0 ? 'border-t border-drug-border' : ''}`}>
-                        <Link
-                          to={`/browse?class=${encodeURIComponent(className)}`}
-                          className="text-xs font-bold text-primary-700 hover:underline"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          {className}
-                        </Link>
-                        <span className="text-xs text-drug-muted">{classDrugs.length}</span>
+                      {/* Drug class sub-header — collapsed by default, click to expand */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => toggleClassOpen(classKey, e)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleClassOpen(classKey, e); }}
+                        className={`flex items-center justify-between px-5 py-2 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors ${ci > 0 ? 'border-t border-drug-border' : ''}`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isClassOpen
+                            ? <ChevronUp className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />}
+                          <Link
+                            to={`/browse?class=${encodeURIComponent(className)}`}
+                            className="text-xs font-bold text-primary-700 hover:underline truncate"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            {className}
+                          </Link>
+                        </div>
+                        <span className="text-xs text-drug-muted flex-shrink-0">{classDrugs.length}</span>
                       </div>
 
                       {/* Drugs */}
-                      {viewMode === 'grid' ? (
+                      {isClassOpen && (viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                           {classDrugs.map(drug => (
                             <Link
@@ -907,9 +934,10 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                             </Link>
                           ))}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })
