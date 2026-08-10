@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import { getDrugTherapyRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
+import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 
 export function RxBadge({ status }) {
   const cls =
@@ -493,6 +494,8 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [draftLabel, setDraftLabel] = useState(condition.label);
   const [renameFieldError, setRenameFieldError] = useState('');
+  const [sharingCondition, setSharingCondition] = useState(false);
+  const [shareError, setShareError] = useState('');
 
   // Keep the draft in sync if the label changes from elsewhere (e.g. another
   // admin renames it while this one isn't actively editing).
@@ -548,6 +551,25 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       console.error('Failed to remove drug from condition:', err);
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  // Shares a standalone PDF for just this condition — clinical info plus
+  // every drug currently tagged to it (unfiltered by whatever class/name
+  // search is active on this section, since the point is a complete
+  // takeaway note, not a snapshot of the current view).
+  const handleShareCondition = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (sharingCondition) return;
+    setSharingCondition(true);
+    setShareError('');
+    try {
+      await shareConditionNotePdf({ id: systemId, name: systemName }, condition, drugs, clinicalInfo);
+    } catch (err) {
+      setShareError(err.message || 'Failed to share condition note.');
+    } finally {
+      setSharingCondition(false);
     }
   };
 
@@ -699,9 +721,25 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                   : `${filtered.length} drug${filtered.length !== 1 ? 's' : ''} · ${byClass.length} class${byClass.length !== 1 ? 'es' : ''}`}
               </div>
             )}
+            {shareError && (
+              <div className="text-[11px] text-red-600 mt-0.5">{shareError}</div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {!mergeMode && !isEditingLabel && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={`Share ${condition.label}`}
+              onClick={handleShareCondition}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleShareCondition(e); }}
+              className={`p-1.5 rounded-lg hover:bg-primary-50 ${sharingCondition ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Share this condition's clinical info and drug list as a PDF"
+            >
+              <Share2 className={`w-4 h-4 text-primary-600 ${sharingCondition ? 'animate-pulse' : ''}`} />
+            </span>
+          )}
           {!mergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
