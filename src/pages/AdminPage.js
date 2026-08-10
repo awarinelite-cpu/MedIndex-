@@ -11,7 +11,7 @@ import {
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
   Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
-  FileText, Stethoscope, Settings as SettingsIcon,
+  FileText, Stethoscope, Settings as SettingsIcon, Image as ImageIcon,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -253,6 +253,8 @@ export default function AdminPage() {
     startGlobalFix, stopGlobalFix, subscribeFix,
     clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepEligibleCount,
     startClinicalInfoSweep, stopClinicalInfoSweep,
+    imageSweepRunning, imageSweepIndex, imageSweepTotal, imageSweepEligibleCount,
+    startImageSweep, stopImageSweep,
     allConditionsIndex, clinicalInfoByCondition,
   } = useAiInsight();
   const [activeTab, setActiveTab]  = useState('drugs');
@@ -1032,6 +1034,27 @@ export default function AdminPage() {
               title="Generate the Introduction/Types/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/Management panel for every condition in every system that doesn't have one yet"
             >
               <BookOpen className="w-4 h-4"/> Clinical Info Sweep{clinicalSweepEligibleCount>0?` (${clinicalSweepEligibleCount})`:''}
+            </button>
+          )}
+          {imageSweepRunning ? (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{border:'1.5px solid #FBCFE8', background:'#FDF2F8', color:'#BE185D'}}>
+              <RefreshCw className="w-4 h-4 animate-spin"/>
+              Image Sweep — {imageSweepIndex}/{imageSweepTotal}
+              <button onClick={stopImageSweep} className="underline hover:no-underline">Stop</button>
+            </div>
+          ) : (
+            <button
+              onClick={()=>{
+                if (imageSweepEligibleCount === 0) { showToast('Nothing to do — every drug already has an image.'); return; }
+                startImageSweep();
+                showToast(`Image Sweep started — searching for real images for ${imageSweepEligibleCount} drugs, in the background. Feel free to navigate away.`, 'info');
+              }}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+              style={{background:'linear-gradient(135deg,#EC4899,#BE185D)'}}
+              title="Search Wikimedia Commons / openFDA for a real photo for every drug that doesn't have an image yet. Drugs with no match found are left blank — no AI illustration fallback."
+            >
+              <ImageIcon className="w-4 h-4"/> Image Sweep{imageSweepEligibleCount>0?` (${imageSweepEligibleCount})`:''}
             </button>
           )}
           {clinicalSweepEligibleCount > 0 && (
