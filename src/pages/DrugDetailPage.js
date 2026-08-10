@@ -4,7 +4,7 @@ import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
   Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
-  Upload, ClipboardPaste,
+  Upload, ClipboardPaste, Tag,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -348,6 +348,44 @@ function NamePronunciation({ drug, onFilled }) {
         </button>
       )}
       {state === 'error' && <span className="text-xs text-red-600">{error}</span>}
+    </div>
+  );
+}
+
+function BrandsButton({ drug }) {
+  const [open, setOpen] = useState(false);
+  const brands = (drug.brand_names || '')
+    .split(',')
+    .map(b => b.trim())
+    .filter(Boolean);
+
+  if (brands.length === 0) return null;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="inline-flex items-center gap-1.5 text-sm font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+      >
+        <Tag className="w-3.5 h-3.5" /> Brands ({brands.length})
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-64 bg-white border border-drug-border rounded-xl shadow-lg z-20 p-3">
+            <p className="text-xs font-bold text-drug-muted uppercase tracking-wide mb-2">
+              Other brand names for {drug.generic_name}
+            </p>
+            <ul className="space-y-1 max-h-60 overflow-y-auto">
+              {brands.map((b, i) => (
+                <li key={i} className="text-sm text-drug-text px-2 py-1.5 rounded-lg bg-gray-50">
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1334,20 +1372,23 @@ export default function DrugDetailPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <Pill className="w-7 h-7 text-primary-600" />
-          <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-            drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-            drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                         'bg-blue-100 text-blue-700'
-          }`}>
-            {drug.prescription_status}
-          </span>
-          {isControlled && (
-            <span className="text-sm font-bold px-3 py-1 rounded-full bg-red-50 text-red-700 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" /> Controlled Substance
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill className="w-7 h-7 text-primary-600" />
+            <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+              drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
+              drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
+                                                           'bg-blue-100 text-blue-700'
+            }`}>
+              {drug.prescription_status}
             </span>
-          )}
+            {isControlled && (
+              <span className="text-sm font-bold px-3 py-1 rounded-full bg-red-50 text-red-700 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> Controlled Substance
+              </span>
+            )}
+          </div>
+          <BrandsButton drug={drug} />
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
         <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
