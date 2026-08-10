@@ -20,6 +20,7 @@ import { getDrugTherapyRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../ut
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
+import AiClassFallback from './AiClassInsight';
 
 export function RxBadge({ status }) {
   const cls =
@@ -490,6 +491,7 @@ export function ClinicalInfoSection({ title, body }) {
 export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
+  const { drugs: allDrugs } = useDrugs();
   const [removingId, setRemovingId] = useState(null);
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [draftLabel, setDraftLabel] = useState(condition.label);
@@ -633,6 +635,21 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   const toggleClassOpen = (key, e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     setExpandedClasses(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Which drug-class sub-headers have their "AI Insight" panel open —
+  // closed by default, keyed the same way as expandedClasses so a class
+  // can have its AI panel open independently of (and alongside) its drug
+  // list being expanded. Toggled from a small Sparkles button in the
+  // header itself so it never requires opening the drug list first.
+  const [aiInsightClasses, setAiInsightClasses] = useState(() => new Set());
+  const toggleClassAiInsight = (key, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setAiInsightClasses(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -869,8 +886,37 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                             </Link>
                           )}
                         </div>
-                        <span className="text-xs text-drug-muted flex-shrink-0">{classDrugs.length}</span>
+                        <span className="flex items-center gap-2 flex-shrink-0">
+                          {!classMergeMode && isAdmin && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`AI Insight for ${className}`}
+                              title={`Ask AI to find more drugs in "${className}"`}
+                              onClick={(e) => toggleClassAiInsight(classKey, e)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleClassAiInsight(classKey, e); }}
+                              className={`p-1 rounded-md transition-colors ${
+                                aiInsightClasses.has(classKey) ? 'bg-emerald-100 text-emerald-700' : 'text-emerald-500 hover:bg-emerald-50 hover:text-emerald-700'
+                              }`}
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                          <span className="text-xs text-drug-muted">{classDrugs.length}</span>
+                        </span>
                       </div>
+
+                      {/* AI Insight panel — finds/generates drugs for this class via AI,
+                          independent of whether the drug list itself is expanded. */}
+                      {!classMergeMode && aiInsightClasses.has(classKey) && (
+                        <div className="px-4 py-3 bg-white border-t border-drug-border">
+                          <AiClassFallback
+                            className={className}
+                            existingDrugs={classDrugs}
+                            databaseDrugs={allDrugs}
+                          />
+                        </div>
+                      )}
 
                       {/* Drugs */}
                       {!classMergeMode && isClassOpen && (viewMode === 'grid' ? (
