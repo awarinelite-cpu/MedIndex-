@@ -6,13 +6,17 @@ import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
 import { usePrefetchDrugImages } from '../hooks/usePrefetchDrugImages';
 import { usePwaInstall } from '../hooks/usePwaInstall';
+import IosInstallModal from './IosInstallModal';
 import AiProviderDropdown from './AiProviderDropdown';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { drugs } = useDrugs();
   usePrefetchDrugImages(user ? drugs : null);
-  const { showInstall, isInstalled, handleInstall, dismissInstall } = usePwaInstall();
+  const {
+    showInstall, isInstalled, platform, handleInstall, dismissInstall,
+    showIosInstructions, closeIosInstructions,
+  } = usePwaInstall();
   const [searchQuery,     setSearchQuery]      = useState('');
   const [showUpdate,      setShowUpdate]       = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -125,13 +129,14 @@ export default function Layout({ children }) {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-primary-900 rounded-lg text-xs font-bold hover:bg-primary-100 transition-colors flex-shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            Install
+            {platform === 'ios' ? 'How to install' : 'Install'}
           </button>
           <button onClick={dismissInstall} className="text-primary-400 hover:text-white flex-shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
+      <IosInstallModal open={showIosInstructions} onClose={closeIosInstructions} />
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="bg-primary-900 text-white sticky top-0 z-40">
@@ -228,7 +233,7 @@ export default function Layout({ children }) {
                              bg-white/15 hover:bg-white/25 text-white transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Install
+                  {platform === 'ios' ? 'How to install' : 'Install'}
                 </button>
               )}
               {/* Dark mode toggle */}

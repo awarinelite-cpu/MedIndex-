@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePwaInstall } from '../hooks/usePwaInstall';
+import IosInstallModal from '../components/IosInstallModal';
 import AiProviderDropdown from '../components/AiProviderDropdown';
 
 const NAV_LINKS = [
@@ -28,7 +29,10 @@ const NAV_LINKS = [
 export default function MorePage() {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
-  const { showInstall, isInstalled, handleInstall } = usePwaInstall();
+  const {
+    showInstall, isInstalled, platform, handleInstall,
+    showIosInstructions, closeIosInstructions,
+  } = usePwaInstall();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
@@ -103,9 +107,10 @@ export default function MorePage() {
                      bg-primary-600 text-white hover:bg-primary-700 transition-colors"
         >
           <Download className="w-4 h-4" />
-          Install MedIndex App
+          {platform === 'ios' ? 'How to install MedIndex App' : 'Install MedIndex App'}
         </button>
       )}
+      <IosInstallModal open={showIosInstructions} onClose={closeIosInstructions} />
 
       {user && (
         <div className="border-t border-drug-border pt-4 mt-2">
