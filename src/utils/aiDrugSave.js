@@ -283,6 +283,47 @@ export async function savePronunciation({ drug, pronunciation }) {
   }, { merge: true });
 }
 
+export async function fetchBrandsText({ genericName, drugClass, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(apiUrl(endpoint), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'brands', genericName, drugClass }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+  full = full.trim().replace(/^#{1,6}\s*/, '').replace(/^["'*-]+\s*/, '').replace(/["'*]+$/, '');
+  if (!full) throw new Error('AI returned an empty response.');
+  return full.trim();
+}
+
+// Saves just the brand_names field onto an existing drug record. Any
+// signed-in user may call this — same permission model as pronunciation.
+export async function saveBrandNames({ drug, brandNames }) {
+  await getAuthUser();
+  await setDoc(doc(db, 'drugs', drug.id), {
+    brand_names:  brandNames,
+    generic_name: drug.generic_name,
+    drug_class:   drug.drug_class || 'Unknown',
+    source:       drug.source || 'AI Generated',
+    status:       drug.status || 'Active',
+    last_updated: serverTimestamp(),
+  }, { merge: true });
+}
+
 // A drug only needs the fast strength-only path if every other required
 // field is already complete and strength itself is still missing.
 export function needsStrengthOnly(data) {

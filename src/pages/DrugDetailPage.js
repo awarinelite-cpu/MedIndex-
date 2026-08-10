@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
-import { needsStrengthOnly, fetchPronunciationText, savePronunciation, saveTabAiInsight } from '../utils/aiDrugSave';
+import { needsStrengthOnly, fetchPronunciationText, savePronunciation, fetchBrandsText, saveBrandNames, saveTabAiInsight } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
@@ -352,22 +352,52 @@ function NamePronunciation({ drug, onFilled }) {
   );
 }
 
-function BrandsButton({ drug }) {
+function BrandsButton({ drug, onFilled }) {
+  const { provider } = useAiProvider();
   const [open, setOpen] = useState(false);
-  const brands = (drug.brand_names || '')
+  const [state, setState] = useState('idle'); // idle | loading | error
+  const [error, setError] = useState('');
+  const [aiBrands, setAiBrands] = useState(null); // brands fetched this session, not yet reflected in `drug` prop
+
+  const storedBrands = (drug.brand_names || '')
     .split(',')
     .map(b => b.trim())
     .filter(Boolean);
 
-  if (brands.length === 0) return null;
+  const brands = aiBrands !== null ? aiBrands : storedBrands;
+
+  const handleOpen = async () => {
+    setOpen(v => !v);
+    if (storedBrands.length > 0 || aiBrands !== null || state === 'loading') return;
+
+    setState('loading');
+    setError('');
+    try {
+      const text = await fetchBrandsText({ genericName: drug.generic_name, drugClass: drug.drug_class, endpoint: provider.endpoint });
+      const found = /^none known$/i.test(text.trim())
+        ? []
+        : text.split(',').map(b => b.trim()).filter(Boolean);
+      setAiBrands(found);
+      setState('idle');
+      if (found.length > 0) {
+        const brandNames = found.join(', ');
+        await saveBrandNames({ drug, brandNames });
+        onFilled?.({ brand_names: brandNames });
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to look up brand names.');
+      setState('error');
+    }
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={handleOpen}
         className="inline-flex items-center gap-1.5 text-sm font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
       >
-        <Tag className="w-3.5 h-3.5" /> Brands ({brands.length})
+        <Tag className="w-3.5 h-3.5" />
+        Brands{brands.length > 0 ? ` (${brands.length})` : ''}
       </button>
       {open && (
         <>
@@ -376,13 +406,23 @@ function BrandsButton({ drug }) {
             <p className="text-xs font-bold text-drug-muted uppercase tracking-wide mb-2">
               Other brand names for {drug.generic_name}
             </p>
-            <ul className="space-y-1 max-h-60 overflow-y-auto">
-              {brands.map((b, i) => (
-                <li key={i} className="text-sm text-drug-text px-2 py-1.5 rounded-lg bg-gray-50">
-                  {b}
-                </li>
-              ))}
-            </ul>
+            {state === 'loading' ? (
+              <p className="text-xs text-drug-muted inline-flex items-center gap-1.5 py-1">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Asking AI for brand names…
+              </p>
+            ) : state === 'error' ? (
+              <p className="text-xs text-red-600">{error}</p>
+            ) : brands.length === 0 ? (
+              <p className="text-xs text-drug-muted">No known brand names found for this drug.</p>
+            ) : (
+              <ul className="space-y-1 max-h-60 overflow-y-auto">
+                {brands.map((b, i) => (
+                  <li key={i} className="text-sm text-drug-text px-2 py-1.5 rounded-lg bg-gray-50">
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </>
       )}
@@ -1388,7 +1428,7 @@ export default function DrugDetailPage() {
               </span>
             )}
           </div>
-          <BrandsButton drug={drug} />
+          <BrandsButton drug={drug} onFilled={handleSectionFilled} />
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
         <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
