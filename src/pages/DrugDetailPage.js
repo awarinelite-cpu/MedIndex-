@@ -557,9 +557,11 @@ function DrugImageCard({ drug }) {
             {drug.image_attribution ? ` · ${drug.image_attribution}` : ''}
           </p>
         ) : (
-          <p className="text-xs text-drug-muted mt-3 text-center">
-            AI-generated illustration for reference only — not the actual product packaging.
-          </p>
+          isAdmin && (
+            <p className="text-xs text-drug-muted mt-3 text-center">
+              AI-generated illustration for reference only — not the actual product packaging.
+            </p>
+          )
         )}
         {isAdmin && showUrlField && (
           <div className="mt-4 flex flex-col gap-2 max-w-md mx-auto">
