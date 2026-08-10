@@ -1018,7 +1018,7 @@ export default function SystemPage() {
   const Icon = ICONS[system.icon] || Pill;
 
   return (
-    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${mergeMode ? 'pb-40' : ''}`}>
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${mergeMode ? 'pb-56 md:pb-40' : ''}`}>
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
         className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
@@ -1080,13 +1080,15 @@ export default function SystemPage() {
           stays reachable while scrolling through a long condition list,
           instead of only being available in the button row up top. Hidden
           once merge mode is active since the fixed selection/confirm bar
-          (further down) takes over that space and has its own Cancel. */}
+          (further down) takes over that space and has its own Cancel.
+          z-50 (above the mobile bottom tab bar's z-40) plus a bottom offset
+          tall enough to clear that bar on mobile, so it's never hidden
+          underneath it; md+ has no bottom tab bar so it can sit low. */}
       {isAdmin && !loading && !mergeMode && (
         <button
           onClick={toggleMergeMode}
           title="Select two or more condition cards that represent the same clinical entity and fold them into one"
-          className="fixed right-4 z-40 inline-flex items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-amber-600 text-white text-sm font-semibold shadow-lg hover:bg-amber-700"
-          style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+          className="fixed right-4 z-50 inline-flex items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-amber-600 text-white text-sm font-semibold shadow-lg hover:bg-amber-700 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-6"
         >
           <Merge className="w-4 h-4" />
           Merge Duplicates
@@ -1231,7 +1233,7 @@ export default function SystemPage() {
           )}
 
           {mergeMode && (
-            <div className="fixed left-0 right-0 bottom-0 z-40 px-4 sm:px-6 lg:px-8 pb-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+            <div className="fixed left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pb-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-0 md:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
               <div className="max-w-7xl mx-auto p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-lg">
                 <div className="flex items-center justify-between gap-3 mb-1">
                   <span className="text-xs font-bold uppercase tracking-wide text-amber-700">Merge mode</span>

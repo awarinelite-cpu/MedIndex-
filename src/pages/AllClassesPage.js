@@ -2,11 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Filter, Sparkles, RefreshCw, AlertTriangle, CheckCircle, ChevronRight, Search,
+  Merge, X,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAiProvider } from '../context/AiProviderContext';
 import { useAiInsight } from '../context/AiInsightContext';
+import { useAuth } from '../context/AuthContext';
 import { isDrugComplete } from '../utils/aiDrugSave';
+import { mergeDrugClasses } from '../utils/mergeDrugClasses';
 
 // ── Live progress card — shown at the TOP of the page whenever a Class
 // Sweep is running (or just finished). Pops up the moment the AI Insight
@@ -163,10 +166,68 @@ function ClassSweepInsightCard({ allClasses, endpoint }) {
 }
 
 export default function AllClassesPage() {
-  const { drugs, loading } = useDrugs();
+  const { drugs, loading, invalidateCache } = useDrugs();
   const { provider } = useAiProvider();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+
+  // ── Merge duplicate drug classes ────────────────────────────────────────
+  // Admin picks 2+ class labels that mean the same thing (e.g. "Anticoagulant"
+  // / "Anticoagulants"), chooses which one to keep, and every drug carrying
+  // any of the duplicate labels is re-labeled to it. Global — a drug's class
+  // isn't scoped to one condition or system, so the merge isn't either.
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState(() => new Set());
+  const [primaryMergeClass, setPrimaryMergeClass] = useState(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+  const [mergeResult, setMergeResult] = useState(null);
+
+  const toggleMergeMode = () => {
+    setMergeMode(m => !m);
+    setSelectedForMerge(new Set());
+    setPrimaryMergeClass(null);
+    setMergeError('');
+    setMergeResult(null);
+  };
+
+  const handleToggleMergeSelect = (className) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(className)) {
+        next.delete(className);
+        if (primaryMergeClass === className) setPrimaryMergeClass(null);
+      } else {
+        next.add(className);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirmMerge = async () => {
+    if (!primaryMergeClass || selectedForMerge.size < 2) return;
+    const duplicateNames = [...selectedForMerge].filter(c => c !== primaryMergeClass);
+    if (!window.confirm(
+      `Merge ${duplicateNames.map(l => `"${l}"`).join(', ')} into "${primaryMergeClass}"?\n\n` +
+      `Every drug carrying one of the merged-away class labels will be re-labeled to the kept one, everywhere in the app. This cannot be undone.`
+    )) return;
+
+    setMerging(true);
+    setMergeError('');
+    try {
+      const result = await mergeDrugClasses(primaryMergeClass, duplicateNames, drugs);
+      setMergeResult({ ...result, primaryLabel: primaryMergeClass });
+      setSelectedForMerge(new Set());
+      setPrimaryMergeClass(null);
+      setMergeMode(false);
+      invalidateCache();
+    } catch (err) {
+      setMergeError(`MERGE FAILED: ${err.code ? `[${err.code}] ` : ''}${err.message || 'Unknown error'}`);
+    } finally {
+      setMerging(false);
+    }
+  };
 
   const classRows = useMemo(() => {
     const map = new Map();
@@ -189,7 +250,7 @@ export default function AllClassesPage() {
   }, [classRows, search]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={`max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${mergeMode ? 'pb-56' : ''}`}>
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/admin'))}
         className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
@@ -201,13 +262,31 @@ export default function AllClassesPage() {
         <div className="p-3 rounded-xl bg-blue-50">
           <Filter className="w-6 h-6 text-blue-600" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold">All Drug Classes</h1>
           <p className="text-drug-muted text-sm mt-0.5">
             {loading ? 'Loading…' : `${classRows.length} classes · ${drugs.length} drugs`}
           </p>
         </div>
+        {isAdmin && !loading && (
+          <button
+            onClick={toggleMergeMode}
+            title="Select two or more class labels that mean the same thing (e.g. 'Anticoagulant' / 'Anticoagulants') and fold them into one"
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 disabled:opacity-50 ${
+              mergeMode ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1.5 rounded-lg' : 'text-amber-600 hover:text-amber-800'
+            }`}
+          >
+            <Merge className="w-3.5 h-3.5" />
+            {mergeMode ? 'Cancel Merge' : 'Merge Duplicates'}
+          </button>
+        )}
       </div>
+
+      {mergeMode && (
+        <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+          Tap two or more classes below that mean the same thing, then pick which label to keep.
+        </div>
+      )}
 
       {/* AI Insight — always on top of the page */}
       {!loading && <ClassSweepInsightCard allClasses={allClasses} endpoint={provider.endpoint} />}
@@ -229,30 +308,141 @@ export default function AllClassesPage() {
         <div className="text-center py-16 text-drug-muted">Loading…</div>
       ) : (
         <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-          {filteredRows.map((row, i) => (
-            <Link
-              key={row.className}
-              to={`/browse?class=${encodeURIComponent(row.className)}`}
-              className={`flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors ${
-                i !== filteredRows.length - 1 ? 'border-b border-drug-border' : ''
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-drug-text truncate">{row.className}</p>
-                <p className="text-xs text-drug-muted">
-                  {row.count} drug{row.count !== 1 ? 's' : ''}
-                  {row.incomplete > 0 && (
-                    <span className="text-amber-600 font-semibold"> · {row.incomplete} incomplete</span>
-                  )}
-                </p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
-            </Link>
-          ))}
+          {filteredRows.map((row, i) => {
+            const isSelected = selectedForMerge.has(row.className);
+            const rowContent = (
+              <>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-drug-text truncate">{row.className}</p>
+                  <p className="text-xs text-drug-muted">
+                    {row.count} drug{row.count !== 1 ? 's' : ''}
+                    {row.incomplete > 0 && (
+                      <span className="text-amber-600 font-semibold"> · {row.incomplete} incomplete</span>
+                    )}
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+              </>
+            );
+            if (mergeMode) {
+              return (
+                <button
+                  key={row.className}
+                  type="button"
+                  onClick={() => handleToggleMergeSelect(row.className)}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
+                    i !== filteredRows.length - 1 ? 'border-b border-drug-border' : ''
+                  } ${isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'}`}
+                >
+                  <span
+                    className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                      isSelected ? 'bg-amber-600 border-amber-600' : 'border-drug-border'
+                    }`}
+                  >
+                    {isSelected && <CheckCircle className="w-4 h-4 text-white" fill="currentColor" />}
+                  </span>
+                  {rowContent}
+                </button>
+              );
+            }
+            return (
+              <Link
+                key={row.className}
+                to={`/browse?class=${encodeURIComponent(row.className)}`}
+                className={`flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors ${
+                  i !== filteredRows.length - 1 ? 'border-b border-drug-border' : ''
+                }`}
+              >
+                {rowContent}
+              </Link>
+            );
+          })}
           {filteredRows.length === 0 && (
             <div className="text-center py-10 text-drug-muted text-sm">No classes match "{search}".</div>
           )}
         </div>
+      )}
+
+      {/* Floating merge-mode toggle — always well clear of any bottom nav
+          since AdminLayout has no mobile tab bar, but kept above other
+          fixed UI (z-50) and safe-area aware regardless. */}
+      {isAdmin && !loading && !mergeMode && (
+        <button
+          onClick={toggleMergeMode}
+          title="Select two or more class labels that mean the same thing and fold them into one"
+          className="fixed right-4 z-50 inline-flex items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-amber-600 text-white text-sm font-semibold shadow-lg hover:bg-amber-700"
+          style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+        >
+          <Merge className="w-4 h-4" />
+          Merge Duplicates
+        </button>
+      )}
+
+      {/* Selection / confirm bar */}
+      {mergeMode && (
+        <div className="fixed left-0 right-0 bottom-0 z-50 px-4 sm:px-6 lg:px-8 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <div className="max-w-3xl mx-auto p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-lg">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-amber-700">Merge mode</span>
+              <button
+                onClick={toggleMergeMode}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+              >
+                <X className="w-3.5 h-3.5" /> Cancel
+              </button>
+            </div>
+            {selectedForMerge.size === 0 && (
+              <p className="text-sm text-amber-800">
+                Tap two or more classes above that mean the same thing.
+              </p>
+            )}
+            {selectedForMerge.size === 1 && (
+              <p className="text-sm text-amber-800">
+                Select at least one more class to merge with — 1 selected so far.
+              </p>
+            )}
+            {selectedForMerge.size >= 2 && (
+              <>
+                <p className="text-sm font-semibold text-amber-900 mb-2">
+                  {selectedForMerge.size} selected — choose which label to keep:
+                </p>
+                <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                  {classRows
+                    .filter(r => selectedForMerge.has(r.className))
+                    .map(r => (
+                      <label key={r.className} className="flex items-center gap-2 text-sm text-drug-text cursor-pointer">
+                        <input
+                          type="radio"
+                          name="merge-primary-class"
+                          checked={primaryMergeClass === r.className}
+                          onChange={() => setPrimaryMergeClass(r.className)}
+                        />
+                        <span>{r.className}</span>
+                        <span className="text-xs text-drug-muted">({r.count} drug{r.count !== 1 ? 's' : ''})</span>
+                      </label>
+                    ))}
+                </div>
+                <button
+                  onClick={handleConfirmMerge}
+                  disabled={!primaryMergeClass || merging}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
+                >
+                  <Merge className="w-3.5 h-3.5" />
+                  {merging ? 'Merging…' : `Merge ${selectedForMerge.size - 1} into ${primaryMergeClass || 'selected'}`}
+                </button>
+              </>
+            )}
+            {mergeError && (
+              <p className="mt-3 text-xs text-red-600 font-medium">{mergeError}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mergeResult && !mergeMode && (
+        <p className="mt-3 text-xs text-green-700 font-medium">
+          ✓ Merged {mergeResult.classesRemoved} class{mergeResult.classesRemoved !== 1 ? 'es' : ''} into "{mergeResult.primaryLabel}" — {mergeResult.drugsUpdated} drug{mergeResult.drugsUpdated !== 1 ? 's' : ''} re-labeled.
+        </p>
       )}
     </div>
   );
