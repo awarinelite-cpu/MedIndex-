@@ -19,6 +19,7 @@ import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo'
 import { fetchSystemConditionsList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { useCustomConditions, addCustomConditions, removeCondition, renameCondition, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
 import { mergeConditions } from '../utils/mergeConditions';
+import { mergeDrugClasses } from '../utils/mergeDrugClasses';
 import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -661,6 +662,10 @@ export default function SystemPage() {
     setPrimaryMergeId(null);
     setMergeError('');
     setMergeResult(null);
+    // Mutually exclusive with class-merge mode
+    setClassMergeMode(false);
+    setSelectedClassesForMerge(new Set());
+    setPrimaryMergeClassName(null);
   };
 
   const handleToggleMergeSelect = (condition) => {
@@ -702,6 +707,7 @@ export default function SystemPage() {
       setMerging(false);
     }
   };
+
   const [viewMode,    setViewMode]    = useState('list');
   const [classFilter, setClassFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
@@ -721,6 +727,76 @@ export default function SystemPage() {
       sessionStorage.removeItem(`system_open_condition_${systemId}`);
     }
   }, [openConditionId, systemId]);
+
+  // ── Merge duplicate drug classes ────────────────────────────────────────
+  // Same idea as condition merging above, but for drug-class labels (e.g.
+  // "Anticoagulant" / "Anticoagulants") shown inside an expanded condition
+  // card. A class isn't scoped to one condition, so the actual re-labeling
+  // (mergeDrugClasses) always applies across every drug in the database —
+  // only the picker UI is scoped to whichever condition is currently open,
+  // since that's where the duplicates are visible.
+  const [classMergeMode, setClassMergeMode] = useState(false);
+  const [selectedClassesForMerge, setSelectedClassesForMerge] = useState(() => new Set());
+  const [primaryMergeClassName, setPrimaryMergeClassName] = useState(null);
+  const [classMerging, setClassMerging] = useState(false);
+  const [classMergeError, setClassMergeError] = useState('');
+  const [classMergeResult, setClassMergeResult] = useState(null);
+
+  const toggleClassMergeMode = () => {
+    setClassMergeMode(m => !m);
+    setSelectedClassesForMerge(new Set());
+    setPrimaryMergeClassName(null);
+    setClassMergeError('');
+    setClassMergeResult(null);
+    // Mutually exclusive with condition-merge mode
+    setMergeMode(false);
+    setSelectedForMerge(new Set());
+    setPrimaryMergeId(null);
+  };
+
+  // Auto-cancel class-merge mode if the condition it's scoped to gets
+  // collapsed some other way (e.g. browser back), so the fixed confirm bar
+  // never lingers with nothing underneath it to merge from.
+  useEffect(() => {
+    if (!openConditionId && classMergeMode) toggleClassMergeMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openConditionId]);
+
+  const handleToggleClassMergeSelect = (className) => {
+    setSelectedClassesForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(className)) {
+        next.delete(className);
+        if (primaryMergeClassName === className) setPrimaryMergeClassName(null);
+      } else {
+        next.add(className);
+      }
+      return next;
+    });
+  };
+
+  const handleConfirmClassMerge = async () => {
+    if (!primaryMergeClassName || selectedClassesForMerge.size < 2) return;
+    const duplicateNames = [...selectedClassesForMerge].filter(c => c !== primaryMergeClassName);
+    if (!window.confirm(
+      `Merge ${duplicateNames.map(l => `"${l}"`).join(', ')} into "${primaryMergeClassName}"?\n\n` +
+      `Every drug carrying one of the merged-away class labels will be re-labeled to the kept one, everywhere in the app — not just in this condition. This cannot be undone.`
+    )) return;
+
+    setClassMerging(true);
+    setClassMergeError('');
+    try {
+      const result = await mergeDrugClasses(primaryMergeClassName, duplicateNames, ALL_DRUGS);
+      setClassMergeResult({ ...result, primaryLabel: primaryMergeClassName });
+      setSelectedClassesForMerge(new Set());
+      setPrimaryMergeClassName(null);
+      setClassMergeMode(false);
+    } catch (err) {
+      setClassMergeError(`MERGE FAILED: ${err.code ? `[${err.code}] ` : ''}${err.message || 'Unknown error'}`);
+    } finally {
+      setClassMerging(false);
+    }
+  };
 
   // Scroll position — saved continuously while scrolling (not just on
   // unmount) because a real back-navigation via Link tears this component
@@ -795,6 +871,21 @@ export default function SystemPage() {
     () => groupDrugsByCondition(drugs, systemId, extraConditions, hiddenIds, labelOverrides),
     [drugs, systemId, extraConditions, hiddenIds, labelOverrides]
   );
+
+  // Distinct class names + drug counts within the currently-open condition
+  // — feeds the class-merge confirm bar's "which label do you want to keep"
+  // list. Depends on conditionGroups, so it has to live after it.
+  const openConditionClassRows = useMemo(() => {
+    if (!openConditionId) return [];
+    const entry = [...conditionGroups.values()].find(e => e.condition.id === openConditionId);
+    if (!entry) return [];
+    const map = new Map();
+    for (const drug of entry.drugs) {
+      const key = drug.drug_class || 'Other';
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return [...map.entries()].map(([className, count]) => ({ className, count })).sort((a, b) => a.className.localeCompare(b.className));
+  }, [openConditionId, conditionGroups]);
 
   const [retryingEmpty, setRetryingEmpty] = useState(false);
   const [sharingNote, setSharingNote] = useState(false);
@@ -1018,7 +1109,7 @@ export default function SystemPage() {
   const Icon = ICONS[system.icon] || Pill;
 
   return (
-    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${mergeMode ? 'pb-56 md:pb-40' : ''}`}>
+    <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${(mergeMode || classMergeMode) ? 'pb-56 md:pb-40' : ''}`}>
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
         className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
@@ -1064,14 +1155,16 @@ export default function SystemPage() {
             </button>
           )}
           <button
-            onClick={toggleMergeMode}
-            title="Select two or more condition cards that represent the same clinical entity and fold them into one"
+            onClick={openConditionId ? toggleClassMergeMode : toggleMergeMode}
+            title={openConditionId
+              ? "Select two or more drug-class labels in this condition that mean the same thing and fold them into one"
+              : "Select two or more condition cards that represent the same clinical entity and fold them into one"}
             className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 ${
-              mergeMode ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
+              (mergeMode || classMergeMode) ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
             }`}
           >
             <Merge className="w-3.5 h-3.5" />
-            {mergeMode ? 'Cancel Merge' : 'Merge Duplicates'}
+            {(mergeMode || classMergeMode) ? 'Cancel Merge' : openConditionId ? 'Merge Duplicate Classes' : 'Merge Duplicates'}
           </button>
         </div>
       )}
@@ -1079,19 +1172,24 @@ export default function SystemPage() {
       {/* Floating merge-mode toggle — fixed to the bottom of the screen so it
           stays reachable while scrolling through a long condition list,
           instead of only being available in the button row up top. Hidden
-          once merge mode is active since the fixed selection/confirm bar
+          once a merge mode is active since the fixed selection/confirm bar
           (further down) takes over that space and has its own Cancel.
           z-50 (above the mobile bottom tab bar's z-40) plus a bottom offset
           tall enough to clear that bar on mobile, so it's never hidden
-          underneath it; md+ has no bottom tab bar so it can sit low. */}
-      {isAdmin && !loading && !mergeMode && (
+          underneath it; md+ has no bottom tab bar so it can sit low.
+          Context-aware: merges conditions when no condition card is open,
+          merges drug classes (scoped to that condition's classes) once one
+          is expanded — matching whichever kind of duplicate is visible. */}
+      {isAdmin && !loading && !mergeMode && !classMergeMode && (
         <button
-          onClick={toggleMergeMode}
-          title="Select two or more condition cards that represent the same clinical entity and fold them into one"
+          onClick={openConditionId ? toggleClassMergeMode : toggleMergeMode}
+          title={openConditionId
+            ? "Select two or more drug-class labels in this condition that mean the same thing and fold them into one"
+            : "Select two or more condition cards that represent the same clinical entity and fold them into one"}
           className="fixed right-4 z-50 inline-flex items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-amber-600 text-white text-sm font-semibold shadow-lg hover:bg-amber-700 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-6"
         >
           <Merge className="w-4 h-4" />
-          Merge Duplicates
+          {openConditionId ? 'Merge Duplicate Classes' : 'Merge Duplicates'}
         </button>
       )}
 
@@ -1221,6 +1319,9 @@ export default function SystemPage() {
                   mergeMode={mergeMode}
                   isSelectedForMerge={selectedForMerge.has(entry.condition.id)}
                   onToggleMergeSelect={handleToggleMergeSelect}
+                  classMergeMode={classMergeMode && openConditionId === entry.condition.id}
+                  selectedClassesForMerge={selectedClassesForMerge}
+                  onToggleClassMergeSelect={handleToggleClassMergeSelect}
                 />
               ))}
             </div>
@@ -1294,6 +1395,74 @@ export default function SystemPage() {
           {mergeResult && !mergeMode && (
             <p className="mt-3 text-xs text-green-700 font-medium">
               ✓ Merged {mergeResult.conditionsRemoved} condition{mergeResult.conditionsRemoved !== 1 ? 's' : ''} into "{mergeResult.primaryLabel}" — {mergeResult.drugsUpdated} drug{mergeResult.drugsUpdated !== 1 ? 's' : ''} re-tagged.
+            </p>
+          )}
+
+          {classMergeMode && (
+            <div className="fixed left-0 right-0 z-50 px-4 sm:px-6 lg:px-8 pb-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-0 md:pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+              <div className="max-w-7xl mx-auto p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-lg">
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <span className="text-xs font-bold uppercase tracking-wide text-amber-700">Class merge mode</span>
+                  <button
+                    onClick={toggleClassMergeMode}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                  >
+                    <X className="w-3.5 h-3.5" /> Cancel
+                  </button>
+                </div>
+                {selectedClassesForMerge.size === 0 && (
+                  <p className="text-sm text-amber-800">
+                    Tap two or more drug-class rows above that mean the same thing.
+                  </p>
+                )}
+                {selectedClassesForMerge.size === 1 && (
+                  <p className="text-sm text-amber-800">
+                    Select at least one more class to merge with — 1 selected so far.
+                  </p>
+                )}
+                {selectedClassesForMerge.size >= 2 && (
+                  <>
+                    <p className="text-sm font-semibold text-amber-900 mb-2">
+                      {selectedClassesForMerge.size} selected — choose which label to keep:
+                    </p>
+                    <div className="space-y-1.5 mb-3 max-h-40 overflow-y-auto">
+                      {openConditionClassRows
+                        .filter(r => selectedClassesForMerge.has(r.className))
+                        .map(r => (
+                          <label key={r.className} className="flex items-center gap-2 text-sm text-drug-text cursor-pointer">
+                            <input
+                              type="radio"
+                              name="merge-primary-class"
+                              checked={primaryMergeClassName === r.className}
+                              onChange={() => setPrimaryMergeClassName(r.className)}
+                            />
+                            <span>{r.className}</span>
+                            <span className="text-xs text-drug-muted">({r.count} drug{r.count !== 1 ? 's' : ''})</span>
+                          </label>
+                        ))}
+                    </div>
+                    <button
+                      onClick={handleConfirmClassMerge}
+                      disabled={!primaryMergeClassName || classMerging}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg"
+                    >
+                      <Merge className="w-3.5 h-3.5" />
+                      {classMerging ? 'Merging…' : `Merge ${selectedClassesForMerge.size - 1} into ${primaryMergeClassName || 'selected'}`}
+                    </button>
+                    <p className="mt-2 text-[11px] text-amber-700">
+                      Applies to this class everywhere in the app, not just in this condition.
+                    </p>
+                  </>
+                )}
+                {classMergeError && (
+                  <p className="mt-3 text-xs text-red-600 font-medium">{classMergeError}</p>
+                )}
+              </div>
+            </div>
+          )}
+          {classMergeResult && !classMergeMode && (
+            <p className="mt-3 text-xs text-green-700 font-medium">
+              ✓ Merged {classMergeResult.classesRemoved} class{classMergeResult.classesRemoved !== 1 ? 'es' : ''} into "{classMergeResult.primaryLabel}" — {classMergeResult.drugsUpdated} drug{classMergeResult.drugsUpdated !== 1 ? 's' : ''} re-labeled.
             </p>
           )}
 

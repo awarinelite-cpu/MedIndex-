@@ -487,7 +487,7 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const [removingId, setRemovingId] = useState(null);
@@ -648,6 +648,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
         onClick={() => {
           if (isEditingLabel) return;
           if (mergeMode) { if (onToggleMergeSelect) onToggleMergeSelect(condition); return; }
+          if (classMergeMode) return; // stay open — collapsing here would hide the classes being merged
           onToggle();
         }}
         onKeyDown={(e) => {
@@ -655,6 +656,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             if (mergeMode) { if (onToggleMergeSelect) onToggleMergeSelect(condition); return; }
+            if (classMergeMode) return;
             onToggle();
           }
         }}
@@ -740,7 +742,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {!mergeMode && !isEditingLabel && (
+          {!mergeMode && !classMergeMode && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -753,7 +755,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Share2 className={`w-4 h-4 text-primary-600 ${sharingCondition ? 'animate-pulse' : ''}`} />
             </span>
           )}
-          {!mergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
+          {!mergeMode && !classMergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -766,7 +768,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Pencil className="w-4 h-4 text-primary-600" />
             </span>
           )}
-          {!mergeMode && isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
+          {!mergeMode && !classMergeMode && isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
               tabIndex={0}
@@ -782,6 +784,9 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           {!mergeMode && !isEditingLabel && (open
             ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
             : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />)}
+          {classMergeMode && (
+            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 px-1.5 py-0.5 bg-amber-50 rounded">Class merge</span>
+          )}
         </div>
       </div>
 
@@ -818,33 +823,57 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                   {byClassWithin(roleDrugs).map(([className, classDrugs], ci) => {
                     const classKey = `${roleKey}::${className}`;
                     const isClassOpen = expandedClasses.has(classKey);
+                    const isClassSelected = classMergeMode && selectedClassesForMerge && selectedClassesForMerge.has(className);
                     return (
                     <div key={className}>
-                      {/* Drug class sub-header — collapsed by default, click to expand */}
+                      {/* Drug class sub-header — collapsed by default, click to expand.
+                          In class-merge mode, clicking selects/deselects the class for
+                          merging instead of expanding it. */}
                       <div
                         role="button"
                         tabIndex={0}
-                        onClick={(e) => toggleClassOpen(classKey, e)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleClassOpen(classKey, e); }}
-                        className={`flex items-center justify-between px-5 py-2 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors ${ci > 0 ? 'border-t border-drug-border' : ''}`}
+                        onClick={(e) => classMergeMode
+                          ? (onToggleClassMergeSelect && onToggleClassMergeSelect(className), e.stopPropagation())
+                          : toggleClassOpen(classKey, e)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') {
+                          if (classMergeMode) { onToggleClassMergeSelect && onToggleClassMergeSelect(className); }
+                          else toggleClassOpen(classKey, e);
+                        } }}
+                        className={`flex items-center justify-between px-5 py-2 cursor-pointer transition-colors ${ci > 0 ? 'border-t border-drug-border' : ''} ${
+                          isClassSelected ? 'bg-amber-50 hover:bg-amber-100' : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
-                          {isClassOpen
-                            ? <ChevronUp className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />
-                            : <ChevronDown className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />}
-                          <Link
-                            to={`/browse?class=${encodeURIComponent(className)}`}
-                            className="text-xs font-bold text-primary-700 hover:underline truncate"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            {className}
-                          </Link>
+                          {classMergeMode ? (
+                            <span
+                              className={`flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                isClassSelected ? 'bg-amber-600 border-amber-600' : 'border-drug-border'
+                              }`}
+                            >
+                              {isClassSelected && <Check className="w-3 h-3 text-white" />}
+                            </span>
+                          ) : (
+                            isClassOpen
+                              ? <ChevronUp className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />
+                              : <ChevronDown className="w-3.5 h-3.5 text-drug-muted flex-shrink-0" />
+                          )}
+                          {classMergeMode ? (
+                            <span className="text-xs font-bold text-primary-700 truncate">{className}</span>
+                          ) : (
+                            <Link
+                              to={`/browse?class=${encodeURIComponent(className)}`}
+                              className="text-xs font-bold text-primary-700 hover:underline truncate"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {className}
+                            </Link>
+                          )}
                         </div>
                         <span className="text-xs text-drug-muted flex-shrink-0">{classDrugs.length}</span>
                       </div>
 
                       {/* Drugs */}
-                      {isClassOpen && (viewMode === 'grid' ? (
+                      {!classMergeMode && isClassOpen && (viewMode === 'grid' ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                           {classDrugs.map(drug => (
                             <Link
