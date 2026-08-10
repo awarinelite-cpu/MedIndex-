@@ -352,11 +352,16 @@ function NamePronunciation({ drug, onFilled }) {
   );
 }
 
-function BrandsButton({ drug, onFilled }) {
+function normalizeBrandDrugName(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function BrandsButton({ drug, onFilled, drugs }) {
   const { provider } = useAiProvider();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState('idle'); // idle | loading | error
   const [error, setError] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
   const [aiBrands, setAiBrands] = useState(null); // brands fetched this session, not yet reflected in `drug` prop
 
   const storedBrands = (drug.brand_names || '')
@@ -366,6 +371,23 @@ function BrandsButton({ drug, onFilled }) {
 
   const brands = aiBrands !== null ? aiBrands : storedBrands;
 
+  // Map of known generic-name drugs so a brand can jump straight to its
+  // existing detail page instead of always hitting the AI fallback.
+  const existingByName = useMemo(() => {
+    const map = new Map();
+    (drugs || []).forEach(d => {
+      if (d.generic_name) map.set(normalizeBrandDrugName(d.generic_name), d);
+    });
+    return map;
+  }, [drugs]);
+
+  const runFetch = async () => {
+    const text = await fetchBrandsText({ genericName: drug.generic_name, drugClass: drug.drug_class, endpoint: provider.endpoint });
+    return /^none known$/i.test(text.trim())
+      ? []
+      : text.split(',').map(b => b.trim()).filter(Boolean);
+  };
+
   const handleOpen = async () => {
     setOpen(v => !v);
     if (storedBrands.length > 0 || aiBrands !== null || state === 'loading') return;
@@ -373,10 +395,7 @@ function BrandsButton({ drug, onFilled }) {
     setState('loading');
     setError('');
     try {
-      const text = await fetchBrandsText({ genericName: drug.generic_name, drugClass: drug.drug_class, endpoint: provider.endpoint });
-      const found = /^none known$/i.test(text.trim())
-        ? []
-        : text.split(',').map(b => b.trim()).filter(Boolean);
+      const found = await runFetch();
       setAiBrands(found);
       setState('idle');
       if (found.length > 0) {
@@ -387,6 +406,39 @@ function BrandsButton({ drug, onFilled }) {
     } catch (e) {
       setError(e.message || 'Failed to look up brand names.');
       setState('error');
+    }
+  };
+
+  const handleRegenerate = async (e) => {
+    e.stopPropagation();
+    if (regenerating) return;
+    setRegenerating(true);
+    setError('');
+    try {
+      const found = await runFetch();
+      // Merge with whatever is already showing so "regenerate" adds more
+      // rather than throwing away brands the user already saw/saved.
+      const merged = [...brands];
+      const seen = new Set(merged.map(b => normalizeBrandDrugName(b)));
+      found.forEach(b => {
+        const key = normalizeBrandDrugName(b);
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          merged.push(b);
+        }
+      });
+      setAiBrands(merged);
+      setState('idle');
+      if (merged.length > 0) {
+        const brandNames = merged.join(', ');
+        await saveBrandNames({ drug, brandNames });
+        onFilled?.({ brand_names: brandNames });
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to regenerate brand names.');
+      setState('error');
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -403,9 +455,19 @@ function BrandsButton({ drug, onFilled }) {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 mt-2 w-64 bg-white border border-drug-border rounded-xl shadow-lg z-20 p-3">
-            <p className="text-xs font-bold text-drug-muted uppercase tracking-wide mb-2">
-              Other brand names for {drug.generic_name}
-            </p>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-bold text-drug-muted uppercase tracking-wide">
+                Other brand names for {drug.generic_name}
+              </p>
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating || state === 'loading'}
+                title="Regenerate brand names"
+                className="flex-shrink-0 p-1 rounded-full text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${regenerating ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
             {state === 'loading' ? (
               <p className="text-xs text-drug-muted inline-flex items-center gap-1.5 py-1">
                 <RefreshCw className="w-3 h-3 animate-spin" /> Asking AI for brand names…
@@ -416,11 +478,23 @@ function BrandsButton({ drug, onFilled }) {
               <p className="text-xs text-drug-muted">No known brand names found for this drug.</p>
             ) : (
               <ul className="space-y-1 max-h-60 overflow-y-auto">
-                {brands.map((b, i) => (
-                  <li key={i} className="text-sm text-drug-text px-2 py-1.5 rounded-lg bg-gray-50">
-                    {b}
-                  </li>
-                ))}
+                {brands.map((b, i) => {
+                  const existing = existingByName.get(normalizeBrandDrugName(b));
+                  const to = existing
+                    ? `/drug/${existing.id || existing.firestoreId}`
+                    : `/ai-drug/${encodeURIComponent(b)}`;
+                  return (
+                    <li key={i}>
+                      <Link
+                        to={to}
+                        onClick={() => setOpen(false)}
+                        className="block text-sm text-drug-text px-2 py-1.5 rounded-lg bg-gray-50 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                      >
+                        {b}
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -1428,7 +1502,7 @@ export default function DrugDetailPage() {
               </span>
             )}
           </div>
-          <BrandsButton drug={drug} onFilled={handleSectionFilled} />
+          <BrandsButton drug={drug} onFilled={handleSectionFilled} drugs={drugs} />
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
         <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
