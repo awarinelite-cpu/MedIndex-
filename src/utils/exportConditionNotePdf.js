@@ -10,9 +10,9 @@
 
 import { jsPDF } from 'jspdf';
 import {
-  NAVY, BLUE, INK, MUTED, WHITE,
-  PAGE_W, MARGIN, CONTENT_W,
-  newPageState, drawFooter, drawCoverHeader, drawRunningHeader,
+  BLUE, INK, MUTED,
+  MARGIN, CONTENT_W,
+  newPageState, drawFooter, drawCoverHeader,
   ensureSpace, drawFieldBody, drawFieldLabel, drawSectionHeader, drawPill,
   statusColor, slugify, shareOrDownloadPdf,
 } from './pdfBrand';
