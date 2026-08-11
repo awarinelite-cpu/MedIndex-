@@ -7,7 +7,6 @@ import React, { createContext, useContext, useState, useRef, useCallback, useEff
 import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
-import { findRealDrugImage, saveFoundDrugImage } from '../utils/generateDrugImage';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
 import { parseConditionClinicalInfo } from '../utils/parseConditionClinicalInfo';
 import { useDrugs } from '../hooks/useDrugs';
@@ -69,27 +68,6 @@ function clearClinicalSweepCheckpoint() {
   try { localStorage.removeItem(CLINICAL_SWEEP_CHECKPOINT_KEY); } catch {}
 }
 
-// ── Image Sweep checkpoint — same idea, keyed by drug id so a paused run
-// resumes at the right spot even if new drugs were added to the database
-// while it was stopped (they just won't be in the old queue, and get
-// picked up on the next fresh sweep).
-const IMAGE_SWEEP_CHECKPOINT_KEY = 'medindex_image_sweep_checkpoint_v1';
-
-function loadImageSweepCheckpoint() {
-  try {
-    const raw = localStorage.getItem(IMAGE_SWEEP_CHECKPOINT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-function saveImageSweepCheckpoint(queueIds, index) {
-  try {
-    localStorage.setItem(IMAGE_SWEEP_CHECKPOINT_KEY, JSON.stringify({ queueIds, index }));
-  } catch { /* ignore quota/storage errors — worst case it just restarts */ }
-}
-function clearImageSweepCheckpoint() {
-  try { localStorage.removeItem(IMAGE_SWEEP_CHECKPOINT_KEY); } catch {}
-}
-
 // Same name-normalisation used by SystemPage's condition matching, duplicated
 // here (rather than imported) so this context has no dependency on any page.
 function normalizeDrugName(name) {
@@ -119,7 +97,6 @@ async function parallelMap(items, fn, concurrency = CONCURRENCY) {
 const AiInsightContext = createContext(null);
 
 export function AiInsightProvider({ children }) {
-  const { isAdmin } = useAuth();
   const [running,     setRunning]     = useState(false);
   const [progress,    setProgress]    = useState({ done: 0, total: 0 });
   const [currentName, setCurrentName] = useState(null);
@@ -621,137 +598,6 @@ export function AiInsightProvider({ children }) {
   const { drugs: drugsForAutoFill } = useDrugs();
   useEffect(() => { allDrugsRef.current = drugsForAutoFill; }, [drugsForAutoFill]);
 
-  // ── Fifth, independent background job: "Image Sweep" — walks every drug
-  // that doesn't have an image yet and searches for a real, freely-licensed
-  // photo (Wikimedia Commons / openFDA — same source as the manual "Find
-  // Real Image" button). No AI-illustration fallback here: if no real image
-  // turns up, that drug is just left blank rather than generating one, per
-  // how this sweep is meant to be used. Auto-starts the first time an admin
-  // logs in each session (see the effect below) and can also be started or
-  // stopped manually, exactly like the other sweeps.
-  const [imageSweepRunning,     setImageSweepRunning]     = useState(false);
-  const [imageSweepIndex,       setImageSweepIndex]       = useState(0); // 1-based, current/just-finished position
-  const [imageSweepTotal,       setImageSweepTotal]       = useState(0);
-  const [imageSweepCurrentName, setImageSweepCurrentName] = useState(null);
-  const [imageSweepSummary,     setImageSweepSummary]     = useState(null);
-  const [imageSweepResumed,     setImageSweepResumed]     = useState(false);
-  const imageSweepAbortRef   = useRef(false);
-  const imageSweepRunningRef = useRef(false);
-  const imageSweepJumpRef    = useRef(null);
-  const imageSweepIndexRef   = useRef(0);
-  useEffect(() => { imageSweepIndexRef.current = imageSweepIndex; }, [imageSweepIndex]);
-
-  // Live count of drugs missing an image — lets the trigger button show an
-  // accurate "(N)" before the sweep even starts, and lets the auto-start
-  // effect below know whether there's anything worth kicking off.
-  const imageSweepEligibleCount = React.useMemo(
-    () => (drugsForAutoFill || []).filter(d => !d.image_url).length,
-    [drugsForAutoFill]
-  );
-
-  const startImageSweep = useCallback(async () => {
-    if (imageSweepRunningRef.current) return;
-    imageSweepRunningRef.current = true;
-    imageSweepAbortRef.current = false;
-    imageSweepJumpRef.current = null;
-    setImageSweepSummary(null);
-
-    const queue = (allDrugsRef.current || [])
-      .filter(d => !d.image_url && d.generic_name)
-      .sort((a, b) => (a.generic_name || '').localeCompare(b.generic_name || '', 'en', { sensitivity: 'base' }));
-
-    if (queue.length === 0) {
-      imageSweepRunningRef.current = false;
-      setImageSweepTotal(0);
-      setImageSweepSummary({ found: 0, skipped: 0, failed: 0, stopped: false, total: 0 });
-      return;
-    }
-    setImageSweepTotal(queue.length);
-
-    const queueIds = queue.map(d => d.firestoreId || d.id);
-    const checkpoint = loadImageSweepCheckpoint();
-    let startAt = (checkpoint && sameQueue(checkpoint.queueIds, queueIds) && checkpoint.index > 0 && checkpoint.index < queue.length)
-      ? checkpoint.index
-      : 0;
-
-    setImageSweepIndex(startAt);
-    setImageSweepResumed(startAt > 0);
-    setImageSweepRunning(true);
-
-    let found = 0, skipped = 0, failed = 0;
-    let i = startAt;
-    while (i < queue.length) {
-      if (imageSweepAbortRef.current) break;
-      const drug = queue[i];
-      setImageSweepIndex(i + 1);
-      setImageSweepCurrentName(drug.generic_name);
-
-      // Re-check live — another admin, or a previous run, may have already
-      // added an image to this drug since the queue was built.
-      const liveId = drug.firestoreId || drug.id;
-      const live = (allDrugsRef.current || []).find(d => (d.firestoreId || d.id) === liveId);
-      if (live?.image_url) {
-        skipped++;
-      } else {
-        try {
-          const result = await findRealDrugImage({ genericName: drug.generic_name });
-          if (result) {
-            await saveFoundDrugImage({ docId: liveId, found: result });
-            found++;
-          } else {
-            skipped++; // no freely-licensed real image found — left blank, no AI fallback
-          }
-        } catch (e) {
-          failed++;
-        }
-        // Be gentle with Wikimedia/openFDA rather than hammering them back-to-back.
-        await new Promise(r => setTimeout(r, 400));
-      }
-
-      if (imageSweepJumpRef.current !== null) {
-        i = Math.max(0, imageSweepJumpRef.current);
-        imageSweepJumpRef.current = null;
-      } else {
-        i += 1;
-      }
-      saveImageSweepCheckpoint(queueIds, i);
-    }
-
-    const stopped = imageSweepAbortRef.current;
-    imageSweepRunningRef.current = false;
-    setImageSweepRunning(false);
-    setImageSweepCurrentName(null);
-    if (!stopped && i >= queue.length) clearImageSweepCheckpoint();
-    setImageSweepSummary({
-      found, skipped, failed, stopped, total: queue.length,
-      resumedFrom: startAt > 0 ? startAt : null,
-    });
-  }, []);
-
-  const stopImageSweep           = useCallback(() => { imageSweepAbortRef.current = true; }, []);
-  const dismissImageSweepSummary = useCallback(() => setImageSweepSummary(null), []);
-  const jumpImageSweep = useCallback((direction) => {
-    if (!imageSweepRunningRef.current) return;
-    const current0 = imageSweepIndexRef.current - 1;
-    imageSweepJumpRef.current = direction === 'next' ? current0 + 1 : current0 - 1;
-  }, []);
-
-  // Auto-starts the Image Sweep the first time an admin is signed in during
-  // this browser session — no click needed. Fires once drugsForAutoFill has
-  // actually loaded (so it doesn't launch against an empty list) and never
-  // fires again this session, so it doesn't restart every time the admin
-  // navigates around or the drug list re-syncs. A manual "Image Sweep"
-  // button (wherever it's wired up in the admin UI) still works normally on
-  // top of this, whether or not the auto-run already happened.
-  const hasAutoStartedImageSweepRef = useRef(false);
-  useEffect(() => {
-    if (!isAdmin) return;
-    if (hasAutoStartedImageSweepRef.current) return;
-    if (!drugsForAutoFill || drugsForAutoFill.length === 0) return;
-    hasAutoStartedImageSweepRef.current = true;
-    if (imageSweepEligibleCount > 0) startImageSweep();
-  }, [isAdmin, drugsForAutoFill, imageSweepEligibleCount, startImageSweep]);
-
   // ── Auto-fill queue: conditions that should be populated with drugs
   // automatically, no admin click needed. Two things feed this queue:
   //   1. SystemPage enqueues a condition the moment it's created (single
@@ -884,9 +730,6 @@ export function AiInsightProvider({ children }) {
       clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
       clinicalSweepSummary, clinicalSweepResumed, clinicalSweepEligibleCount, clinicalSweepTotalConditions,
       startClinicalInfoSweep, stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
-      imageSweepRunning, imageSweepIndex, imageSweepTotal, imageSweepCurrentName,
-      imageSweepSummary, imageSweepResumed, imageSweepEligibleCount,
-      startImageSweep, stopImageSweep, dismissImageSweepSummary, jumpImageSweep,
       allConditionsIndex, clinicalInfoByCondition,
       pendingReviewList, confirmPendingReview, rejectPendingReview,
     }}>
@@ -895,7 +738,6 @@ export function AiInsightProvider({ children }) {
       <ConditionSaveWidget />
       <ClassSweepWidget />
       <ClinicalInfoSweepWidget />
-      <ImageSweepWidget />
       <PendingReviewWidget />
     </AiInsightContext.Provider>
   );
@@ -998,7 +840,7 @@ function DraggableWidget({ id, defaultBottom = 20, defaultRight = 16, width = 30
 
 // ── Floating widget: visible on every page while a background run is active ──
 function GlobalAiInsightWidget() {
-  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary, classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary, imageSweepRunning, imageSweepSummary } = useContext(AiInsightContext);
+  const { running, progress, currentName, summary, stopGlobalFix, dismissSummary, conditionRunning, conditionSummary, classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary } = useContext(AiInsightContext);
   const [startTime] = React.useState(() => Date.now());
   const [now, setNow] = React.useState(Date.now());
 
@@ -1013,7 +855,7 @@ function GlobalAiInsightWidget() {
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   // Shift up so it doesn't overlap whichever other widget(s) are showing —
   // each active widget below this one takes ~250px of vertical space.
-  const widgetsBelow = [conditionRunning || conditionSummary, classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary, imageSweepRunning || imageSweepSummary].filter(Boolean).length;
+  const widgetsBelow = [conditionRunning || conditionSummary, classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
   const stackedBelow = widgetsBelow > 0;
 
   // ETA calculation
@@ -1112,13 +954,12 @@ function ConditionSaveWidget() {
     conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
     stopConditionSave, dismissConditionSummary,
     classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary,
-    imageSweepRunning, imageSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!conditionRunning && !conditionSummary) return null;
 
   const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
-  const widgetsBelow = [classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary, imageSweepRunning || imageSweepSummary].filter(Boolean).length;
+  const widgetsBelow = [classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
   const stackedBelow = widgetsBelow > 0;
 
   return (
@@ -1208,13 +1049,13 @@ function ClassSweepWidget() {
     classSweepRunning, classSweepClassIndex, classSweepClassTotal, classSweepCurrentClass,
     classSweepItemProgress, classSweepCurrentDrug, classSweepSummary,
     stopClassSweep, dismissClassSweepSummary, jumpClassSweep,
-    clinicalSweepRunning, clinicalSweepSummary, imageSweepRunning, imageSweepSummary,
+    clinicalSweepRunning, clinicalSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!classSweepRunning && !classSweepSummary) return null;
 
   const itemPct  = classSweepItemProgress.total ? Math.round((classSweepItemProgress.done / classSweepItemProgress.total) * 100) : 0;
-  const widgetsBelow = [clinicalSweepRunning || clinicalSweepSummary, imageSweepRunning || imageSweepSummary].filter(Boolean).length;
+  const widgetsBelow = [clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
   const stackedBelow = widgetsBelow > 0;
 
   return (
@@ -1322,16 +1163,14 @@ function ClinicalInfoSweepWidget() {
     clinicalSweepRunning, clinicalSweepIndex, clinicalSweepTotal, clinicalSweepCurrentLabel,
     clinicalSweepSummary, clinicalSweepResumed,
     stopClinicalInfoSweep, dismissClinicalSweepSummary, jumpClinicalSweep,
-    imageSweepRunning, imageSweepSummary,
   } = useContext(AiInsightContext);
 
   if (!clinicalSweepRunning && !clinicalSweepSummary) return null;
 
   const pct = clinicalSweepTotal ? Math.round((clinicalSweepIndex / clinicalSweepTotal) * 100) : 0;
-  const stackedBelow = imageSweepRunning || imageSweepSummary;
 
   return (
-    <DraggableWidget id="clinical-sweep" defaultBottom={stackedBelow ? 270 : 20} defaultRight={16} width={300}>
+    <DraggableWidget id="clinical-sweep" defaultBottom={20} defaultRight={16} width={300}>
       {clinicalSweepRunning ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -1427,119 +1266,6 @@ function ClinicalInfoSweepWidget() {
   );
 }
 
-// ── Floating widget for the "Image Sweep" job — walks every drug missing an
-// image, searching for a real, freely-licensed photo and saving it. Base
-// layer of the widget stack (bottom: 20), matching the other long-running
-// full sweeps.
-function ImageSweepWidget() {
-  const {
-    imageSweepRunning, imageSweepIndex, imageSweepTotal, imageSweepCurrentName,
-    imageSweepSummary, imageSweepResumed,
-    stopImageSweep, dismissImageSweepSummary, jumpImageSweep,
-  } = useContext(AiInsightContext);
-
-  if (!imageSweepRunning && !imageSweepSummary) return null;
-
-  const pct = imageSweepTotal ? Math.round((imageSweepIndex / imageSweepTotal) * 100) : 0;
-
-  return (
-    <DraggableWidget id="image-sweep" defaultBottom={20} defaultRight={16} width={300}>
-      {imageSweepRunning ? (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EC4899', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-              <span style={{ fontWeight: 700, fontSize: 13 }}>
-                {imageSweepResumed ? 'Image Sweep (resumed)…' : 'Image Sweep running…'}
-              </span>
-            </div>
-            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, flexShrink: 0 }}>{pct}%</span>
-          </div>
-
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
-            <div style={{ height: '100%', background: 'linear-gradient(90deg, #EC4899, #F472B6)', borderRadius: 3, width: `${pct}%`, transition: 'width 0.5s ease' }} />
-          </div>
-
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>
-            {imageSweepIndex} / {imageSweepTotal} drugs
-          </div>
-
-          {imageSweepCurrentName && (
-            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              ⚡ {imageSweepCurrentName}
-            </div>
-          )}
-
-          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
-            Searching for real, freely-licensed photos automatically — stop anytime, or it keeps going until it finishes or you log out.
-          </div>
-
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => jumpImageSweep('prev')}
-              disabled={imageSweepIndex <= 1}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: imageSweepIndex <= 1 ? 'default' : 'pointer', opacity: imageSweepIndex <= 1 ? 0.4 : 1 }}
-            >
-              ⏮ Prev
-            </button>
-            <button
-              onClick={() => jumpImageSweep('next')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}
-            >
-              Next ⏭
-            </button>
-            <button
-              onClick={stopImageSweep}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
-            >
-              ⏹ Stop
-            </button>
-          </div>
-        </>
-      ) : imageSweepSummary && (
-        <>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>
-            {imageSweepSummary.stopped ? '⏹ Image Sweep stopped' : '✅ Image Sweep complete'}
-          </div>
-          {imageSweepSummary.total === 0 ? (
-            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
-              Every drug already has an image — nothing to do.
-            </div>
-          ) : (
-            <>
-              <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
-                {imageSweepSummary.found + imageSweepSummary.skipped + imageSweepSummary.failed} of {imageSweepSummary.total} drugs covered
-              </div>
-              <div style={{ fontSize: 12, color: '#34D399', marginBottom: 4 }}>
-                ✓ {imageSweepSummary.found} real image{imageSweepSummary.found !== 1 ? 's' : ''} found &amp; saved
-              </div>
-              {imageSweepSummary.skipped > 0 && (
-                <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
-                  ↷ {imageSweepSummary.skipped} left blank — no real image found
-                </div>
-              )}
-              {imageSweepSummary.failed > 0 && (
-                <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
-                  ✗ {imageSweepSummary.failed} failed
-                </div>
-              )}
-            </>
-          )}
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={dismissImageSweepSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
-            >
-              Dismiss
-            </button>
-          </div>
-        </>
-      )}
-    </DraggableWidget>
-  );
-}
-
-// ── Floating trigger + modal for the global pending-drug review queue ──
 // Admin-only. Shows a small badge (bottom-left, so it never collides with
 // the other draggable widgets which default to bottom-right) whenever
 // there's at least one drug/condition pair awaiting confirmation anywhere
