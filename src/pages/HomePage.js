@@ -5,8 +5,10 @@ import {
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
+import { useCustomConditions } from '../hooks/useCustomConditions';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
+import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
@@ -51,9 +53,27 @@ function RxBadge({ status }) {
 export default function HomePage() {
   const { isAdmin } = useAuth();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
   const TOTAL       = ALL_DRUGS.length;
   const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
   const RX_COUNT    = useMemo(() => new Set(ALL_DRUGS.map(d => d.prescription_status).filter(Boolean)).size, [ALL_DRUGS]);
+  // Total conditions across every system — seeded (systemConditions.js) list
+  // minus any admin-hidden seeded ids, plus AI-suggested/admin-approved
+  // custom conditions stored in Firestore for that system.
+  const CONDITION_COUNT = useMemo(() => {
+    const systemIds = new Set([
+      ...Object.keys(SYSTEM_CONDITIONS),
+      ...Object.keys(customConditionsBySystem || {}),
+    ]);
+    let count = 0;
+    systemIds.forEach(systemId => {
+      const hiddenIds = new Set(hiddenConditionIdsBySystem?.[systemId] || []);
+      const seeded = (SYSTEM_CONDITIONS[systemId] || []).filter(c => !hiddenIds.has(c.id));
+      const custom = customConditionsBySystem?.[systemId] || [];
+      count += seeded.length + custom.length;
+    });
+    return count;
+  }, [customConditionsBySystem, hiddenConditionIdsBySystem]);
   const FEATURED    = ALL_DRUGS.slice(0, 6);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -194,6 +214,10 @@ export default function HomePage() {
               <div className="text-center">
                 <div className="text-xl font-bold text-drug-text">{loading ? '—' : RX_COUNT}</div>
                 <div className="text-xs opacity-80">Rx Categories</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-drug-text">{loading ? '—' : CONDITION_COUNT}</div>
+                <div className="text-xs opacity-80">Conditions</div>
               </div>
             </div>
           )}
