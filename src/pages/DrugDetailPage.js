@@ -206,21 +206,20 @@ function splitIntoSentences(text) {
 }
 
 // Indications sometimes come as a short true CSV list ("Hypertension, Heart
-// failure, Edema") and sometimes as long AI-generated prose with several
-// facts run together in one comma-separated chunk (a full FDA-indications
-// paragraph, say). This gives each style readable bullets: short items are
-// left as-is, long/sentence-y chunks get broken down further by sentence.
+// failure, Edema") and sometimes as long AI-generated prose where commas are
+// just normal grammar inside a sentence, not list separators (e.g. "used
+// with mifepristone, or as a misoprostol-only regimen..." is ONE
+// indication, not two). Comma-splitting prose like that chops single facts
+// in half, so: if the text has an internal sentence boundary at all, treat
+// it as prose and split ONLY by sentence, ignoring commas entirely.
+// Otherwise it's a flat list — split by comma as before.
 function splitIndicationsForDisplay(value) {
-  const commaItems = splitCSVRespectingParens(value);
-  const bullets = [];
-  for (const item of commaItems) {
-    if (item.length > 100 || /[.!?]\s+[A-Z(]/.test(item)) {
-      bullets.push(...splitIntoSentences(item));
-    } else {
-      bullets.push(item);
-    }
+  const trimmed = value.trim();
+  const looksLikeProse = /[.!?]\s+[A-Z(]/.test(trimmed);
+  if (looksLikeProse) {
+    return splitIntoSentences(trimmed);
   }
-  return bullets.filter(Boolean);
+  return splitCSVRespectingParens(trimmed).map(s => s.replace(/\.$/, '').trim()).filter(Boolean);
 }
 
 // Renders "What it's used for" as a bulleted list rather than pill badges —
