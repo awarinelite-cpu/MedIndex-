@@ -111,17 +111,19 @@ function renderDosageWithRoutes(text) {
   );
 }
 
-function renderList(value, separator = '|') {
+function renderList(value, separator = '|', danger = false) {
+  const textClass = danger ? 'text-red-700 dark:text-red-400' : 'text-drug-text';
+  const dotClass = danger ? 'text-red-500' : 'text-primary-400';
   if (!value) return <em className="text-drug-muted">No data available</em>;
   const items = value.split(separator).map(s => s.trim()).filter(Boolean);
   if (items.length <= 1) {
-    return <p className="text-drug-text leading-relaxed">{value}</p>;
+    return <p className={`${textClass} leading-relaxed`}>{value}</p>;
   }
   return (
     <ul className="space-y-1">
       {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-2 text-drug-text">
-          <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
+        <li key={i} className={`flex items-start gap-2 ${textClass}`}>
+          <span className={`${dotClass} mt-1 flex-shrink-0`}>•</span>
           <span>{item}</span>
         </li>
       ))}
@@ -1924,14 +1926,14 @@ export default function DrugDetailPage() {
             {drug.contraindications && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3 text-red-700">Contra-indications</h2>
-                {renderList(drug.contraindications, '\n')}
+                {renderList(drug.contraindications, '\n', true)}
               </div>
             )}
 
             {drug.precautions && (
               <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3 text-amber-700">Precautions</h2>
-                {renderList(drug.precautions, '\n')}
+                <h2 className="text-lg font-bold mb-3 text-red-700">Precautions</h2>
+                {renderList(drug.precautions, '\n', true)}
               </div>
             )}
 
