@@ -279,6 +279,10 @@ export default function AdminPage() {
   const [forceRegenRunning,  setForceRegenRunning]  = useState(false);
   const [forceRegenProgress, setForceRegenProgress] = useState({ done: 0, total: 0 });
   const [confirmForceRegen,  setConfirmForceRegen]  = useState(false);
+  // Drugs that have finished during the current (or most recent) force-regen
+  // run, newest first — lets the admin open a just-updated drug in a new tab
+  // to check it while the run keeps going in the background undisturbed.
+  const [forceRegenCompleted, setForceRegenCompleted] = useState([]);
   const forceRegenAbortRef = useRef(false);
   const [showFilters,      setShowFilters]      = useState(false);
   const [selectedIds,      setSelectedIds]      = useState(new Set());
@@ -884,14 +888,17 @@ export default function AdminPage() {
     forceRegenAbortRef.current = false;
     setForceRegenRunning(true);
     setForceRegenProgress({ done: 0, total: list.length });
+    setForceRegenCompleted([]);
 
     let done = 0, succeeded = 0, notFound = 0, failed = 0;
 
     await parallelMap(list, async (drug) => {
       if (forceRegenAbortRef.current) return;
       setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+      let status = 'failed';
       try {
         const result = await forceRegenerateDrug({ genericName: drug.generic_name, drugClass: drug.drug_class });
+        status = result.status;
         if (result.status === 'regenerated') {
           succeeded++;
           // Re-read isn't strictly needed for a UI refresh here since the
@@ -907,6 +914,14 @@ export default function AdminPage() {
         setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
         done++;
         setForceRegenProgress({ done, total: list.length });
+        // Prepend so the newest completions show at the top; this state is
+        // local to AdminPage and independent of the parallelMap loop above,
+        // so opening one of these links (new tab) never touches or resets
+        // the running regeneration.
+        setForceRegenCompleted(prev => [
+          { firestoreId: drug.firestoreId, id: drug.id, generic_name: drug.generic_name, drug_class: drug.drug_class, status },
+          ...prev,
+        ]);
       }
     });
 
@@ -1270,6 +1285,27 @@ export default function AdminPage() {
             {forceRegenRunning && (
               <div style={{height:6,background:'#FEE2E2',borderRadius:999,overflow:'hidden'}}>
                 <div style={{height:'100%',width:`${forceRegenProgress.total?Math.round((forceRegenProgress.done/forceRegenProgress.total)*100):0}%`,background:'#DC2626',transition:'width 0.2s'}}/>
+              </div>
+            )}
+            {(forceRegenRunning || forceRegenCompleted.length>0) && forceRegenCompleted.length>0 && (
+              <div style={{border:'1px solid #FECACA',borderRadius:8,overflow:'hidden'}}>
+                <div style={{padding:'8px 12px',background:'#FEF2F2',fontSize:12,fontWeight:700,color:'#B91C1C',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span>Done so far ({forceRegenCompleted.length}) — tap to open, opens in a new tab</span>
+                  {!forceRegenRunning && (
+                    <button onClick={()=>setForceRegenCompleted([])} style={{background:'none',border:'none',cursor:'pointer',color:'#B91C1C',fontWeight:700,fontSize:12,textDecoration:'underline'}}>Clear</button>
+                  )}
+                </div>
+                <div style={{maxHeight:220,overflowY:'auto'}}>
+                  {forceRegenCompleted.map(d=>(
+                    <Link key={d.firestoreId} to={`/drug/${d.id}`} target="_blank" rel="noopener noreferrer"
+                      style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'8px 12px',borderTop:'1px solid #FEE2E2',textDecoration:'none'}}>
+                      <span style={{fontSize:13,fontWeight:600,color:'#1e40af'}}>{d.generic_name}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:d.status==='regenerated'?'#059669':d.status==='not_found'?'#B45309':'#DC2626',whiteSpace:'nowrap'}}>
+                        {d.status==='regenerated'?'✓ updated':d.status==='not_found'?'not recognized':'failed'}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
             {showFilters&&(
