@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { Upload, ImageIcon, CheckCircle, XCircle, Download, AlertTriangle } from 'lucide-react';
 import { normalizeImageUrl } from '../utils/generateDrugImage';
 import { slugifyDrugName } from '../utils/aiDrugSave';
+import PhotoAutoMatchUpload from '../components/PhotoAutoMatchUpload';
 
 // Same deterministic-ID convention used across the app (UploadPage,
 // aiDrugSave.slugifyDrugName) — a drug's doc ID is derived from its
@@ -25,6 +26,7 @@ function getImageUrl(row) {
 }
 
 export default function BulkImageUploadPage() {
+  const [mode, setMode] = useState('csv'); // 'csv' | 'photos'
   // eslint-disable-next-line no-unused-vars
   const [file, setFile] = useState(null);
   const [rows, setRows] = useState([]); // [{ name, docId, url, status: 'matched'|'not_found'|'invalid_url' }]
@@ -177,10 +179,36 @@ export default function BulkImageUploadPage() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <ImageIcon className="w-6 h-6 text-primary-600" /> Bulk Image Upload
         </h1>
-        <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-800">
-          <Download className="w-4 h-4" /> Template
+        {mode === 'csv' && (
+          <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 hover:text-primary-800">
+            <Download className="w-4 h-4" /> Template
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-2 mb-6 border-b border-drug-border">
+        <button
+          onClick={() => setMode('csv')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            mode === 'csv' ? 'border-primary-600 text-primary-700' : 'border-transparent text-drug-muted hover:text-drug-text'
+          }`}
+        >
+          CSV Link
+        </button>
+        <button
+          onClick={() => setMode('photos')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            mode === 'photos' ? 'border-primary-600 text-primary-700' : 'border-transparent text-drug-muted hover:text-drug-text'
+          }`}
+        >
+          Photos (auto-match)
         </button>
       </div>
+
+      {mode === 'photos' && <PhotoAutoMatchUpload />}
+
+      {mode === 'csv' && (
+      <>
       <p className="text-drug-muted text-sm mb-6">
         Upload a CSV with <code className="bg-gray-100 px-1.5 py-0.5 rounded">generic_name</code> and{' '}
         <code className="bg-gray-100 px-1.5 py-0.5 rounded">image_url</code> columns to link images
@@ -288,6 +316,8 @@ export default function BulkImageUploadPage() {
             Upload another file
           </button>
         </div>
+      )}
+      </>
       )}
     </div>
   );

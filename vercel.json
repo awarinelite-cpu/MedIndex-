@@ -3,7 +3,8 @@
   "outputDirectory": "build",
   "devCommand": "npm start",
   "functions": {
-    "api/drug-ai-claude.js": { "maxDuration": 60 }
+    "api/drug-ai-claude.js": { "maxDuration": 60 },
+    "api/ocr-drug-name.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
