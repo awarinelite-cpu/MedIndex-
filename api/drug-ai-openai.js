@@ -7,6 +7,7 @@ export const config = { runtime: 'edge', regions: ['iad1'] };
 import { buildPrompt } from './_lib/buildPrompt.js';
 import { resolveModel } from './_lib/resolveModel.js';
 import { withCors } from './_lib/cors.js';
+import { fetchExternalDrugContext } from './_lib/externalDrugSources.js';
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
 const ALLOWED_MODELS = new Set(['gpt-4o-mini', 'gpt-4o', 'gpt-4.1']);
@@ -28,6 +29,13 @@ async function coreHandler(req) {
   let body;
   try { body = await req.json(); }
   catch { return new Response(JSON.stringify({ error: 'Invalid request body.' }), { status: 400, headers: { 'Content-Type': 'application/json' } }); }
+
+  // Ground the answer in live openFDA/RxNorm data when this is a plain
+  // drug lookup (this provider has no native web search, unlike Gemini).
+  // Best-effort: a slow/failed external lookup never blocks the AI call.
+  if ((!body.mode || body.mode === 'drug') && body.genericName) {
+    body.externalContext = await fetchExternalDrugContext(body.genericName);
+  }
 
   let prompt, maxTokens;
   try { ({ prompt, maxTokens } = buildPrompt(body)); }

@@ -35,19 +35,30 @@ export default async function handler(req, res) {
     return;
   }
 
-  let buildPrompt, resolveModel;
+  let buildPrompt, resolveModel, fetchExternalDrugContext;
   try {
     ({ buildPrompt } = await import('./_lib/buildPrompt.js'));
     ({ resolveModel } = await import('./_lib/resolveModel.js'));
+    ({ fetchExternalDrugContext } = await import('./_lib/externalDrugSources.js'));
   } catch (e) {
     console.error('Failed to load buildPrompt:', e);
     res.status(500).json({ error: 'Server error loading prompt builder.' });
     return;
   }
 
+  const body = req.body || {};
+
+  // Ground the answer in live openFDA/RxNorm data when this is a plain
+  // drug lookup, the way Gemini already grounds itself via Google Search
+  // (see api/drug-ai-details.js). Best-effort: a slow/failed external
+  // lookup never blocks the AI call.
+  if ((!body.mode || body.mode === 'drug') && body.genericName) {
+    body.externalContext = await fetchExternalDrugContext(body.genericName);
+  }
+
   let prompt, maxTokens;
   try {
-    ({ prompt, maxTokens } = buildPrompt(req.body || {}));
+    ({ prompt, maxTokens } = buildPrompt(body));
   } catch (e) {
     res.status(e.status || 400).json({ error: e.error || 'Bad request.' });
     return;
