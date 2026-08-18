@@ -139,7 +139,7 @@ export default function HomePage() {
           <h1 className="text-3xl sm:text-4xl font-bold mb-3">
             Search <span className="text-primary-300">Medications</span>
           </h1>
-          <p className="text-primary-100 max-w-xl mx-auto">
+          <p className="text-primary-100 max-w-xl mx-auto font-bold">
             Comprehensive Nigerian clinical drug reference and Medsurge — covering class,
             dosages, interactions, nursing considerations, safety information, full
             condition clinical write-ups, and AI Clinical Consult for diagnosis-led
