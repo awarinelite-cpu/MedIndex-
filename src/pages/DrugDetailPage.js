@@ -183,6 +183,77 @@ function renderCSV(value, opts = {}) {
   );
 }
 
+// Common abbreviations whose trailing period shouldn't be treated as a
+// sentence boundary (so "e.g. elderly patients" doesn't get cut in half).
+const SENTENCE_ABBREV_RE = /\b(?:e\.g|i\.e|etc|vs|approx|no|fig|dr|mr|mrs|ms|prof|sr|jr|vol|pp|al|st)\.$/i;
+
+// Splits a block of prose into individual sentences, so long AI-generated
+// paragraphs (which often pack several distinct facts into one field) can
+// be shown as separate bullets instead of one wall of text.
+function splitIntoSentences(text) {
+  const pieces = text.split(/(?<=[.!?])\s+(?=[A-Z(])/);
+  const sentences = [];
+  let buffer = '';
+  for (const piece of pieces) {
+    buffer = buffer ? `${buffer} ${piece}` : piece;
+    const lastWord = buffer.trim().split(/\s+/).pop() || '';
+    if (SENTENCE_ABBREV_RE.test(lastWord)) continue; // false split, keep accumulating
+    sentences.push(buffer.trim());
+    buffer = '';
+  }
+  if (buffer.trim()) sentences.push(buffer.trim());
+  return sentences.filter(Boolean);
+}
+
+// Indications sometimes come as a short true CSV list ("Hypertension, Heart
+// failure, Edema") and sometimes as long AI-generated prose with several
+// facts run together in one comma-separated chunk (a full FDA-indications
+// paragraph, say). This gives each style readable bullets: short items are
+// left as-is, long/sentence-y chunks get broken down further by sentence.
+function splitIndicationsForDisplay(value) {
+  const commaItems = splitCSVRespectingParens(value);
+  const bullets = [];
+  for (const item of commaItems) {
+    if (item.length > 100 || /[.!?]\s+[A-Z(]/.test(item)) {
+      bullets.push(...splitIntoSentences(item));
+    } else {
+      bullets.push(item);
+    }
+  }
+  return bullets.filter(Boolean);
+}
+
+// Renders "What it's used for" as a bulleted list rather than pill badges —
+// pills work for short single-word conditions but wrap into unreadable
+// blobs once the field holds full AI-written indication paragraphs. Short
+// items (true condition names) stay clickable through to Browse; long,
+// sentence-style bullets render as plain text since they're descriptive
+// prose rather than a single searchable condition term.
+function renderIndicationsList(value, opts = {}) {
+  if (!value) return <em className="text-drug-muted">No data available</em>;
+  const { linkTo } = opts;
+  const items = splitIndicationsForDisplay(value);
+  if (items.length <= 1) {
+    return <p className="text-drug-text leading-relaxed whitespace-pre-line">{value}</p>;
+  }
+  return (
+    <ul className="space-y-2.5">
+      {items.map((item, i) => (
+        <li key={i} className="flex gap-2 text-drug-text leading-relaxed">
+          <span className="text-primary-500 leading-relaxed">•</span>
+          {linkTo && item.length <= 60 ? (
+            <Link to={linkTo(item)} className="hover:text-primary-700 hover:underline">
+              {item}
+            </Link>
+          ) : (
+            <span>{item}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /* ── In-tab AI fill ───────────────────────────────────────────────────────
    Shown inside each information tab. If any of that tab's fields are missing
    on the drug record, an admin can generate JUST that tab's information with
@@ -1651,7 +1722,7 @@ export default function DrugDetailPage() {
             <div className="section-card p-6">
               <h2 className="text-lg font-bold mb-3">What it's used for</h2>
               {drug.indications
-                ? renderCSV(drug.indications, {
+                ? renderIndicationsList(drug.indications, {
                     linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
                   })
                 : <em className="text-drug-muted">No data available</em>}
