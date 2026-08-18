@@ -42,7 +42,8 @@ function similarity(a, b) {
 /**
  * @param {string} ocrName - raw name read off the photo
  * @param {Array<{id: string, name: string}>} drugList - existing drugs to match against
- * @returns {{ id: string, name: string, score: number } | null} best match, or null if drugList is empty
+ * @returns {{ id: string, name: string, score: number, [key: string]: any } | null} best match
+ *   (any extra fields on a drugList entry, e.g. displayName, pass through), or null if drugList is empty
  */
 export function matchDrugName(ocrName, drugList) {
   const norm = normalize(ocrName);
@@ -66,7 +67,7 @@ export function matchDrugName(ocrName, drugList) {
     }
 
     if (!best || score > best.score) {
-      best = { id: drug.id, name: drug.name, score };
+      best = { ...drug, score };
     }
   }
   return best;

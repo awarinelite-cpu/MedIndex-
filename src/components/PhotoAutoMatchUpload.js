@@ -64,7 +64,20 @@ export default function PhotoAutoMatchUpload() {
   const [uploadSummary, setUploadSummary] = useState(null);
   const rowsRef = useRef([]);
 
-  const drugList = drugs.map(d => ({ id: d.id, name: d.generic_name || '' }));
+  // Match candidates include both the generic name and every brand name
+  // (brand_names is a comma-separated string) — a photo usually shows the
+  // brand printed on the box, which can be completely unrelated-looking
+  // to the generic name the drug is actually filed under.
+  const drugList = drugs.flatMap(d => {
+    const entries = [];
+    if (d.generic_name) entries.push({ id: d.id, name: d.generic_name, displayName: d.generic_name });
+    (d.brand_names || '')
+      .split(',')
+      .map(b => b.trim())
+      .filter(Boolean)
+      .forEach(brand => entries.push({ id: d.id, name: brand, displayName: `${brand} (${d.generic_name})` }));
+    return entries;
+  });
 
   const setRow = (id, patch) => {
     rowsRef.current = rowsRef.current.map(r => (r.id === id ? { ...r, ...patch } : r));
@@ -114,8 +127,8 @@ export default function PhotoAutoMatchUpload() {
         setRow(row.id, {
           ocrName: name,
           matchedId: best ? best.id : null,
-          matchedName: best ? best.name : '',
-          manualQuery: best ? best.name : name,
+          matchedName: best ? best.displayName : '',
+          manualQuery: best ? best.displayName : name,
           score: best ? best.score : 0,
           status,
           include: status === 'matched',
@@ -133,12 +146,13 @@ export default function PhotoAutoMatchUpload() {
   });
 
   function handleManualPick(rowId, drugName) {
-    const found = drugList.find(d => d.name.toLowerCase() === drugName.trim().toLowerCase());
+    const typed = drugName.trim().toLowerCase();
+    const found = drugList.find(d => d.displayName.toLowerCase() === typed || d.name.toLowerCase() === typed);
     if (found) {
       setRow(rowId, {
         matchedId: found.id,
-        matchedName: found.name,
-        manualQuery: found.name,
+        matchedName: found.displayName,
+        manualQuery: found.displayName,
         status: 'matched',
         include: true,
       });
@@ -312,7 +326,9 @@ export default function PhotoAutoMatchUpload() {
           </div>
 
           <datalist id="drug-name-options">
-            {drugList.map(d => <option key={d.id} value={d.name} />)}
+            {[...new Map(drugList.map(d => [d.displayName, d])).values()].map(d => (
+              <option key={`${d.id}-${d.displayName}`} value={d.displayName} />
+            ))}
           </datalist>
 
           {phase === 'review' && (
