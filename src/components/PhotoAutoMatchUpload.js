@@ -13,10 +13,20 @@ import { useDropzone } from 'react-dropzone';
 import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useDrugs } from '../hooks/useDrugs';
+import { useAiProvider } from '../context/AiProviderContext';
 import { matchDrugName, MATCH_HIGH_CONFIDENCE, MATCH_LOW_CONFIDENCE } from '../utils/matchDrugName';
 import { Upload, CheckCircle, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
 
 const CONCURRENCY = 4;
+
+// Only these three providers accept image input with the models this app
+// has them configured with (see api/ocr-drug-name.js). DeepSeek and Kimi
+// fall back to Gemini for OCR specifically — their text-insight models
+// don't do vision.
+const VISION_CAPABLE = new Set(['claude', 'gemini', 'openai']);
+function ocrProviderFor(selectedProviderId) {
+  return VISION_CAPABLE.has(selectedProviderId) ? selectedProviderId : 'gemini';
+}
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -46,6 +56,8 @@ function statusFromScore(score) {
 
 export default function PhotoAutoMatchUpload() {
   const { drugs } = useDrugs();
+  const { providerId } = useAiProvider();
+  const ocrProvider = ocrProviderFor(providerId);
   const [rows, setRows] = useState([]); // see shape below
   const [phase, setPhase] = useState('idle'); // idle | processing | review | uploading | done
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
@@ -86,7 +98,7 @@ export default function PhotoAutoMatchUpload() {
         const ocrRes = await fetch('/api/ocr-drug-name', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageDataUrl: dataUrl }),
+          body: JSON.stringify({ imageDataUrl: dataUrl, provider: ocrProvider }),
         });
         const ocrData = await ocrRes.json().catch(() => ({}));
         if (!ocrRes.ok) throw new Error(ocrData.error || 'OCR failed');
@@ -112,7 +124,7 @@ export default function PhotoAutoMatchUpload() {
         setRow(row.id, { status: 'error', ocrError: err.message || 'Failed to read image', include: false });
       }
     }).then(() => setPhase('review'));
-  }, [drugList]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [drugList, ocrProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -202,12 +214,19 @@ export default function PhotoAutoMatchUpload() {
   const matchedCount = rows.filter(r => r.include && r.matchedId).length;
   const needsReviewCount = rows.filter(r => r.status === 'review' || r.status === 'no_match' || r.status === 'error').length;
 
+  const providerLabel = { claude: 'Claude', gemini: 'Gemini', openai: 'ChatGPT' }[ocrProvider];
+  const isFallback = ocrProvider !== providerId;
+
   return (
     <div>
-      <p className="text-drug-muted text-sm mb-6">
+      <p className="text-drug-muted text-sm mb-2">
         Drop in raw photos of drug packages/labels. Each photo is read automatically to find the
         drug name, matched to an existing drug, and uploaded to ImgChest once you confirm. Anything
         unclear or unmatched is left for you to fix below before anything is saved.
+      </p>
+      <p className="text-xs text-drug-muted mb-6">
+        Reading photos with <span className="font-semibold">{providerLabel}</span>
+        {isFallback && ` (your selected provider doesn't support images, so this falls back from ${providerId})`}.
       </p>
 
       {phase === 'idle' && (
