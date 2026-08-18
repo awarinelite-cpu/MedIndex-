@@ -26,19 +26,76 @@ export async function findRealDrugImage({ genericName }) {
   return data.found ? data : null;
 }
 
-// Saves a real image found via findRealDrugImage() onto the drug's Firestore
-// doc, along with its source/license/attribution so the UI can display them.
-export async function saveFoundDrugImage({ docId, found }) {
+// ── Multi-image support ─────────────────────────────────────────────────
+// Drugs can now carry several pictures (e.g. different pack sizes/brands).
+// They're stored as an ordered array on the doc: images: [{ url, is_real,
+// source, source_url, license, attribution }, ...]. The legacy single
+// image_url / image_is_real / image_source* fields are kept in sync with
+// images[0] so older parts of the app (home page thumbnails, prefetching,
+// bulk CSV upload) that only know about image_url keep working untouched.
+
+// Reads the current image list off a drug object, falling back to the old
+// single-image fields for docs that haven't been touched since this array
+// was introduced.
+export function getDrugImages(drug) {
+  if (!drug) return [];
+  if (Array.isArray(drug.images) && drug.images.length) return drug.images;
+  if (drug.image_url) {
+    return [{
+      url:         drug.image_url,
+      is_real:     !!drug.image_is_real,
+      source:      drug.image_source || null,
+      source_url:  drug.image_source_url || null,
+      license:     drug.image_license || null,
+      attribution: drug.image_attribution || null,
+    }];
+  }
+  return [];
+}
+
+function compact(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+}
+
+// Overwrites the full images array (used for adding, deleting, and
+// reordering) and keeps the legacy single-image fields pointed at
+// images[0] so nothing else in the app needs to change.
+export async function setDrugImages({ docId, images }) {
   await getAuthUser();
+  const list = images || [];
+  const first = list[0] || null;
   await updateDoc(doc(db, 'drugs', docId), {
-    image_url:         found.imageUrl,
-    image_source:      found.source,
-    image_source_url:  found.sourcePageUrl,
-    image_license:     found.license,
-    image_attribution: found.attribution,
-    image_is_real:     true,
+    images: list.map(img => compact(img)),
+    image_url:         first ? first.url : null,
+    image_is_real:     first ? !!first.is_real : null,
+    image_source:      first ? (first.source || null) : null,
+    image_source_url:  first ? (first.source_url || null) : null,
+    image_license:     first ? (first.license || null) : null,
+    image_attribution: first ? (first.attribution || null) : null,
     last_updated:      serverTimestamp(),
   });
+}
+
+// Removes one image by index and re-saves the rest.
+export async function deleteDrugImage({ docId, images, index }) {
+  const next = (images || []).filter((_, i) => i !== index);
+  await setDrugImages({ docId, images: next });
+}
+
+// Saves a real image found via findRealDrugImage() onto the drug's Firestore
+// doc, appending it to the images array (along with source/license/
+// attribution so the UI can display them) rather than replacing what's
+// already there.
+export async function saveFoundDrugImage({ docId, existingImages, found }) {
+  const entry = {
+    url:         found.imageUrl,
+    is_real:     true,
+    source:      found.source,
+    source_url:  found.sourcePageUrl,
+    license:     found.license,
+    attribution: found.attribution,
+  };
+  await setDrugImages({ docId, images: [...(existingImages || []), entry] });
 }
 
 // Calls the Nano Banana (Gemini image) endpoint and returns a data: URL.
@@ -55,18 +112,23 @@ export async function generateDrugImage({ genericName, drugClass, strength }) {
   return data.imageDataUrl;
 }
 
-// Uploads a generated data: URL to Firebase Storage and saves the resulting
-// download URL onto the drug's Firestore document.
-export async function saveDrugImage({ docId, imageDataUrl }) {
+// Uploads a generated data: URL to Firebase Storage and appends the
+// resulting download URL to the drug's images array. Pass a `slot` (image
+// index) to overwrite/regenerate one particular picture instead of adding
+// a new one.
+export async function saveDrugImage({ docId, imageDataUrl, existingImages, slot }) {
   await getAuthUser();
-  const storageRef = ref(storage, `drug-images/${docId}.png`);
+  const list = existingImages || [];
+  const isReplace = Number.isInteger(slot) && slot >= 0 && slot < list.length;
+  const storageRef = ref(storage, `drug-images/${docId}-${isReplace ? slot : list.length}.png`);
   await uploadString(storageRef, imageDataUrl, 'data_url');
   const downloadUrl = await getDownloadURL(storageRef);
 
-  await updateDoc(doc(db, 'drugs', docId), {
-    image_url:    downloadUrl,
-    last_updated: serverTimestamp(),
-  });
+  const entry = { url: downloadUrl, is_real: false };
+  const next = isReplace
+    ? list.map((img, i) => (i === slot ? entry : img))
+    : [...list, entry];
+  await setDrugImages({ docId, images: next });
 
   return downloadUrl;
 }
@@ -149,20 +211,24 @@ export async function uploadImageUrlToImgChest({ sourceUrl }) {
 }
 
 // Saves an admin-supplied externally-hosted image link (e.g. an Imgur direct
-// image URL, or one just returned by uploadImageToImgChest) straight onto
-// the drug's Firestore document — no re-upload to Firebase Storage needed
-// since it's already hosted.
-export async function saveDrugImageUrl({ docId, url }) {
+// image URL, or one just returned by uploadImageToImgChest) onto the drug's
+// Firestore document — no re-upload to Firebase Storage needed since it's
+// already hosted. Appends to the images array by default; pass a `slot`
+// (image index) to replace one particular picture instead.
+export async function saveDrugImageUrl({ docId, url, existingImages, slot }) {
   await getAuthUser();
   const trimmed = normalizeImageUrl((url || '').trim());
   if (!/^https?:\/\/.+/i.test(trimmed)) {
     throw new Error('Please enter a valid image URL starting with http:// or https://');
   }
 
-  await updateDoc(doc(db, 'drugs', docId), {
-    image_url:    trimmed,
-    last_updated: serverTimestamp(),
-  });
+  const list = existingImages || [];
+  const isReplace = Number.isInteger(slot) && slot >= 0 && slot < list.length;
+  const entry = { url: trimmed, is_real: false };
+  const next = isReplace
+    ? list.map((img, i) => (i === slot ? entry : img))
+    : [...list, entry];
+  await setDrugImages({ docId, images: next });
 
   return trimmed;
 }

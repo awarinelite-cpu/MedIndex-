@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
   Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
-  Upload, ClipboardPaste, Tag,
+  Upload, ClipboardPaste, Tag, ChevronRight, Trash2, ImagePlus,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -18,7 +18,7 @@ import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl,
   findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
-  uploadClipboardImageToImgChest,
+  uploadClipboardImageToImgChest, getDrugImages, deleteDrugImage,
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
@@ -514,9 +514,101 @@ const TABS = [
   { id: 'ai-insights',  label: 'AI Insights',   icon: Sparkles      },
 ];
 
+/* ── Drug Image gallery (swipe to view more than one picture) ───────────── */
+function DrugImageGallery({ images, altBase }) {
+  const trackRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const scrollToIndex = (i) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const clamped = Math.max(0, Math.min(i, images.length - 1));
+    el.scrollTo({ left: clamped * el.clientWidth, behavior: 'smooth' });
+    setActiveIndex(clamped);
+  };
+
+  const handleScroll = (e) => {
+    const el = e.currentTarget;
+    if (!el.clientWidth) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== activeIndex) setActiveIndex(i);
+  };
+
+  if (images.length <= 1) {
+    const img = images[0];
+    return img ? (
+      <img
+        src={img.url}
+        alt={img.is_real ? altBase : `AI-generated illustration of ${altBase}`}
+        className="w-full max-w-sm mx-auto rounded-lg border border-drug-border"
+      />
+    ) : null;
+  }
+
+  return (
+    <div className="relative max-w-sm mx-auto">
+      <div
+        ref={trackRef}
+        onScroll={handleScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory rounded-lg border border-drug-border scroll-smooth"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {images.map((img, i) => (
+          <img
+            key={img.url + i}
+            src={img.url}
+            alt={img.is_real ? `${altBase} (${i + 1} of ${images.length})` : `AI-generated illustration of ${altBase} (${i + 1} of ${images.length})`}
+            className="w-full flex-shrink-0 snap-center object-contain bg-white"
+            draggable={false}
+          />
+        ))}
+      </div>
+
+      {/* Desktop/tablet arrows — swipe already covers touch devices */}
+      {activeIndex > 0 && (
+        <button
+          onClick={() => scrollToIndex(activeIndex - 1)}
+          aria-label="Previous picture"
+          className="hidden sm:flex items-center justify-center absolute left-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 border border-drug-border shadow hover:bg-white"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
+      {activeIndex < images.length - 1 && (
+        <button
+          onClick={() => scrollToIndex(activeIndex + 1)}
+          aria-label="Next picture"
+          className="hidden sm:flex items-center justify-center absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 border border-drug-border shadow hover:bg-white"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      )}
+
+      {/* Dot indicators + count badge */}
+      <div className="flex items-center justify-center gap-1.5 mt-2">
+        {images.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => scrollToIndex(i)}
+            aria-label={`Go to picture ${i + 1}`}
+            className={`w-1.5 h-1.5 rounded-full transition-colors ${i === activeIndex ? 'bg-primary-600' : 'bg-drug-border'}`}
+          />
+        ))}
+      </div>
+      <p className="text-[11px] text-drug-muted text-center mt-1">
+        Swipe to see more — {activeIndex + 1} of {images.length}
+      </p>
+    </div>
+  );
+}
+
 /* ── Drug Image (AI illustration) ────────────────────────────────────────── */
 function DrugImageCard({ drug }) {
   const { isAdmin } = useAuth();
+  const docId = drug.firestoreId || drug.id;
+  const images = useMemo(() => getDrugImages(drug), [drug]);
+  const hasImages = images.length > 0;
+
   const [state, setState] = useState('idle'); // idle | generating | error
   const [error, setError] = useState('');
   const [urlInput, setUrlInput] = useState('');
@@ -528,6 +620,8 @@ function DrugImageCard({ drug }) {
   const [fetchUrlInput, setFetchUrlInput] = useState('');
   const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
+  const [deleteState, setDeleteState] = useState('idle'); // idle | deleting | error
+  const [activeIndexForDelete, setActiveIndexForDelete] = useState(0);
 
   const handleFindReal = async () => {
     setFindState('searching');
@@ -538,8 +632,8 @@ function DrugImageCard({ drug }) {
         setFindState('not-found');
         return;
       }
-      await saveFoundDrugImage({ docId: drug.firestoreId || drug.id, found });
-      // Live listener pushes drug.image_url etc. in automatically.
+      await saveFoundDrugImage({ docId, existingImages: images, found });
+      // Live listener pushes drug.images/image_url etc. in automatically.
       setFindState('idle');
     } catch (e) {
       setError(e.message || 'Failed to search for an image.');
@@ -556,9 +650,9 @@ function DrugImageCard({ drug }) {
         drugClass:   drug.drug_class,
         strength:    drug.strength,
       });
-      await saveDrugImage({ docId: drug.firestoreId || drug.id, imageDataUrl });
-      // No reload needed — the live useDrugs() listener pushes drug.image_url
-      // to this component automatically within about a second of the write.
+      await saveDrugImage({ docId, imageDataUrl, existingImages: images });
+      // No reload needed — the live useDrugs() listener pushes the new
+      // image to this component automatically within about a second.
       setState('idle');
     } catch (e) {
       setError(e.message || 'Failed to generate an image.');
@@ -570,8 +664,8 @@ function DrugImageCard({ drug }) {
     setUrlState('saving');
     setError('');
     try {
-      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: urlInput });
-      // Live listener will push the new image_url in automatically.
+      await saveDrugImageUrl({ docId, url: urlInput, existingImages: images });
+      // Live listener will push the new image in automatically.
       setUrlState('idle');
       setUrlInput('');
       setShowUrlField(false);
@@ -589,8 +683,8 @@ function DrugImageCard({ drug }) {
     setError('');
     try {
       const hostedUrl = await uploadImageToImgChest({ file });
-      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
-      // Live listener will push the new image_url in automatically.
+      await saveDrugImageUrl({ docId, url: hostedUrl, existingImages: images });
+      // Live listener will push the new image in automatically.
       setUploadState('idle');
       setShowUrlField(false);
     } catch (err) {
@@ -604,8 +698,8 @@ function DrugImageCard({ drug }) {
     setError('');
     try {
       const hostedUrl = await uploadImageUrlToImgChest({ sourceUrl: fetchUrlInput });
-      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
-      // Live listener will push the new image_url in automatically.
+      await saveDrugImageUrl({ docId, url: hostedUrl, existingImages: images });
+      // Live listener will push the new image in automatically.
       setFetchUrlState('idle');
       setFetchUrlInput('');
       setShowUrlField(false);
@@ -620,13 +714,26 @@ function DrugImageCard({ drug }) {
     setError('');
     try {
       const hostedUrl = await uploadClipboardImageToImgChest({ blob });
-      await saveDrugImageUrl({ docId: drug.firestoreId || drug.id, url: hostedUrl });
-      // Live listener will push the new image_url in automatically.
+      await saveDrugImageUrl({ docId, url: hostedUrl, existingImages: images });
+      // Live listener will push the new image in automatically.
       setPasteState('idle');
       setShowUrlField(false);
     } catch (err) {
       setError(err.message || 'Failed to paste image.');
       setPasteState('error');
+    }
+  };
+
+  const handleDeleteImage = async (index) => {
+    if (!window.confirm('Remove this picture?')) return;
+    setDeleteState('deleting');
+    setError('');
+    try {
+      await deleteDrugImage({ docId, images, index });
+      setDeleteState('idle');
+    } catch (err) {
+      setError(err.message || 'Failed to remove image.');
+      setDeleteState('error');
     }
   };
 
@@ -668,19 +775,103 @@ function DrugImageCard({ drug }) {
     }
   };
 
-  // Already has a saved image — show it to everyone automatically.
-  if (drug.image_url) {
+  const addPhotoControls = (
+    <div className="mt-4 flex flex-col gap-2 max-w-md mx-auto">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="url"
+          value={urlInput}
+          onChange={e => setUrlInput(e.target.value)}
+          placeholder="Paste image link (e.g. from imgur.com)"
+          className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
+        />
+        <button
+          onClick={handleSaveUrl}
+          disabled={urlState === 'saving' || !urlInput.trim()}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold text-sm hover:bg-primary-700 disabled:opacity-60"
+        >
+          {urlState === 'saving' ? 'Saving…' : 'Save Link'}
+        </button>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="url"
+          value={fetchUrlInput}
+          onChange={e => setFetchUrlInput(e.target.value)}
+          placeholder="Paste picture URL from a website to upload"
+          className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
+        />
+        <button
+          onClick={handleFetchUrlUpload}
+          disabled={fetchUrlState === 'fetching' || !fetchUrlInput.trim()}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+        >
+          {fetchUrlState === 'fetching' ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+          ) : (
+            'Fetch & Upload'
+          )}
+        </button>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <button
+        onClick={handlePasteButton}
+        disabled={pasteState === 'uploading'}
+        className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
+      >
+        {pasteState === 'uploading' ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+        ) : (
+          <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
+        )}
+      </button>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-drug-border" />
+        <span className="text-xs text-drug-muted">or</span>
+        <div className="flex-1 h-px bg-drug-border" />
+      </div>
+      <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
+        {uploadState === 'uploading' ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+        ) : (
+          <><Upload className="w-4 h-4" /> Upload Photo</>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handlePhotoSelected}
+          disabled={uploadState === 'uploading'}
+          className="hidden"
+        />
+      </label>
+    </div>
+  );
+
+  // Already has at least one saved image — show the gallery to everyone.
+  if (hasImages) {
+    const primary = images[0];
     return (
       <div className="section-card p-6" tabIndex={0} onPaste={handlePasteEvent}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold">Image</h2>
+          <h2 className="text-lg font-bold">
+            Image{images.length > 1 ? `s (${images.length})` : ''}
+          </h2>
           {isAdmin && (
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowUrlField(v => !v)}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800"
               >
-                <LinkIcon className="w-3.5 h-3.5" /> Replace with link
+                <ImagePlus className="w-3.5 h-3.5" /> Add Another Picture
               </button>
               <button
                 onClick={handleGenerate}
@@ -688,113 +879,49 @@ function DrugImageCard({ drug }) {
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-60"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${state === 'generating' ? 'animate-spin' : ''}`} />
-                {state === 'generating' ? 'Regenerating…' : 'Regenerate'}
+                {state === 'generating' ? 'Generating…' : 'Generate AI Picture'}
               </button>
             </div>
           )}
         </div>
-        <img
-          src={drug.image_url}
-          alt={drug.image_is_real ? `${drug.generic_name}` : `AI-generated illustration of ${drug.generic_name}`}
-          className="w-full max-w-sm mx-auto rounded-lg border border-drug-border"
-        />
-        {drug.image_is_real ? (
+
+        <DrugImageGallery images={images} altBase={drug.generic_name} />
+
+        {isAdmin && images.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+            {images.map((img, i) => (
+              <button
+                key={img.url + i}
+                onClick={() => handleDeleteImage(i)}
+                disabled={deleteState === 'deleting'}
+                className="inline-flex items-center gap-1 text-[11px] text-red-600 hover:text-red-800 disabled:opacity-60"
+                title={`Remove picture ${i + 1}`}
+              >
+                <Trash2 className="w-3 h-3" /> Remove #{i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {primary.is_real ? (
           <p className="text-xs text-drug-muted mt-3 text-center">
-            Source: {drug.image_source_url ? (
-              <a href={drug.image_source_url} target="_blank" rel="noopener noreferrer" className="underline">
-                {drug.image_source || 'external source'}
+            Source: {primary.source_url ? (
+              <a href={primary.source_url} target="_blank" rel="noopener noreferrer" className="underline">
+                {primary.source || 'external source'}
               </a>
-            ) : (drug.image_source || 'external source')}
-            {drug.image_license ? ` · ${drug.image_license}` : ''}
-            {drug.image_attribution ? ` · ${drug.image_attribution}` : ''}
+            ) : (primary.source || 'external source')}
+            {primary.license ? ` · ${primary.license}` : ''}
+            {primary.attribution ? ` · ${primary.attribution}` : ''}
           </p>
         ) : (
           isAdmin && (
             <p className="text-xs text-drug-muted mt-3 text-center">
-              AI-generated illustration for reference only — not the actual product packaging.
+              AI-generated or admin-supplied picture(s) for reference only — not verified product packaging unless sourced above.
             </p>
           )
         )}
-        {isAdmin && showUrlField && (
-          <div className="mt-4 flex flex-col gap-2 max-w-md mx-auto">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="url"
-                value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                placeholder="Paste image link (e.g. from imgur.com)"
-                className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
-              />
-              <button
-                onClick={handleSaveUrl}
-                disabled={urlState === 'saving' || !urlInput.trim()}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg font-semibold text-sm hover:bg-primary-700 disabled:opacity-60"
-              >
-                {urlState === 'saving' ? 'Saving…' : 'Save Link'}
-              </button>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-drug-border" />
-              <span className="text-xs text-drug-muted">or</span>
-              <div className="flex-1 h-px bg-drug-border" />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="url"
-                value={fetchUrlInput}
-                onChange={e => setFetchUrlInput(e.target.value)}
-                placeholder="Paste picture URL from a website to upload"
-                className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
-              />
-              <button
-                onClick={handleFetchUrlUpload}
-                disabled={fetchUrlState === 'fetching' || !fetchUrlInput.trim()}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
-              >
-                {fetchUrlState === 'fetching' ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-                ) : (
-                  'Fetch & Upload'
-                )}
-              </button>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-drug-border" />
-              <span className="text-xs text-drug-muted">or</span>
-              <div className="flex-1 h-px bg-drug-border" />
-            </div>
-            <button
-              onClick={handlePasteButton}
-              disabled={pasteState === 'uploading'}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
-            >
-              {pasteState === 'uploading' ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-              ) : (
-                <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
-              )}
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-drug-border" />
-              <span className="text-xs text-drug-muted">or</span>
-              <div className="flex-1 h-px bg-drug-border" />
-            </div>
-            <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
-              {uploadState === 'uploading' ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-              ) : (
-                <><Upload className="w-4 h-4" /> Upload Photo</>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoSelected}
-                disabled={uploadState === 'uploading'}
-                className="hidden"
-              />
-            </label>
-          </div>
-        )}
+
+        {isAdmin && showUrlField && addPhotoControls}
         {error && <p className="text-xs text-red-600 mt-2 text-center">{error}</p>}
       </div>
     );
@@ -838,86 +965,10 @@ function DrugImageCard({ drug }) {
       </div>
       <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
         <div className="flex-1 h-px bg-drug-border" />
-        <span className="text-xs text-drug-muted">or</span>
+        <span className="text-xs text-drug-muted">or add a picture directly</span>
         <div className="flex-1 h-px bg-drug-border" />
       </div>
-      <div className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
-        <input
-          type="url"
-          value={urlInput}
-          onChange={e => setUrlInput(e.target.value)}
-          placeholder="Paste image link (e.g. from imgur.com)"
-          className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
-        />
-        <button
-          onClick={handleSaveUrl}
-          disabled={urlState === 'saving' || !urlInput.trim()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
-        >
-          <LinkIcon className="w-4 h-4" />
-          {urlState === 'saving' ? 'Saving…' : 'Save Link'}
-        </button>
-      </div>
-      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
-        <div className="flex-1 h-px bg-drug-border" />
-        <span className="text-xs text-drug-muted">or</span>
-        <div className="flex-1 h-px bg-drug-border" />
-      </div>
-      <div className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
-        <input
-          type="url"
-          value={fetchUrlInput}
-          onChange={e => setFetchUrlInput(e.target.value)}
-          placeholder="Paste picture URL from a website to upload"
-          className="flex-1 px-3 py-2 border border-drug-border rounded-lg text-sm"
-        />
-        <button
-          onClick={handleFetchUrlUpload}
-          disabled={fetchUrlState === 'fetching' || !fetchUrlInput.trim()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
-        >
-          {fetchUrlState === 'fetching' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-          ) : (
-            'Fetch & Upload'
-          )}
-        </button>
-      </div>
-      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
-        <div className="flex-1 h-px bg-drug-border" />
-        <span className="text-xs text-drug-muted">or</span>
-        <div className="flex-1 h-px bg-drug-border" />
-      </div>
-      <button
-        onClick={handlePasteButton}
-        disabled={pasteState === 'uploading'}
-        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
-      >
-        {pasteState === 'uploading' ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-        ) : (
-          <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
-        )}
-      </button>
-      <div className="flex items-center gap-3 my-4 max-w-xs mx-auto">
-        <div className="flex-1 h-px bg-drug-border" />
-        <span className="text-xs text-drug-muted">or</span>
-        <div className="flex-1 h-px bg-drug-border" />
-      </div>
-      <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
-        {uploadState === 'uploading' ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-        ) : (
-          <><Upload className="w-4 h-4" /> Upload Photo</>
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handlePhotoSelected}
-          disabled={uploadState === 'uploading'}
-          className="hidden"
-        />
-      </label>
+      {addPhotoControls}
       {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
     </div>
   );
