@@ -16,7 +16,7 @@ import {
 import seedDrugs from '../data/seedDrugs.json';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
-import { generateDrugOnce, saveParsedDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
+import { generateDrugOnce, saveParsedDrug, forceRegenerateDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
 import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import { useAiInsight } from '../context/AiInsightContext';
@@ -271,6 +271,15 @@ export default function AdminPage() {
   const [bulkFixRunning,   setBulkFixRunning]    = useState(false);
   const [bulkFixProgress,  setBulkFixProgress]   = useState({ done: 0, total: 0 });
   const bulkFixAbortRef = useRef(false);
+
+  // Force-regenerate-all: separate state from bulkFix above since it's a
+  // distinct, more destructive action (full overwrite vs gap-fill-only)
+  // that needs its own confirmation step and can't be casually triggered
+  // by the same button as the ordinary "fix incomplete" flow.
+  const [forceRegenRunning,  setForceRegenRunning]  = useState(false);
+  const [forceRegenProgress, setForceRegenProgress] = useState({ done: 0, total: 0 });
+  const [confirmForceRegen,  setConfirmForceRegen]  = useState(false);
+  const forceRegenAbortRef = useRef(false);
   const [showFilters,      setShowFilters]      = useState(false);
   const [selectedIds,      setSelectedIds]      = useState(new Set());
   const [editingDrug,      setEditingDrug]      = useState(null);
@@ -862,6 +871,57 @@ export default function AdminPage() {
 
   function stopBulkFix() { bulkFixAbortRef.current = true; }
 
+  // ── Force-regenerate ALL drugs — full overwrite, not gap-fill ─────────────
+  // Unlike bulkFixWithAI above (which only touches drugs missing sections,
+  // and even then only patches the empty ones), this rewrites every
+  // AI-parsed field on every drug in `list`, including fields that already
+  // had content — the only way to get the new openFDA/RxNorm + Gemini
+  // always-search grounding into drugs that already look "complete" with
+  // pre-update content. Always runs on Gemini (see GEMINI_ENDPOINT in
+  // aiDrugSave.js) regardless of the admin's selected default provider.
+  async function forceRegenerateAll(list) {
+    if (forceRegenRunning || bulkFixRunning || globalFixRunning || list.length === 0) return;
+    forceRegenAbortRef.current = false;
+    setForceRegenRunning(true);
+    setForceRegenProgress({ done: 0, total: list.length });
+
+    let done = 0, succeeded = 0, notFound = 0, failed = 0;
+
+    await parallelMap(list, async (drug) => {
+      if (forceRegenAbortRef.current) return;
+      setFixingIds(prev => new Set(prev).add(drug.firestoreId));
+      try {
+        const result = await forceRegenerateDrug({ genericName: drug.generic_name, drugClass: drug.drug_class });
+        if (result.status === 'regenerated') {
+          succeeded++;
+          // Re-read isn't strictly needed for a UI refresh here since the
+          // parsed content isn't returned by forceRegenerateDrug (it writes
+          // straight to Firestore) — a full drugs reload after the run
+          // picks up every change at once instead of merging piecemeal.
+        } else if (result.status === 'not_found') {
+          notFound++;
+        }
+      } catch (e) {
+        failed++;
+      } finally {
+        setFixingIds(prev => { const n = new Set(prev); n.delete(drug.firestoreId); return n; });
+        done++;
+        setForceRegenProgress({ done, total: list.length });
+      }
+    });
+
+    setForceRegenRunning(false);
+    await loadDrugs();
+    showToast(
+      forceRegenAbortRef.current
+        ? `Stopped — ${succeeded} regenerated before stopping.`
+        : `Force regenerate done — ${succeeded} regenerated${notFound ? `, ${notFound} not recognized by AI` : ''}${failed ? `, ${failed} failed` : ''}.`,
+      failed ? 'error' : 'success'
+    );
+  }
+
+  function stopForceRegen() { forceRegenAbortRef.current = true; }
+
   async function confirmSingleDelete() {
     try {
       await deleteDoc(doc(db, 'drugs', deleteTarget));
@@ -929,6 +989,28 @@ export default function AdminPage() {
             <div style={{display:'flex',gap:10}}>
               <button onClick={confirmDelete==='bulk'?confirmBulkDelete:confirmSingleDelete} style={{flex:1,padding:'11px',background:'#DC2626',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Yes, Delete</button>
               <button onClick={()=>{setConfirmDelete(null);setDeleteTarget(null);}} style={{flex:1,padding:'11px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Force Regenerate ALL Modal */}
+      {confirmForceRegen && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div style={{background:'#fff',borderRadius:16,padding:'28px 24px',maxWidth:460,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
+            <div style={{width:48,height:48,background:'#FEF2F2',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+              <AlertTriangle className="w-5 h-5 text-red-600"/>
+            </div>
+            <h3 style={{fontSize:18,fontWeight:800,marginBottom:8}}>Force-regenerate all {drugs.length} drugs?</h3>
+            <p style={{color:'#64748B',fontSize:14,marginBottom:12}}>
+              This rewrites <strong>every</strong> AI-generated field on <strong>every drug</strong> using Gemini's new grounded lookup (openFDA + RxNorm + always-on Google Search) — including fields that already have content, and including any manual edits or admin-verified content. Nothing is skipped.
+            </p>
+            <p style={{color:'#B45309',fontSize:13,marginBottom:24,background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:8,padding:'10px 12px'}}>
+              This cannot be undone. It runs one Gemini call per drug and may take a while for a large database — you can stop it partway and re-run later to pick up where you left off.
+            </p>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>{setConfirmForceRegen(false); forceRegenerateAll(drugs);}} style={{flex:1,padding:'11px',background:'#DC2626',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Yes, Overwrite All</button>
+              <button onClick={()=>setConfirmForceRegen(false)} style={{flex:1,padding:'11px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancel</button>
             </div>
           </div>
         </div>
@@ -1166,10 +1248,28 @@ export default function AdminPage() {
                   <button onClick={stopBulkFix} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
                 </div>
               )}
+              {!forceRegenRunning && !bulkFixRunning && !globalFixRunning && drugs.length>0 && (
+                <button onClick={()=>setConfirmForceRegen(true)} title="Overwrite every field on every drug with a fresh Gemini lookup (openFDA + RxNorm + always-on search) — including fields that already have content"
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  <RefreshCw className="w-4 h-4"/>Force Regenerate All {drugs.length}
+                </button>
+              )}
+              {forceRegenRunning && (
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+                  <RefreshCw className="w-4 h-4 animate-spin"/>
+                  Regenerating {forceRegenProgress.done} of {forceRegenProgress.total}…
+                  <button onClick={stopForceRegen} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
+                </div>
+              )}
             </div>
             {bulkFixRunning && (
               <div style={{height:6,background:'#FEF3C7',borderRadius:999,overflow:'hidden'}}>
                 <div style={{height:'100%',width:`${bulkFixProgress.total?Math.round((bulkFixProgress.done/bulkFixProgress.total)*100):0}%`,background:'#F59E0B',transition:'width 0.2s'}}/>
+              </div>
+            )}
+            {forceRegenRunning && (
+              <div style={{height:6,background:'#FEE2E2',borderRadius:999,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${forceRegenProgress.total?Math.round((forceRegenProgress.done/forceRegenProgress.total)*100):0}%`,background:'#DC2626',transition:'width 0.2s'}}/>
               </div>
             )}
             {showFilters&&(

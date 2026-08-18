@@ -618,7 +618,62 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
   return { status: 'saved', id: docId, patched: Object.keys(patch) };
 }
 
-// ── Ensure a drug has all fields required to be safely flagged ────────────
+// ── Force-regenerate: full overwrite, no gap-filling ───────────────────────
+// Unlike saveParsedDrug (surgical patch — never touches a field that's
+// already populated) this REPLACES every AI-parsed field on the drug with
+// a fresh answer, regardless of what was there before, including fields a
+// contributor or admin previously edited by hand. This exists specifically
+// to push the new external-grounding update (openFDA/RxNorm + Gemini
+// always-search — see api/drug-ai-details.js) into drugs that already look
+// "complete" and so would never be touched by the incomplete-only bulk fix.
+//
+// Always calls the Gemini endpoint regardless of whichever provider is
+// selected in Admin Settings for other AI Insight features, since Gemini
+// is currently the only provider with BOTH grounding mechanisms (its own
+// Google Search tool + the openFDA/RxNorm pre-fetch) active on every
+// lookup. If that changes, update GEMINI_ENDPOINT below rather than
+// silently picking up whatever the admin has selected elsewhere.
+const GEMINI_ENDPOINT = '/api/drug-ai-details';
+
+export async function forceRegenerateDrug({ genericName, drugClass }) {
+  const contributor = await getContributorInfo();
+  const docId = slugifyDrugName(genericName);
+  const ref   = doc(db, 'drugs', docId);
+
+  const text = await fetchAiDrugText({ genericName, drugClass, endpoint: GEMINI_ENDPOINT });
+  const parsed = parseAiDrugDetail(text);
+
+  if (isDrugNotFoundText(text)) {
+    return { status: 'not_found', id: docId };
+  }
+
+  const snap = await getDoc(ref);
+  const existing = snap.exists() ? snap.data() : null;
+
+  // Full overwrite of every AI-parsed field — no "already filled, skip it"
+  // check, unlike saveParsedDrug's patch. Firestore-only bookkeeping fields
+  // (created_at, generic_name, drug_class fallback) are preserved from the
+  // existing doc where sensible rather than reset.
+  await setDoc(ref, {
+    generic_name:        genericName,
+    drug_class:          drugClass || parsed.drug_class || existing?.drug_class || 'Unknown',
+    prescription_status: parsed.prescription_status || existing?.prescription_status || 'Prescription',
+    source:              existing?.source || 'AI Generated',
+    status:              existing?.status || 'Active',
+    created_at:          existing?.created_at || serverTimestamp(),
+    ...parsed,
+    last_updated:        serverTimestamp(),
+    ...buildReviewMeta(contributor, 'update'),
+  }, { merge: false });
+
+  if (parsed.indications || parsed.primary_indications) {
+    await autoTagDrugConditions(docId, { ...parsed, generic_name: genericName });
+  }
+
+  return { status: 'regenerated', id: docId };
+}
+
+
 // Used anywhere a drug is about to be used for a safety judgement (e.g. the
 // Drug Compatibility Checker) rather than just displayed. A drug's own
 // record can be thin — imported from an old CSV, saved mid-Class-Sweep
