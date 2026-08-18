@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Pill, AlertTriangle, Heart, Baby, Clock,
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
-  Sparkles, RefreshCw, Save, ImageIcon, Link as LinkIcon, Volume2, Share2, Loader2,
+  Sparkles, RefreshCw, Save, ImageIcon, Volume2, Share2, Loader2,
   Upload, ClipboardPaste, Tag, ChevronRight, Trash2, ImagePlus,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
@@ -621,7 +621,6 @@ function DrugImageCard({ drug }) {
   const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
   const [deleteState, setDeleteState] = useState('idle'); // idle | deleting | error
-  const [activeIndexForDelete, setActiveIndexForDelete] = useState(0);
 
   const handleFindReal = async () => {
     setFindState('searching');
