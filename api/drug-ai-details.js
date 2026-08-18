@@ -14,6 +14,7 @@ export const config = { runtime: 'edge', regions: ['iad1'] };
 
 import { resolveModel } from './_lib/resolveModel.js';
 import { withCors } from './_lib/cors.js';
+import { fetchExternalDrugContext } from './_lib/externalDrugSources.js';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const ALLOWED_MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro']);
@@ -520,17 +521,37 @@ Keep every section scannable but do not sacrifice clinical completeness or real 
       });
     }
 
+    // Best-effort, in addition to (not instead of) Google Search grounding
+    // below. A slow/failed external lookup never blocks the AI call.
+    const externalContext = await fetchExternalDrugContext(genericName);
+
     const notInDatabaseNote = notInDatabase
-      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. "${genericName}" may be entered as a generic name OR a brand/trade name (including branded combination packs, e.g. "Prevpac" = lansoprazole + amoxicillin + clarithromycin triple therapy for H. pylori). Use Google Search to look this up before concluding anything — check international and Nigerian brand/trade name references, manufacturer product pages, and pharmacy/drug-index listings, since many brand names (including regionally-marketed ones) will not be in your training data. If it is a recognized brand name or combination pack, silently resolve it to its actual generic ingredient(s) and proceed with the full breakdown AS THAT COMBINATION — state the resolved generic name(s) in the Overview so the nurse knows what was matched. Only say the medication is not real/recognized (at the very top of your response, instead of inventing information) if, after searching, you are still genuinely not confident it corresponds to any real generic drug, brand name, or combination product — do not decline just because the input looks like a brand name or an unfamiliar spelling.\n`
+      ? `\nThis medication has not yet been uploaded to the app's verified drug database — this is a live, on-demand lookup. "${genericName}" may be entered as a generic name OR a brand/trade name (including branded combination packs, e.g. "Prevpac" = lansoprazole + amoxicillin + clarithromycin triple therapy for H. pylori). Check international and Nigerian brand/trade name references, manufacturer product pages, and pharmacy/drug-index listings, since many brand names (including regionally-marketed ones) will not be in your training data. If it is a recognized brand name or combination pack, silently resolve it to its actual generic ingredient(s) and proceed with the full breakdown AS THAT COMBINATION — state the resolved generic name(s) in the Overview so the nurse knows what was matched. Only say the medication is not real/recognized (at the very top of your response, instead of inventing information) if, after searching, you are still genuinely not confident it corresponds to any real generic drug, brand name, or combination product — do not decline just because the input looks like a brand name or an unfamiliar spelling.\n`
+      : '';
+
+    // Always search, on every lookup — not just when the drug is unfamiliar
+    // or missing from the database. Left to its own judgment, the model
+    // tends to skip searching for drugs it's "confident" about, which is
+    // exactly where a stale or misremembered fact is most likely to slip
+    // through uncaught. This makes the search step unconditional.
+    const alwaysSearchNote = `\nBefore writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources — do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n`;
+
+    // Live grounding pre-fetched from openFDA/RxNorm just before this
+    // prompt was built (see api/_lib/externalDrugSources.js) — the same
+    // structured, fixed-source lookup used for the other four providers
+    // (Claude/OpenAI/DeepSeek/Kimi), given here in addition to Gemini's
+    // own open-ended Google Search grounding above, not instead of it.
+    const externalNote = externalContext
+      ? `\nVerified external reference data, fetched live from openFDA and RxNorm for this exact drug — prioritize this over your own training-data recall wherever the two conflict. Do not quote it verbatim; synthesize it into the sections below in your own words, and use it to sanity-check indications, contraindications, dosing, and interactions:\n${externalContext}\n`
       : '';
 
     prompt = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.
-${notInDatabaseNote}
+${alwaysSearchNote}${notInDatabaseNote}
 Drug: ${genericName}
 ${brandNames ? `Known brand names: ${brandNames}` : ''}
 ${drugClass ? `Drug class: ${drugClass}` : ''}
 ${knownData ? `\nExisting reference data already shown to the nurse (do not simply repeat this — add depth, nuance, and anything missing):\n${knownData}` : ''}
-
+${externalNote}
 Structure your response with these sections, using clear markdown headers (##):
 - Overview (concise summary of what the drug is and its place in therapy)
 - Pronunciation (simple phonetic spelling, syllables separated by hyphens with the stressed syllable in CAPITALS — e.g. "am-ox-i-SIL-in" — no IPA symbols)
@@ -582,10 +603,13 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : (mode === 'strength' || mode === 'pronunciation' || mode === 'brands') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
-            // Google Search grounding — lets the model look up brand/trade
-            // names (especially Nigerian-market ones) that aren't in its
-            // training data instead of guessing or declaring "not found".
-            // Supported on gemini-2.5-flash / flash-lite / pro.
+            // Google Search grounding — the tool is attached for every mode
+            // below (drug-detail lookups explicitly instruct the model to
+            // always search before concluding, not just for unfamiliar
+            // brand names — see alwaysSearchNote above), so the model can
+            // verify against current sources rather than only reaching for
+            // it when the drug is unfamiliar. Supported on gemini-2.5-flash
+            // / flash-lite / pro.
             // Skipped for classify_condition: it's just picking from a fixed,
             // already-known list of system ids, never needs a web lookup —
             // and grounded responses tend to add search-planning/citation
