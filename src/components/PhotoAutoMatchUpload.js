@@ -145,20 +145,22 @@ export default function PhotoAutoMatchUpload() {
     multiple: true,
   });
 
-  function handleManualPick(rowId, drugName) {
-    const typed = drugName.trim().toLowerCase();
-    const found = drugList.find(d => d.displayName.toLowerCase() === typed || d.name.toLowerCase() === typed);
-    if (found) {
-      setRow(rowId, {
-        matchedId: found.id,
-        matchedName: found.displayName,
-        manualQuery: found.displayName,
-        status: 'matched',
-        include: true,
-      });
-    } else {
-      setRow(rowId, { manualQuery: drugName, matchedId: null, status: 'review', include: false });
-    }
+  // De-duplicated candidate names (generic + brand) for the live search box.
+  const uniqueCandidates = [...new Map(drugList.map(d => [d.displayName, d])).values()];
+
+  function handleQueryChange(rowId, text) {
+    setRow(rowId, { manualQuery: text, matchedId: null, status: 'review', include: false });
+  }
+
+  function handlePickSuggestion(rowId, drug) {
+    setRow(rowId, {
+      matchedId: drug.id,
+      matchedName: drug.displayName,
+      manualQuery: drug.displayName,
+      status: 'matched',
+      include: true,
+      showSuggestions: false,
+    });
   }
 
   async function handleUpload() {
@@ -279,57 +281,78 @@ export default function PhotoAutoMatchUpload() {
           )}
 
           <div className="space-y-2 max-h-[32rem] overflow-y-auto mb-4">
-            {rows.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 p-3 bg-white border border-drug-border rounded-xl">
-                <img src={r.previewUrl} alt="" className="w-14 h-14 object-cover rounded-lg flex-shrink-0 bg-gray-100" />
+            {rows.map((r) => {
+              const query = (r.manualQuery || '').trim().toLowerCase();
+              const suggestions = query.length < 2 ? [] : uniqueCandidates
+                .filter(d => d.displayName.toLowerCase().includes(query))
+                .slice(0, 6);
 
-                <div className="flex-1 min-w-0">
-                  {r.status === 'processing' && (
-                    <span className="text-sm text-drug-muted inline-flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading…
-                    </span>
-                  )}
+              return (
+                <div key={r.id} className="flex items-start gap-3 p-3 bg-white border border-drug-border rounded-xl">
+                  <img src={r.previewUrl} alt="" className="w-14 h-14 object-cover rounded-lg flex-shrink-0 bg-gray-100" />
 
-                  {r.status !== 'processing' && (
-                    <>
-                      <div className="text-xs text-drug-muted mb-1 truncate">
-                        Photo read: <span className="font-medium">{r.ocrName || '(no name detected)'}</span>
-                      </div>
+                  <div className="flex-1 min-w-0 relative">
+                    {r.status === 'processing' && (
+                      <span className="text-sm text-drug-muted inline-flex items-center gap-1.5 py-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading…
+                      </span>
+                    )}
+
+                    {r.status !== 'processing' && (
+                      <>
+                        <div className="text-xs text-drug-muted mb-1 truncate">
+                          Photo read: <span className="font-medium">{r.ocrName || '(no name detected)'}</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={r.manualQuery}
+                          onChange={(e) => handleQueryChange(r.id, e.target.value)}
+                          onFocus={() => setRow(r.id, { showSuggestions: true })}
+                          onBlur={() => setTimeout(() => setRow(r.id, { showSuggestions: false }), 150)}
+                          placeholder="Type the drug's real name to find it…"
+                          className="w-full text-sm px-2.5 py-1.5 border border-drug-border rounded-lg"
+                        />
+                        {r.showSuggestions && suggestions.length > 0 && (
+                          <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-drug-border rounded-lg shadow-lg overflow-hidden">
+                            {suggestions.map(d => (
+                              <button
+                                key={`${d.id}-${d.displayName}`}
+                                type="button"
+                                onMouseDown={() => handlePickSuggestion(r.id, d)}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50 border-b border-drug-border last:border-b-0"
+                              >
+                                {d.displayName}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {r.showSuggestions && query.length >= 2 && suggestions.length === 0 && (
+                          <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-drug-border rounded-lg shadow-lg px-3 py-2 text-xs text-drug-muted">
+                            No drug in the database matches that yet.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex-shrink-0 flex items-center gap-2 pt-1">
+                    {r.status === 'matched' && <CheckCircle className="w-5 h-5 text-green-600" />}
+                    {r.status === 'review' && <AlertTriangle className="w-5 h-5 text-amber-600" />}
+                    {(r.status === 'no_match' || r.status === 'error') && <XCircle className="w-5 h-5 text-red-600" />}
+                    {r.status !== 'processing' && (
                       <input
-                        type="text"
-                        list="drug-name-options"
-                        value={r.manualQuery}
-                        onChange={(e) => handleManualPick(r.id, e.target.value)}
-                        placeholder="Type drug name to match…"
-                        className="w-full text-sm px-2.5 py-1.5 border border-drug-border rounded-lg"
+                        type="checkbox"
+                        checked={r.include && !!r.matchedId}
+                        disabled={!r.matchedId}
+                        onChange={(e) => setRow(r.id, { include: e.target.checked })}
+                        title={r.matchedId ? 'Include in upload' : 'Pick a matching drug first'}
                       />
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
-
-                <div className="flex-shrink-0 flex items-center gap-2">
-                  {r.status === 'matched' && <CheckCircle className="w-5 h-5 text-green-600" />}
-                  {r.status === 'review' && <AlertTriangle className="w-5 h-5 text-amber-600" />}
-                  {(r.status === 'no_match' || r.status === 'error') && <XCircle className="w-5 h-5 text-red-600" />}
-                  {r.status !== 'processing' && (
-                    <input
-                      type="checkbox"
-                      checked={r.include && !!r.matchedId}
-                      disabled={!r.matchedId}
-                      onChange={(e) => setRow(r.id, { include: e.target.checked })}
-                      title={r.matchedId ? 'Include in upload' : 'Pick a matching drug first'}
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-
-          <datalist id="drug-name-options">
-            {[...new Map(drugList.map(d => [d.displayName, d])).values()].map(d => (
-              <option key={`${d.id}-${d.displayName}`} value={d.displayName} />
-            ))}
-          </datalist>
 
           {phase === 'review' && (
             <div className="flex gap-3">
