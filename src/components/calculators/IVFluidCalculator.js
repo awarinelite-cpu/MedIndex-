@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Droplet, Clock, Baby, RotateCcw } from 'lucide-react';
+import { Droplet, Clock, Baby, RotateCcw, FlaskConical } from 'lucide-react';
 
 const toNum = (v) => {
   const n = parseFloat(v);
@@ -14,11 +14,11 @@ const DROP_FACTORS = [
 ];
 
 export default function IVFluidCalculator() {
-  const [subTab, setSubTab] = useState('drip'); // drip | maintenance
+  const [subTab, setSubTab] = useState('drip'); // drip | maintenance | kcl
 
   return (
     <div>
-      <div className="flex rounded-lg border border-drug-border overflow-hidden mb-6 max-w-md">
+      <div className="flex rounded-lg border border-drug-border overflow-hidden mb-6 max-w-xl">
         <button
           onClick={() => setSubTab('drip')}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-colors ${
@@ -35,9 +35,131 @@ export default function IVFluidCalculator() {
         >
           <Baby className="w-4 h-4" /> Maintenance Fluids
         </button>
+        <button
+          onClick={() => setSubTab('kcl')}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-colors ${
+            subTab === 'kcl' ? 'bg-primary-600 text-white' : 'bg-white text-drug-muted hover:bg-gray-50'
+          }`}
+        >
+          <FlaskConical className="w-4 h-4" /> KCl / IV Additive
+        </button>
       </div>
 
-      {subTab === 'drip' ? <DripRateCalculator /> : <MaintenanceFluidCalculator />}
+      {subTab === 'drip' && <DripRateCalculator />}
+      {subTab === 'maintenance' && <MaintenanceFluidCalculator />}
+      {subTab === 'kcl' && <KClVolumeCalculator />}
+    </div>
+  );
+}
+
+// ── KCl / Electrolyte Additive Volume Calculator ─────────────────────────
+const KCL_CONCENTRATIONS = [
+  { value: 2, label: '2 mmol/mL (15% KCl, standard liquid — 20 mmol in 10 mL)' },
+  { value: 1.34, label: '1.34 mmol/mL (10% liquid KCl)' },
+  { value: 0.2, label: '0.2 mmol/mL (15 mmol in 75 mL)' },
+  { value: 'custom', label: 'Custom concentration...' },
+];
+
+function KClVolumeCalculator() {
+  const [dose, setDose] = useState('');
+  const [doseUnit, setDoseUnit] = useState('mmol'); // K+ is 1:1, mmol = mEq
+  const [conc, setConc] = useState(2);
+  const [customConc, setCustomConc] = useState('');
+
+  const concVal = conc === 'custom' ? toNum(customConc) : conc;
+
+  const result = useMemo(() => {
+    const d = toNum(dose);
+    if (d === null || d <= 0 || !concVal || concVal <= 0) return null;
+    return d / concVal;
+  }, [dose, concVal]);
+
+  const reset = () => { setDose(''); setConc(2); setCustomConc(''); };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="bg-white border border-drug-border rounded-xl p-5 space-y-5">
+        <div>
+          <label className="block text-sm font-semibold text-drug-text mb-1.5">Prescribed Dose</label>
+          <div className="flex gap-2">
+            <input
+              type="number" inputMode="decimal" min="0"
+              value={dose} onChange={e => setDose(e.target.value)}
+              placeholder="e.g. 20"
+              className="flex-1 px-3 py-2.5 border border-drug-border rounded-lg focus:outline-none
+                         focus:ring-2 focus:ring-primary-300 focus:border-primary-400"
+            />
+            <select
+              value={doseUnit}
+              onChange={e => setDoseUnit(e.target.value)}
+              className="px-3 py-2.5 border border-drug-border rounded-lg bg-white focus:outline-none
+                         focus:ring-2 focus:ring-primary-300 focus:border-primary-400"
+            >
+              <option value="mmol">mmol</option>
+              <option value="mEq">mEq</option>
+            </select>
+          </div>
+          <p className="text-xs text-drug-muted mt-1.5">
+            Potassium is monovalent, so 1 mmol K⁺ = 1 mEq K⁺.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-drug-text mb-1.5">Solution Concentration</label>
+          <select
+            value={conc}
+            onChange={e => setConc(e.target.value === 'custom' ? 'custom' : Number(e.target.value))}
+            className="w-full px-3 py-2.5 border border-drug-border rounded-lg bg-white focus:outline-none
+                       focus:ring-2 focus:ring-primary-300 focus:border-primary-400"
+          >
+            {KCL_CONCENTRATIONS.map(c => (
+              <option key={c.label} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {conc === 'custom' && (
+          <div>
+            <label className="block text-sm font-semibold text-drug-text mb-1.5">Custom Concentration (mmol/mL)</label>
+            <input
+              type="number" inputMode="decimal" min="0" step="0.01"
+              value={customConc} onChange={e => setCustomConc(e.target.value)}
+              placeholder="e.g. 1.5"
+              className="w-full px-3 py-2.5 border border-drug-border rounded-lg focus:outline-none
+                         focus:ring-2 focus:ring-primary-300 focus:border-primary-400"
+            />
+          </div>
+        )}
+
+        <button
+          onClick={reset}
+          className="flex items-center gap-1.5 text-sm font-semibold text-drug-muted hover:text-drug-text transition-colors"
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> Reset
+        </button>
+      </div>
+
+      <div className="bg-primary-900 text-white rounded-xl p-5 h-fit lg:sticky lg:top-20">
+        <div className="flex items-center gap-2 mb-4">
+          <FlaskConical className="w-5 h-5 text-primary-300" />
+          <h3 className="font-bold text-lg">Result</h3>
+        </div>
+
+        {!result ? (
+          <p className="text-primary-200 text-sm">Enter a dose and concentration to calculate the volume to draw up.</p>
+        ) : (
+          <div className="space-y-4">
+            <ResultRow label="Volume to draw up" value={fmt(result)} unit="mL" highlight />
+            <ResultRow label="Prescribed dose" value={dose} unit={`${doseUnit} = ${dose} ${doseUnit === 'mmol' ? 'mEq' : 'mmol'}`} />
+          </div>
+        )}
+
+        <p className="text-[11px] text-primary-300 mt-5 leading-relaxed">
+          Always confirm the exact mmol/mL or mEq/mL strength printed on the vial or ampoule label,
+          since KCl formulations vary by manufacturer and region. Never administer KCl undiluted or
+          by IV push.
+        </p>
+      </div>
     </div>
   );
 }
