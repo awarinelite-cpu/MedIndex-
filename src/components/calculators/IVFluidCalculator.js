@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Droplet, Clock, Baby, RotateCcw, FlaskConical } from 'lucide-react';
+import { Droplet, Clock, Baby, RotateCcw, FlaskConical, ChevronLeft } from 'lucide-react';
 
 const toNum = (v) => {
   const n = parseFloat(v);
@@ -13,36 +13,58 @@ const DROP_FACTORS = [
   { value: 60, label: '60 gtt/mL (micro / pediatric)' },
 ];
 
+const IV_MODES = [
+  { key: 'drip', label: 'Drip Rate', hint: 'mL/hr and gtt/min from volume and time', icon: Clock, color: 'bg-blue-50 text-blue-600' },
+  { key: 'maintenance', label: 'Maintenance Fluids', hint: 'Holliday-Segar 4-2-1 rule by weight', icon: Baby, color: 'bg-emerald-50 text-emerald-600' },
+  { key: 'kcl', label: 'KCl / IV Additive', hint: 'Volume to draw up from a dose', icon: FlaskConical, color: 'bg-purple-50 text-purple-600' },
+];
+
 export default function IVFluidCalculator() {
-  const [subTab, setSubTab] = useState('drip'); // drip | maintenance | kcl
+  const [subTab, setSubTab] = useState(null); // drip | maintenance | kcl
+
+  if (!subTab) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {IV_MODES.map(m => (
+          <button
+            key={m.key}
+            onClick={() => setSubTab(m.key)}
+            className="flex flex-col items-start gap-3 text-left bg-white border border-drug-border rounded-xl
+                       p-4 shadow-sm hover:shadow-md hover:border-primary-300 transition-all active:scale-[0.98]"
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.color}`}>
+              <m.icon className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-drug-text text-sm">{m.label}</div>
+              <div className="text-xs text-drug-muted mt-0.5">{m.hint}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  const mode = IV_MODES.find(m => m.key === subTab);
 
   return (
     <div>
-      <div className="flex rounded-lg border border-drug-border overflow-hidden mb-6 max-w-xl">
-        <button
-          onClick={() => setSubTab('drip')}
-          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-colors ${
-            subTab === 'drip' ? 'bg-primary-600 text-white' : 'bg-white text-drug-muted hover:bg-gray-50'
-          }`}
-        >
-          <Clock className="w-4 h-4" /> Drip Rate
-        </button>
-        <button
-          onClick={() => setSubTab('maintenance')}
-          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-colors ${
-            subTab === 'maintenance' ? 'bg-primary-600 text-white' : 'bg-white text-drug-muted hover:bg-gray-50'
-          }`}
-        >
-          <Baby className="w-4 h-4" /> Maintenance Fluids
-        </button>
-        <button
-          onClick={() => setSubTab('kcl')}
-          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold transition-colors ${
-            subTab === 'kcl' ? 'bg-primary-600 text-white' : 'bg-white text-drug-muted hover:bg-gray-50'
-          }`}
-        >
-          <FlaskConical className="w-4 h-4" /> KCl / IV Additive
-        </button>
+      <button
+        onClick={() => setSubTab(null)}
+        className="flex items-center gap-1.5 text-sm font-bold text-primary-600 hover:text-primary-700
+                   mb-5 px-3 py-2 -ml-3 rounded-lg hover:bg-primary-50 transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" /> IV Fluids
+      </button>
+
+      <div className="flex items-center gap-3 mb-5">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${mode.color}`}>
+          <mode.icon className="w-5 h-5" />
+        </div>
+        <div>
+          <div className="font-bold text-drug-text text-base">{mode.label}</div>
+          <div className="text-xs text-drug-muted">{mode.hint}</div>
+        </div>
       </div>
 
       {subTab === 'drip' && <DripRateCalculator />}
