@@ -1558,6 +1558,10 @@ export default function DrugDetailPage() {
   const drug = useMemo(() => (baseDrug ? { ...baseDrug, ...aiPatch } : null), [baseDrug, aiPatch]);
   const [activeTab, setActiveTab] = useState('overview');
 
+  // ── Swipe between tabs (left = next tab, right = previous tab) ──────────
+  const swipeStartRef = useRef({ x: 0, y: 0 });
+  const swipeDeltaRef = useRef({ x: 0, y: 0 });
+
   const handleSectionFilled = (updates) => {
     setAiPatch(p => ({ ...p, ...updates }));
     invalidateCache(); // next full load pulls the saved fields from Firestore
@@ -1589,10 +1593,6 @@ export default function DrugDetailPage() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   };
-
-  // ── Swipe between tabs (left = next tab, right = previous tab) ──────────
-  const swipeStartRef = useRef({ x: 0, y: 0 });
-  const swipeDeltaRef = useRef({ x: 0, y: 0 });
 
   const handleTabTouchStart = (e) => {
     const t = e.touches[0];
