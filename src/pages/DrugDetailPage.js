@@ -1590,6 +1590,40 @@ export default function DrugDetailPage() {
     }, 50);
   };
 
+  // ── Swipe between tabs (left = next tab, right = previous tab) ──────────
+  const swipeStartRef = useRef({ x: 0, y: 0 });
+  const swipeDeltaRef = useRef({ x: 0, y: 0 });
+
+  const handleTabTouchStart = (e) => {
+    const t = e.touches[0];
+    swipeStartRef.current = { x: t.clientX, y: t.clientY };
+    swipeDeltaRef.current = { x: 0, y: 0 };
+  };
+
+  const handleTabTouchMove = (e) => {
+    const t = e.touches[0];
+    swipeDeltaRef.current = {
+      x: t.clientX - swipeStartRef.current.x,
+      y: t.clientY - swipeStartRef.current.y,
+    };
+  };
+
+  const handleTabTouchEnd = () => {
+    const { x, y } = swipeDeltaRef.current;
+    const SWIPE_THRESHOLD = 60; // min horizontal distance in px
+    // Only fire if the gesture is clearly more horizontal than vertical,
+    // so normal up/down scrolling never gets hijacked.
+    if (Math.abs(x) > SWIPE_THRESHOLD && Math.abs(x) > Math.abs(y) * 1.5) {
+      const currentIndex = TABS.findIndex(t => t.id === activeTab);
+      if (x < 0 && currentIndex < TABS.length - 1) {
+        goToTab(TABS[currentIndex + 1].id); // swiped left → next tab
+      } else if (x > 0 && currentIndex > 0) {
+        goToTab(TABS[currentIndex - 1].id); // swiped right → previous tab
+      }
+    }
+    swipeDeltaRef.current = { x: 0, y: 0 };
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Back link */}
@@ -1699,7 +1733,13 @@ export default function DrugDetailPage() {
       </div>
 
       {/* Tab Content */}
-      <div className="space-y-6" id="drug-tab-content">
+      <div
+        className="space-y-6"
+        id="drug-tab-content"
+        onTouchStart={handleTabTouchStart}
+        onTouchMove={handleTabTouchMove}
+        onTouchEnd={handleTabTouchEnd}
+      >
 
         {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
