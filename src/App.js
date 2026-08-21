@@ -19,6 +19,7 @@ import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminReviewPage from './pages/AdminReviewPage';
+import AdminAiInstructPage from './pages/AdminAiInstructPage';
 import AllClassesPage from './pages/AllClassesPage';
 import UploadPage from './pages/UploadPage';
 import BulkImageUploadPage from './pages/BulkImageUploadPage';
@@ -143,6 +144,11 @@ function App() {
         <Route path="/admin/review" element={
           <ProtectedAdminRoute>
             <AdminLayout><AdminReviewPage /></AdminLayout>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/ai-assistant" element={
+          <ProtectedAdminRoute>
+            <AdminLayout><AdminAiInstructPage /></AdminLayout>
           </ProtectedAdminRoute>
         } />
 

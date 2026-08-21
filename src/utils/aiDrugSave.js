@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
@@ -125,7 +125,63 @@ export async function saveTabAiInsight({ drugId, drug, fields }) {
   });
 }
 
-// Same deterministic-ID convention used by UploadPage.js's CSV import.
+// ── AI Assistant (admin "instruct the app" tool) ───────────────────────────
+// Calls /api/ai-admin-instruct to turn a plain-language instruction into
+// structured, proposed edits. Never writes to Firestore itself — the admin
+// reviews a before/after diff and applies each edit individually via
+// applyAiAdminEdit below.
+export async function fetchAiAdminInstruction({ instruction }) {
+  const user = await getAuthUser();
+  const token = await user.getIdToken();
+  const res = await fetch(apiUrl('/api/ai-admin-instruct'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ instruction }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed (${res.status})`);
+  }
+  return data; // { understood, clarification, edits: [...] }
+}
+
+// Applies one admin-approved edit to a drug doc, snapshotting the prior
+// value for rollback (same previous_version convention as the review
+// queue) and logging the change to ai_admin_edit_log for audit purposes —
+// this tool can touch any field on any drug, so every applied edit needs a
+// paper trail of who approved it, from what instruction, and what changed.
+export async function applyAiAdminEdit({ drugId, drug, instruction, field, previousValue, newValue }) {
+  const { email } = await getContributorInfo();
+
+  await updateDoc(doc(db, 'drugs', drugId), {
+    [field]: newValue,
+    last_updated: serverTimestamp(),
+    needs_review: false,
+    reviewed_by: email,
+    reviewed_at: serverTimestamp(),
+    previous_version: { ...(drug.previous_version || {}), [field]: previousValue ?? null },
+  });
+
+  try {
+    await setDoc(doc(collection(db, 'ai_admin_edit_log')), {
+      drugId,
+      drugName: drug.generic_name || drug.id,
+      instruction,
+      field,
+      previousValue: previousValue ?? null,
+      newValue,
+      appliedBy: email,
+      appliedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    // Audit log failure should never block the edit that already succeeded.
+    console.warn('[applyAiAdminEdit] audit log write failed:', e.message);
+  }
+
+  autoTagDrugConditions(drugId, { ...drug, [field]: newValue }).catch(() => {});
+}
+
+
 export function slugifyDrugName(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
 }
