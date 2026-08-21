@@ -150,10 +150,12 @@ No headers, no quotes, no explanation, no IPA symbols — just the hyphenated ph
 Drug (generic name): ${genericName}
 ${drugClass ? `Drug class: ${drugClass}` : ''}
 
-Reply with nothing but a comma-separated list of brand names, prioritizing brands available in Nigeria or widely known internationally — for example:
+Before answering, use Google Search to verify each brand name is a real, currently or formerly marketed product containing this exact generic drug — do not rely on memory alone, since training data can misattribute a brand to the wrong active ingredient or include a name that was never real. Only include a brand name once you can confirm from search results that it is genuinely this drug.
+
+Reply with nothing but a comma-separated list of verified brand names, prioritizing brands available in Nigeria or widely known internationally — for example:
 Panadol, Calpol, Tylenol
 
-No headers, no numbering, no explanation, no bullet points — just the comma-separated brand names. If you are not confident of any real brand name for this drug, reply with exactly: None known`;
+No headers, no numbering, no explanation, no bullet points — just the comma-separated brand names. If search does not turn up any brand name you can verify for this drug, reply with exactly: None known`;
   } else if (mode === 'condition') {
     const { conditionLabel, systemName } = body || {};
     if (!conditionLabel || typeof conditionLabel !== 'string') {
@@ -602,7 +604,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : (mode === 'strength' || mode === 'pronunciation' || mode === 'brands') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — the tool is attached for every mode
             // below (drug-detail lookups explicitly instruct the model to
             // always search before concluding, not just for unfamiliar
