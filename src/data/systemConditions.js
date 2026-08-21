@@ -4312,7 +4312,7 @@ function matchesConditionByKeyword(drug, cond, extraText = '') {
   // fields, which may never have been written with this specific,
   // less-common indication in mind.
   const text = [
-    drug.indications, drug.primary_indications, drug.overview,
+    drug.indications, drug.primary_indications, drug.off_label_use, drug.overview,
     drug.drug_class, drug.drug_subclass, drug.pharmacology, drug.mechanism,
     extraText,
   ].filter(Boolean).join(' ').toLowerCase();
