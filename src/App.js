@@ -31,6 +31,7 @@ import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
 import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
 import AiCreditsPage from './pages/AiCreditsPage';
+import AppLockGate from './components/AppLockGate';
 function App() {
   return (
     <ErrorBoundary>
@@ -38,6 +39,7 @@ function App() {
     <AuthProvider>
       <AiProviderProvider>
       <AiInsightProvider>
+      <AppLockGate>
       <Routes>
 {/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
@@ -156,6 +158,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
+      </AppLockGate>
       </AiInsightProvider>
       </AiProviderProvider>
     </AuthProvider>

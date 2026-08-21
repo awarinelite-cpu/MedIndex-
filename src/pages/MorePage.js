@@ -5,17 +5,18 @@
 // (search, nav links, admin portal, dark mode, AI provider, account), just
 // as its own page instead of an overlay.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins,
+  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins, Fingerprint,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
 import AiProviderDropdown from '../components/AiProviderDropdown';
+import { isBiometricAvailable, isBiometricEnrolled, enrollBiometric, disableBiometric } from '../utils/biometricAuth';
 
 const NAV_LINKS = [
   { to: '/',            label: 'Home',              icon: Home         },
@@ -35,6 +36,36 @@ export default function MorePage() {
   } = usePwaInstall();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
+
+  const [bioSupported, setBioSupported] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
+  const [bioError, setBioError] = useState('');
+
+  useEffect(() => { isBiometricAvailable().then(setBioSupported); }, []);
+  useEffect(() => { if (user) setBioEnrolled(isBiometricEnrolled(user.email)); }, [user]);
+
+  const toggleBiometric = async () => {
+    setBioError('');
+    if (bioEnrolled) {
+      disableBiometric(user.email);
+      setBioEnrolled(false);
+      return;
+    }
+    setBioBusy(true);
+    try {
+      await enrollBiometric({ email: user.email, displayName: user.displayName });
+      setBioEnrolled(true);
+    } catch (e) {
+      setBioError(
+        e.name === 'NotAllowedError'
+          ? 'Fingerprint setup was cancelled.'
+          : (e.message || 'Could not set up fingerprint unlock on this device.')
+      );
+    }
+    setBioBusy(false);
+  };
+
 
   const handleLogout = async () => {
     await logout();
@@ -118,6 +149,28 @@ export default function MorePage() {
           <div className="mb-5">
             <AiProviderDropdown placement="left" />
           </div>
+
+          {bioSupported && (
+            <>
+              <div className="flex items-center justify-between px-1 py-2">
+                <div className="flex items-center gap-2 text-drug-text text-sm">
+                  <Fingerprint className="w-4 h-4 flex-shrink-0" />
+                  Fingerprint Unlock
+                </div>
+                <button
+                  onClick={toggleBiometric}
+                  disabled={bioBusy}
+                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50 ${bioEnrolled ? 'bg-primary-600' : 'bg-drug-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${bioEnrolled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+              {bioError && <p className="text-xs text-red-600 px-1 mb-1">{bioError}</p>}
+              {bioEnrolled && !bioError && (
+                <p className="text-xs text-drug-muted px-1 mb-1">MedIndex will ask for your fingerprint each time you open the app on this device.</p>
+              )}
+            </>
+          )}
 
           <div className="flex items-center justify-between px-1 py-2">
             <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">
