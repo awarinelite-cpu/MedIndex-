@@ -573,6 +573,7 @@ function UnitsToVolumeConverter() {
 // ── Volume converter: mL / L / fl oz ──────────────────────────────────────
 const VOLUME_UNITS = [
   { key: 'ml',    label: 'mL',    factor: 1 },
+  { key: 'cc',    label: 'cc',    factor: 1 }, // 1 cc (cubic centimetre) = 1 mL exactly
   { key: 'l',     label: 'L',     factor: 1000 },
   { key: 'floz',  label: 'fl oz (US)', factor: 29.5735 },
 ];
@@ -654,7 +655,7 @@ function VolumeConverter() {
         icon={Droplets}
         empty="Enter a value to convert."
         rows={result !== null ? [{ label: `${value || 0} ${VOLUME_UNITS.find(u=>u.key===fromUnit)?.label} =`, value: fmt(result), unit: VOLUME_UNITS.find(u=>u.key===toUnit)?.label, highlight: true }] : []}
-        note="1 L = 1000 mL. 1 US fl oz ≈ 29.57 mL — useful for oral fluid charting when intake is recorded in ounces."
+        note="1 cc (cubic centimetre) = 1 mL exactly — the two units are used interchangeably in clinical practice (e.g. syringe sizes marked 'cc'). 1 L = 1000 mL. 1 US fl oz ≈ 29.57 mL — useful for oral fluid charting when intake is recorded in ounces."
       />
     </div>
   );
