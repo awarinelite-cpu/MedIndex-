@@ -1767,14 +1767,14 @@ export default function DrugDetailPage() {
                     linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
                   })
                 : <em className="text-drug-muted">No data available</em>}
-
-              {drug.off_label_use && (
-                <div className="mt-5 pt-5 border-t border-drug-border">
-                  <h3 className="text-sm font-bold text-drug-muted uppercase tracking-wide mb-2">Off-Label Therapeutic Use</h3>
-                  <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p>
-                </div>
-              )}
             </div>
+
+            {drug.off_label_use && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Off-Label Therapeutic Use</h2>
+                <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p>
+              </div>
+            )}
 
             {drug.therapeutic_note && (
               <div className="section-card p-6">
