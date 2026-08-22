@@ -113,6 +113,13 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: `${SYSTEM_PROMPT}\n\nAdmin instruction: "${instruction.trim()}"` }] }],
           generationConfig: { maxOutputTokens: 3000, temperature: 0.1, responseMimeType: 'application/json' },
+          // NOTE: Google Search grounding intentionally NOT added here
+          // (2026-08-22 review). Gemini's API does not support combining
+          // tools:[{google_search:{}}] with responseMimeType:'application/json' —
+          // this endpoint requires strict JSON for the edit-proposal UI, so
+          // adding grounding would break every admin instruction with a 400.
+          // If grounding is wanted here, this endpoint needs to drop JSON
+          // mode and parse the model's text response manually instead.
         }),
       }
     );

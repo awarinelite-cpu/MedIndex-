@@ -225,6 +225,9 @@ async function callProviderForText(provider, prompt, maxTokens) {
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: { maxOutputTokens: maxTokens },
+            // Google Search grounding, added 2026-08-22 at product-owner
+            // request so interaction checks verify against current sources.
+            tools: [{ google_search: {} }],
           }),
         }
       );

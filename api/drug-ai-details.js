@@ -604,24 +604,23 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 350 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
-            // Google Search grounding — the tool is attached for every mode
-            // below (drug-detail lookups explicitly instruct the model to
-            // always search before concluding, not just for unfamiliar
-            // brand names — see alwaysSearchNote above), so the model can
-            // verify against current sources rather than only reaching for
-            // it when the drug is unfamiliar. Supported on gemini-2.5-flash
-            // / flash-lite / pro.
-            // Skipped for classify_condition: it's just picking from a fixed,
-            // already-known list of system ids, never needs a web lookup —
-            // and grounded responses tend to add search-planning/citation
-            // preamble that eats into that mode's small token budget and can
-            // push the required "System:" line past the truncation point.
-            // Also skipped for clinical_plan: this mode reasons from the
-            // supplied note + MedIndex formulary, not from live web lookups,
-            // and grounding here risks pulling in ungoverned dosing info
-            // from arbitrary sites for a decision-support clinical output.
-            ...(mode !== 'classify_condition' && mode !== 'clinical_plan' ? { tools: [{ google_search: {} }] } : {}),
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            // Google Search grounding — attached for every mode, including
+            // classify_condition and clinical_plan as of 2026-08-22.
+            //
+            // NOTE on clinical_plan specifically: this mode powers both
+            // MedIndex's AI Drug Insight clinical plan AND the AI Clinical
+            // Consult page (/ai-consult), which reuses this exact engine.
+            // Grounding was deliberately OFF here previously: this mode
+            // reasons from the supplied note + MedIndex formulary, and
+            // grounding risks pulling in ungoverned dosing info from
+            // arbitrary web sources into a clinical decision-support
+            // output. Re-enabled at explicit product-owner request
+            // (2026-08-22) after this tradeoff was flagged. If you see
+            // clinical_plan output citing or reflecting non-formulary
+            // dosing sources, this is why — consider reverting for this
+            // mode specifically if that becomes a problem.
+            tools: [{ google_search: {} }],
           }),
         }
       );
