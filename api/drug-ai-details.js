@@ -575,6 +575,38 @@ Write every section listed above in full — if a section is not well establishe
 Within each section, bold any sub-labels using **double asterisks**. Use bullet points or numbered steps (starting each line with "- " or "1. " etc.) for lists like equipment, steps, or complications, and don't stop at 2-3 items when more genuinely apply.
 
 Be precise, clinically accurate, and thorough. Do not fabricate specific technique details if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
+  } else if (mode === 'procedure_insight') {
+    // Supplementary nursing-focused insight for a procedure that ALREADY has
+    // its core reference sections filled in (overview, indications,
+    // equipment, pre/post care, steps, complications, contraindications —
+    // see the 'procedure' mode above). This mode is deliberately scoped to
+    // NOT repeat those sections, so it's additive rather than a duplicate
+    // wall of text when shown alongside them on the procedure detail page.
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'procedure name is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const alwaysSearchNote = `\nBefore writing your answer, use Google Search to verify current best practice for this procedure against up-to-date clinical sources — do this even if you already feel confident about it, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n`;
+
+    prompt = `You are assisting a licensed nurse using a clinical reference app in Nigeria. The app already shows this nurse the core reference sections for the procedure below (overview, indications, equipment needed, pre-procedure care, procedure steps, post-procedure care, complications, and contraindications). Provide ADDITIONAL clinical insight that goes beyond those sections — do not repeat them.
+${alwaysSearchNote}
+Procedure: ${genericName}${categoryName ? ` (${categoryName})` : ''}
+${knownData ? `\nCore reference sections already shown to the nurse (for context only — do not repeat this content):\n${knownData}` : ''}
+
+Structure your response with these sections, using clear markdown headers (##):
+- Nursing Considerations (what the nurse specifically should watch for, prioritize, or do differently that isn't already covered by generic pre/post-procedure care — e.g. positioning nuances, communication with the patient during the procedure, coordination with the wider care team)
+- Patient Education (what to explain to the patient and family in plain language — purpose, what to expect, and realistic recovery expectations)
+- Clinical Pearls (practical tips, common pitfalls, or things experienced practitioners know that aren't always written in standard protocols)
+- Red Flags & When to Escalate (specific signs during or after the procedure that mean the nurse should call for help immediately, distinct from the general Complications list)
+
+Write every section in full — if a section is not well established, write "Not well established / consult current clinical guidelines" rather than omitting it. Aim for genuine depth (roughly 3-6 bullet points or sentences per section) without padding.
+
+Within each section, bold any sub-labels using **double asterisks**. Use bullet points (lines starting with "- ") for lists.
+
+Be precise, clinically accurate, and concise. Do not fabricate specifics if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
   } else {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
@@ -664,7 +696,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — attached for every mode, including
             // classify_condition and clinical_plan as of 2026-08-22.
             //

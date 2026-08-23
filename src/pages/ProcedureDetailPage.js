@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ClipboardList, Pencil, Save, X, Trash2, RefreshCw, AlertTriangle,
-  Pill, Stethoscope, Plus,
+  Pill, Stethoscope, Plus, Sparkles,
 } from 'lucide-react';
 import { useProcedures } from '../hooks/useProcedures';
 import { useDrugs } from '../hooks/useDrugs';
@@ -11,6 +11,7 @@ import { renderAiText } from '../utils/renderAiText';
 import { saveProcedureDetails, deleteReviewedProcedure } from '../utils/aiProcedureSave';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
+import ProcedureAiInsight from '../components/ProcedureAiInsight';
 
 const SECTIONS = [
   { key: 'overview',            label: 'Overview' },
@@ -53,6 +54,7 @@ export default function ProcedureDetailPage() {
   const [conditionQuery, setConditionQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showAiInsight, setShowAiInsight] = useState(false);
 
   useEffect(() => {
     if (procedure && !edits) {
@@ -159,14 +161,26 @@ export default function ProcedureDetailPage() {
           <ClipboardList className="w-6 h-6 text-primary-600 flex-shrink-0" />
           <h1 className="text-xl font-bold text-drug-text truncate">{procedure.name}</h1>
         </div>
-        {isAdmin && !editing && (
+        {!editing && (
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={startEdit} className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-lg">
-              <Pencil className="w-3.5 h-3.5" /> Edit
+            <button
+              onClick={() => setShowAiInsight(v => !v)}
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg ${
+                showAiInsight ? 'text-primary-700 bg-primary-100' : 'text-primary-700 bg-primary-50 hover:bg-primary-100'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" /> AI Insight
             </button>
-            <button onClick={doDelete} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg disabled:opacity-50">
-              <Trash2 className="w-3.5 h-3.5" /> Delete
-            </button>
+            {isAdmin && (
+              <>
+                <button onClick={startEdit} className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-lg">
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button onClick={doDelete} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg disabled:opacity-50">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -174,6 +188,10 @@ export default function ProcedureDetailPage() {
         <span className="inline-block text-xs font-semibold text-primary-700 bg-primary-50 px-2 py-0.5 rounded mb-4">
           {procedure.category}
         </span>
+      )}
+
+      {showAiInsight && !editing && (
+        <ProcedureAiInsight procedure={procedure} onClose={() => setShowAiInsight(false)} />
       )}
 
       {error && (

@@ -117,6 +117,48 @@ export async function fetchAiProcedureText({ procedureName, endpoint = '/api/dru
   return full.trim();
 }
 
+// ── Fetch supplementary AI insight for a procedure ALREADY in the database ─
+// (nursing considerations, patient education, clinical pearls, red flags —
+// deliberately non-overlapping with the core sections already on the page).
+export async function fetchProcedureInsight({ procedureName, categoryName, knownData, endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(apiUrl(endpoint), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'procedure_insight', genericName: procedureName, categoryName, knownData }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+  if (!full.trim()) throw new Error('AI returned an empty response.');
+  return full.trim();
+}
+
+// Admin-only — writes the generated insight straight onto the procedure
+// record so it's cached for every future visitor (mirrors saveProcedureDetails).
+export async function saveProcedureInsight({ id, text }) {
+  const contributor = await getContributorInfo();
+  if (!contributor.isAdmin) {
+    throw new Error('Only admins can save AI insight to the database.');
+  }
+  await updateDoc(doc(db, 'procedures', id), {
+    ai_insight: text,
+    last_updated: serverTimestamp(),
+  });
+}
+
 // Any signed-in user (admin or not) can trigger this — same permission
 // model as saveAiDrugToDatabase. Non-admin writes land flagged for the
 // admin review queue instead of going live unreviewed.
