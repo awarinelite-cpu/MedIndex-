@@ -40,6 +40,45 @@ function renderInlineBoldWithLink(line, keyPrefix, getLinkPath) {
   });
 }
 
+// A short "Sub-label:" at the very start of a line (e.g. "Hemorrhagic
+// shock: When blood loss is significant…") reads much easier when the
+// label is bold — but content saved from AI-generated procedure/drug text
+// has already had its ** markers stripped (see parseAiProcedureDetail's
+// cleanBody), so there's nothing left in the stored text to bold on. This
+// detects that pattern at render time instead, so it works regardless of
+// whether the source text ever had markdown in it.
+const LEADING_LABEL_RE = /^([^:\n*]{2,60}):\s+(.+)$/s;
+
+function splitLeadingLabel(line) {
+  // Skip lines that already carry explicit **bold** markup — that's
+  // intentional authoring, and layering auto-detection on top of it risks
+  // matching partway into the marked-up text.
+  if (line.includes('**')) return null;
+  const m = line.match(LEADING_LABEL_RE);
+  if (!m) return null;
+  const label = m[1].trim();
+  // Skip bare numbers/ratios/times ("10:30", "1:2") — not real sub-labels.
+  if (/^\d+$/.test(label)) return null;
+  return { label, rest: m[2] };
+}
+
+// Renders one line with its leading "Label:" (if any) auto-bolded, then
+// hands the remainder off to the normal inline-bold (and optional link)
+// rendering for any further ** markup within it.
+function renderLineWithAutoLabel(line, keyPrefix, getLinkPath) {
+  const split = splitLeadingLabel(line);
+  if (!split) {
+    return getLinkPath ? renderInlineBoldWithLink(line, keyPrefix, getLinkPath) : renderInlineBold(line, keyPrefix);
+  }
+  const { label, rest } = split;
+  return (
+    <>
+      <strong key={`${keyPrefix}-label`} className="font-bold text-drug-text">{label}:</strong>{' '}
+      {getLinkPath ? renderInlineBoldWithLink(rest, keyPrefix, getLinkPath) : renderInlineBold(rest, keyPrefix)}
+    </>
+  );
+}
+
 // Simple renderer for AI responses formatted with markdown headers, - bullets,
 // and inline **bold** sub-labels.
 // Pass opts.getLinkPath(drugName) => path to make the first bolded term in
@@ -67,16 +106,14 @@ export function renderAiText(text, opts = {}) {
                 <div key={j} className="flex items-start gap-2 text-sm text-drug-text leading-relaxed">
                   <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
                   <span>
-                    {getLinkPath
-                      ? renderInlineBoldWithLink(bulletText, `b-${i}-${j}`, getLinkPath)
-                      : renderInlineBold(bulletText, `b-${i}-${j}`)}
+                    {renderLineWithAutoLabel(bulletText, `b-${i}-${j}`, getLinkPath)}
                   </span>
                 </div>
               );
             }
             return (
               <p key={j} className="text-sm text-drug-text leading-relaxed">
-                {renderInlineBold(line, `p-${i}-${j}`)}
+                {renderLineWithAutoLabel(line, `p-${i}-${j}`, getLinkPath)}
               </p>
             );
           })}
