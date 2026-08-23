@@ -5,14 +5,26 @@ import { useProcedures } from '../hooks/useProcedures';
 import AiProcedureSearchFallback from '../components/AiProcedureSearchFallback';
 import AiProcedureCategorySearchFallback from '../components/AiProcedureCategorySearchFallback';
 import ProcedureCategoryAiInsight from '../components/ProcedureCategoryAiInsight';
+import { PROCEDURE_CATEGORIES, normalizeProcedureCategory } from '../utils/procedureCategory';
 
 export default function ProceduresPage() {
-  const { procedures: ALL_PROCEDURES, loading } = useProcedures();
+  const { procedures: rawProcedures, loading } = useProcedures();
 
-  const ALL_CATEGORIES = useMemo(
-    () => [...new Set(ALL_PROCEDURES.map(p => p.category).filter(Boolean))].sort(),
-    [ALL_PROCEDURES]
+  // Fold each record's raw category onto the fixed taxonomy at render time —
+  // this merges legacy/AI-typed variants (e.g. "Cardiac", "Ortho") into the
+  // canonical bucket without rewriting anything in Firestore.
+  const ALL_PROCEDURES = useMemo(
+    () => rawProcedures.map(p => ({ ...p, category: normalizeProcedureCategory(p.category) })),
+    [rawProcedures]
   );
+
+  // Always show the full canonical taxonomy in the filter, plus any category
+  // still present in the data that didn't map onto it (so nothing's hidden).
+  const ALL_CATEGORIES = useMemo(() => {
+    const fromData = new Set(ALL_PROCEDURES.map(p => p.category).filter(Boolean));
+    const extras = [...fromData].filter(c => !PROCEDURE_CATEGORIES.includes(c)).sort();
+    return [...PROCEDURE_CATEGORIES, ...extras];
+  }, [ALL_PROCEDURES]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQ = searchParams.get('q') || '';
