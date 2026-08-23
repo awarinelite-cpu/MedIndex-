@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ClipboardCheck, ChevronDown, ChevronUp, Sparkles, RefreshCw, Check, Trash2,
-  Undo2, ExternalLink, AlertTriangle, User, Clock, Pill, Stethoscope,
+  Undo2, ExternalLink, AlertTriangle, User, Clock, Pill, Stethoscope, CheckSquare,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions, approveCustomCondition, removeCondition } from '../hooks/useCustomConditions';
@@ -33,7 +33,7 @@ function fmtDate(ts) {
   } catch { return '—'; }
 }
 
-function DrugReviewCard({ drug }) {
+function DrugReviewCard({ drug, selected, onToggleSelect }) {
   const { provider } = useAiProvider();
   const [open, setOpen] = useState(false);
   const [edits, setEdits] = useState(() => {
@@ -89,8 +89,17 @@ function DrugReviewCard({ drug }) {
   };
 
   return (
-    <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50">
+    <div className={`bg-white border rounded-xl overflow-hidden ${selected ? 'border-primary-400 ring-1 ring-primary-300' : 'border-drug-border'}`}>
+      <div className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={e => { e.stopPropagation(); onToggleSelect(drug.id); }}
+          onClick={e => e.stopPropagation()}
+          className="w-4 h-4 flex-shrink-0 accent-primary-600"
+          aria-label={`Select ${drug.generic_name}`}
+        />
+        <button onClick={() => setOpen(o => !o)} className="flex-1 min-w-0 flex items-center gap-3 text-left">
         <Pill className="w-4 h-4 text-primary-500 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm text-drug-text truncate">{drug.generic_name}</div>
@@ -104,7 +113,8 @@ function DrugReviewCard({ drug }) {
           </div>
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-drug-muted" /> : <ChevronDown className="w-4 h-4 text-drug-muted" />}
-      </button>
+        </button>
+      </div>
 
       {open && (
         <div className="border-t border-drug-border p-4 space-y-4">
@@ -167,7 +177,7 @@ function DrugReviewCard({ drug }) {
   );
 }
 
-function ConditionReviewCard({ systemId, systemName, condition }) {
+function ConditionReviewCard({ systemId, systemName, condition, selected, onToggleSelect }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -186,7 +196,14 @@ function ConditionReviewCard({ systemId, systemName, condition }) {
   };
 
   return (
-    <div className="bg-white border border-drug-border rounded-xl px-4 py-3 flex items-center gap-3">
+    <div className={`bg-white border rounded-xl px-4 py-3 flex items-center gap-3 ${selected ? 'border-primary-400 ring-1 ring-primary-300' : 'border-drug-border'}`}>
+      <input
+        type="checkbox"
+        checked={!!selected}
+        onChange={() => onToggleSelect(`${systemId}_${condition.id}`)}
+        className="w-4 h-4 flex-shrink-0 accent-primary-600"
+        aria-label={`Select ${condition.label}`}
+      />
       <Stethoscope className="w-4 h-4 text-primary-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-sm text-drug-text truncate">{condition.label}</div>
@@ -213,6 +230,10 @@ export default function AdminReviewPage() {
   const { drugs } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
   const [tab, setTab] = useState('drugs');
+  const [selectedDrugIds, setSelectedDrugIds] = useState(() => new Set());
+  const [selectedConditionKeys, setSelectedConditionKeys] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   const pendingDrugs = useMemo(
     () => (drugs || []).filter(d => d.needs_review === true),
@@ -227,6 +248,57 @@ export default function AdminReviewPage() {
     });
     return out;
   }, [customConditionsBySystem]);
+
+  const toggleDrugSelect = (id) => {
+    setSelectedDrugIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleConditionSelect = (key) => {
+    setSelectedConditionKeys(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const allDrugsSelected = pendingDrugs.length > 0 && selectedDrugIds.size === pendingDrugs.length;
+  const allConditionsSelected = pendingConditions.length > 0 && selectedConditionKeys.size === pendingConditions.length;
+
+  const toggleSelectAllDrugs = () => {
+    setSelectedDrugIds(allDrugsSelected ? new Set() : new Set(pendingDrugs.map(d => d.id)));
+  };
+
+  const toggleSelectAllConditions = () => {
+    setSelectedConditionKeys(
+      allConditionsSelected ? new Set() : new Set(pendingConditions.map(({ systemId, condition }) => `${systemId}_${condition.id}`))
+    );
+  };
+
+  const approveSelectedDrugs = async () => {
+    if (selectedDrugIds.size === 0) return;
+    setBulkBusy(true); setBulkError('');
+    const ids = Array.from(selectedDrugIds);
+    const results = await Promise.allSettled(ids.map(id => approveDrugReview({ id })));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) setBulkError(`${failed} of ${ids.length} failed to save. Try again for those.`);
+    setSelectedDrugIds(new Set());
+    setBulkBusy(false);
+  };
+
+  const approveSelectedConditions = async () => {
+    if (selectedConditionKeys.size === 0) return;
+    setBulkBusy(true); setBulkError('');
+    const targets = pendingConditions.filter(({ systemId, condition }) => selectedConditionKeys.has(`${systemId}_${condition.id}`));
+    const results = await Promise.allSettled(targets.map(({ systemId, condition }) => approveCustomCondition(systemId, condition.id)));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) setBulkError(`${failed} of ${targets.length} failed to save. Try again for those.`);
+    setSelectedConditionKeys(new Set());
+    setBulkBusy(false);
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -254,13 +326,45 @@ export default function AdminReviewPage() {
         </button>
       </div>
 
+      {bulkError && (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-center gap-2 mb-3">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{bulkError}
+        </div>
+      )}
+
       {tab === 'drugs' && (
         pendingDrugs.length === 0 ? (
           <div className="text-center text-sm text-drug-muted py-12">Nothing waiting on review. 🎉</div>
         ) : (
-          <div className="space-y-2">
-            {pendingDrugs.map(d => <DrugReviewCard key={d.id} drug={d} />)}
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <button
+                onClick={toggleSelectAllDrugs}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-drug-muted hover:text-drug-text"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                {allDrugsSelected ? 'Deselect all' : `Select all (${pendingDrugs.length})`}
+              </button>
+              <button
+                onClick={approveSelectedDrugs}
+                disabled={selectedDrugIds.size === 0 || bulkBusy}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                {bulkBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Approve selected ({selectedDrugIds.size})
+              </button>
+            </div>
+            <div className="space-y-2">
+              {pendingDrugs.map(d => (
+                <DrugReviewCard
+                  key={d.id}
+                  drug={d}
+                  selected={selectedDrugIds.has(d.id)}
+                  onToggleSelect={toggleDrugSelect}
+                />
+              ))}
+            </div>
+          </>
         )
       )}
 
@@ -268,11 +372,37 @@ export default function AdminReviewPage() {
         pendingConditions.length === 0 ? (
           <div className="text-center text-sm text-drug-muted py-12">Nothing waiting on review. 🎉</div>
         ) : (
-          <div className="space-y-2">
-            {pendingConditions.map(({ systemId, systemName, condition }) => (
-              <ConditionReviewCard key={`${systemId}_${condition.id}`} systemId={systemId} systemName={systemName} condition={condition} />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <button
+                onClick={toggleSelectAllConditions}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-drug-muted hover:text-drug-text"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                {allConditionsSelected ? 'Deselect all' : `Select all (${pendingConditions.length})`}
+              </button>
+              <button
+                onClick={approveSelectedConditions}
+                disabled={selectedConditionKeys.size === 0 || bulkBusy}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                {bulkBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                Approve selected ({selectedConditionKeys.size})
+              </button>
+            </div>
+            <div className="space-y-2">
+              {pendingConditions.map(({ systemId, systemName, condition }) => (
+                <ConditionReviewCard
+                  key={`${systemId}_${condition.id}`}
+                  systemId={systemId}
+                  systemName={systemName}
+                  condition={condition}
+                  selected={selectedConditionKeys.has(`${systemId}_${condition.id}`)}
+                  onToggleSelect={toggleConditionSelect}
+                />
+              ))}
+            </div>
+          </>
         )
       )}
     </div>
