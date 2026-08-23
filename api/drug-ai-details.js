@@ -515,6 +515,43 @@ Bullet list (max 5) of specific things to rule out or watch for, tied to this di
 1-2 lines reminding the clinician to confirm against allergy history, exact local-protocol dosing, and contraindications before prescribing. If an allergy substitution was made above, restate it here explicitly.
 
 Keep every section scannable but do not sacrifice clinical completeness or real drug specificity for brevity. Do not add any section not listed above. Never leave a placeholder unfilled.`;
+  } else if (mode === 'procedure') {
+    // genericName is reused here as the procedure name — same field the
+    // client already sends for every mode, no new request shape needed.
+    if (!genericName || typeof genericName !== 'string') {
+      return new Response(JSON.stringify({ error: 'procedure name is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const notInDatabaseNote = notInDatabase
+      ? `\nThis procedure has not yet been uploaded to the app's verified procedure database — this is a live, on-demand lookup. Only say the procedure is not real/recognized (at the very top of your response, instead of inventing information) if, after considering it, you are still genuinely not confident it corresponds to any real clinical, nursing, or diagnostic procedure — do not decline just because the input looks unfamiliar or is phrased informally.\n`
+      : '';
+
+    const alwaysSearchNote = `\nBefore writing your answer, use Google Search to verify this procedure's current technique, indications, and safety considerations against up-to-date clinical sources — do this even if you already feel confident about it, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n`;
+
+    prompt = `You are assisting a licensed nurse using a clinical reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medical/nursing procedure for professional/educational use.
+${alwaysSearchNote}${notInDatabaseNote}
+Procedure: ${genericName}
+${knownData ? `\nExisting reference data already shown to the nurse (do not simply repeat this — add depth, nuance, and anything missing):\n${knownData}` : ''}
+
+Structure your response with these sections, using clear markdown headers (##):
+- Overview (concise summary of what the procedure is and when it's used)
+- Category (one of: Surgical, Diagnostic, Emergency, Nursing Care, Obstetric, or another concise category label — state just the single best-fitting category name)
+- Indications (why/when this procedure is performed)
+- Equipment Needed (list of equipment/supplies required, as bullet points)
+- Pre-Procedure Care (patient preparation, consent, positioning, checks to perform before starting)
+- Procedure Steps (the step-by-step technique, as a numbered or bulleted sequence — be thorough and specific)
+- Post-Procedure Care (monitoring, aftercare, documentation, patient education)
+- Complications (possible complications and warning signs to watch for)
+- Contraindications (situations where this procedure should not be performed)
+
+Write every section listed above in full — if a section is not well established, write "Not well established / consult current clinical guidelines" rather than omitting it. Aim for genuine depth (roughly 4-8 bullet points or numbered steps per section where a list format fits, or 3-6 sentences otherwise) — a nurse should be able to rely on this section alone without needing to look elsewhere.
+
+Within each section, bold any sub-labels using **double asterisks**. Use bullet points or numbered steps (starting each line with "- " or "1. " etc.) for lists like equipment, steps, or complications, and don't stop at 2-3 items when more genuinely apply.
+
+Be precise, clinically accurate, and thorough. Do not fabricate specific technique details if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
   } else {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
@@ -604,7 +641,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : (mode === 'strength' || mode === 'pronunciation') ? 150 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — attached for every mode, including
             // classify_condition and clinical_plan as of 2026-08-22.
             //

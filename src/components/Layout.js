@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, Bookmark, MoreHorizontal } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, Bookmark, MoreHorizontal, ClipboardList } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -79,6 +79,7 @@ export default function Layout({ children }) {
   const navLinks = [
     { to: '/',            label: 'Home',        icon: Home         },
     { to: '/browse',      label: 'Browse',      icon: Grid3X3      },
+    { to: '/procedures',  label: 'Procedures',  icon: ClipboardList },
     { to: '/labs',        label: 'Lab Ref',     icon: FlaskConical },
     { to: '/calculators', label: 'Calculators', icon: Calculator   },
   ];
