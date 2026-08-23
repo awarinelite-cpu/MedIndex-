@@ -24,7 +24,10 @@ async function getContributorInfo() {
   }
   let isAdmin = false;
   try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
+    // Admin status lives in admins/{email} — same source of truth used
+    // everywhere else in the app (AuthContext.js, requireAdmin), not
+    // users/{uid}.role.
+    const snap = await getDoc(doc(db, 'admins', user.email || ''));
     isAdmin = snap.exists() && snap.data()?.role === 'admin';
   } catch {
     isAdmin = false;

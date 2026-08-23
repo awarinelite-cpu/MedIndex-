@@ -30,7 +30,12 @@ async function getContributorInfo() {
   }
   let isAdmin = false;
   try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
+    // Admin status lives in admins/{email} (same collection AuthContext.js,
+    // the login pages, and the server-side requireAdmin all check) — NOT
+    // users/{uid}.role, which is never actually set to 'admin' anywhere in
+    // this app. Checking the wrong collection here meant every admin's AI
+    // save was silently treated as a non-admin contribution.
+    const snap = await getDoc(doc(db, 'admins', user.email || ''));
     isAdmin = snap.exists() && snap.data()?.role === 'admin';
   } catch {
     isAdmin = false;

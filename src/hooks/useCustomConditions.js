@@ -131,7 +131,9 @@ async function isCurrentUserAdmin(user) {
   if (_conditionRoleCache && _conditionRoleCache.uid === user.uid) return _conditionRoleCache.isAdmin;
   let isAdmin = false;
   try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
+    // admins/{email} is the app's real source of truth for admin status —
+    // not users/{uid}.role, which nothing ever actually sets.
+    const snap = await getDoc(doc(db, 'admins', user.email || ''));
     isAdmin = snap.exists() && snap.data()?.role === 'admin';
   } catch {
     isAdmin = false;
