@@ -29,10 +29,9 @@ export default function ProceduresPage() {
   const filteredProcedures = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const fc = filterCategory.trim().toLowerCase();
-    // Only visible to everyone once approved — non-admin contributions
-    // pending review stay out of the public list.
+    // Visible to everyone as soon as it's saved — review is no longer a
+    // gate on visibility, just a separate admin cleanup queue.
     return ALL_PROCEDURES
-      .filter(p => !p.needs_review)
       .filter(p => {
         const matchesCategory = !fc || (p.category || '').toLowerCase() === fc;
         const matchesQuery = !q || (p.name || '').toLowerCase().includes(q);
@@ -56,7 +55,7 @@ export default function ProceduresPage() {
           <ClipboardList className="w-6 h-6 text-primary-600" /> Medical Procedures
         </h1>
         <p className="text-drug-muted mt-1">
-          {loading ? 'Loading…' : `${filteredProcedures.length} of ${ALL_PROCEDURES.filter(p => !p.needs_review).length} procedures`}
+          {loading ? 'Loading…' : `${filteredProcedures.length} of ${ALL_PROCEDURES.length} procedures`}
         </p>
       </div>
 

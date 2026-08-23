@@ -179,6 +179,47 @@ export async function saveProcedureDetails({ id, fields }) {
   });
 }
 
+// ── Move a miscategorized drug record into Procedures (admin-only) ─────────
+// Used by the "Possible Procedures Miscategorized as Drugs" tool in the
+// admin review page. Writes the new procedure doc first, then deletes the
+// old drug doc — if the delete somehow fails, nothing is lost (the
+// procedure now exists; the admin can just delete the stale drug entry by
+// hand), rather than the reverse order risking a doc that's gone from both
+// collections.
+export async function moveDrugToProcedure({ drugId, name, fields }) {
+  const contributor = await getContributorInfo();
+  if (!contributor.isAdmin) {
+    throw new Error('Only admins can move a record between Drugs and Procedures.');
+  }
+
+  const docId = slugifyProcedureName(name);
+  await setDoc(doc(db, 'procedures', docId), {
+    ...fields,
+    name,
+    related_drug_ids: [],
+    related_condition_ids: [],
+    source: 'Migrated from Drugs',
+    status: 'Active',
+    created_at: serverTimestamp(),
+    last_updated: serverTimestamp(),
+    needs_review: false,
+    reviewed_by: contributor.email,
+    reviewed_at: serverTimestamp(),
+    previous_version: null,
+  }, { merge: false });
+
+  await deleteDoc(doc(db, 'drugs', drugId));
+
+  return { status: 'moved', id: docId };
+}
+
+// Marks a drug as checked-and-confirmed-not-a-procedure, so the detection
+// heuristic stops flagging it in future admin sessions.
+export async function dismissProcedureCandidate({ drugId }) {
+  await getAuthUser();
+  await updateDoc(doc(db, 'drugs', drugId), { procedure_check_dismissed: true });
+}
+
 // Admin-only manual create (no AI) — e.g. adding a procedure the AI
 // couldn't resolve, or one an admin wants to author from scratch.
 export async function createProcedureManually({ name, fields }) {

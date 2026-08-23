@@ -16,7 +16,9 @@ import {
 import {
   approveProcedureReview, restoreProcedurePreviousVersion,
   saveReviewedProcedureEdits, deleteReviewedProcedure,
+  moveDrugToProcedure, dismissProcedureCandidate,
 } from '../utils/aiProcedureSave';
+import { looksLikeMiscategorizedProcedure, mapDrugToProcedureFields } from '../utils/detectMiscategorizedProcedures';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 
@@ -356,6 +358,80 @@ function ProcedureReviewCard({ procedure, selected, onToggleSelect }) {
   );
 }
 
+function MigrationReviewCard({ drug, selected, onToggleSelect, onHandled }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const preview = mapDrugToProcedureFields(drug);
+
+  const doMove = async () => {
+    setBusy(true); setError('');
+    try {
+      await moveDrugToProcedure({ drugId: drug.id, name: drug.generic_name, fields: preview });
+      onHandled(drug.id);
+    } catch (e) {
+      setError(e.message || 'Failed to move.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDismiss = async () => {
+    setBusy(true); setError('');
+    try {
+      await dismissProcedureCandidate({ drugId: drug.id });
+      onHandled(drug.id);
+    } catch (e) {
+      setError(e.message || 'Failed to dismiss.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`bg-white border rounded-xl overflow-hidden ${selected ? 'border-primary-400 ring-1 ring-primary-300' : 'border-drug-border'}`}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(drug.id)}
+          className="w-4 h-4 flex-shrink-0"
+          aria-label={`Select ${drug.generic_name}`}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm text-drug-text truncate">{drug.generic_name}</div>
+          <div className="text-xs text-drug-muted">{drug.drug_class || 'No drug class set'}</div>
+        </div>
+      </div>
+      <div className="px-4 pb-4 space-y-3 border-t border-drug-border pt-3">
+        {drug.overview && <p className="text-xs text-drug-muted line-clamp-2">{drug.overview}</p>}
+        <div className="text-xs text-drug-muted bg-drug-bg rounded-lg p-2.5">
+          Will become a procedure named <strong className="text-drug-text">"{drug.generic_name}"</strong>, mapping
+          Administration → Steps, Nursing Action → Post-Procedure Care, Adverse Effects → Complications, and
+          removing it from Drugs.
+        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div className="flex gap-2">
+          <button
+            onClick={doMove}
+            disabled={busy}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 px-3 py-2 rounded-lg disabled:opacity-50"
+          >
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+            Move to Procedures
+          </button>
+          <button
+            onClick={doDismiss}
+            disabled={busy}
+            className="text-xs font-semibold text-drug-muted hover:text-drug-text border border-drug-border px-3 py-2 rounded-lg disabled:opacity-50"
+          >
+            Not a procedure
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminReviewPage() {
   const { drugs } = useDrugs();
   const { customConditionsBySystem } = useCustomConditions();
@@ -364,6 +440,8 @@ export default function AdminReviewPage() {
   const [selectedDrugIds, setSelectedDrugIds] = useState(() => new Set());
   const [selectedConditionKeys, setSelectedConditionKeys] = useState(() => new Set());
   const [selectedProcedureIds, setSelectedProcedureIds] = useState(() => new Set());
+  const [selectedMigrationIds, setSelectedMigrationIds] = useState(() => new Set());
+  const [handledMigrationIds, setHandledMigrationIds] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState('');
 
@@ -384,6 +462,15 @@ export default function AdminReviewPage() {
   const pendingProcedures = useMemo(
     () => (procedures || []).filter(p => p.needs_review === true),
     [procedures]
+  );
+
+  // Client-side heuristic scan — see detectMiscategorizedProcedures.js.
+  // handledMigrationIds hides items the admin already acted on this
+  // session, without waiting for the drugs list to update (move deletes
+  // the doc; dismiss sets a flag that filters it out next load either way).
+  const migrationCandidates = useMemo(
+    () => (drugs || []).filter(d => !handledMigrationIds.has(d.id) && looksLikeMiscategorizedProcedure(d)),
+    [drugs, handledMigrationIds]
   );
 
   const toggleDrugSelect = (id) => {
@@ -410,9 +497,27 @@ export default function AdminReviewPage() {
     });
   };
 
+  const toggleMigrationSelect = (id) => {
+    setSelectedMigrationIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleMigrationHandled = (id) => {
+    setHandledMigrationIds(prev => new Set(prev).add(id));
+    setSelectedMigrationIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
   const allDrugsSelected = pendingDrugs.length > 0 && selectedDrugIds.size === pendingDrugs.length;
   const allConditionsSelected = pendingConditions.length > 0 && selectedConditionKeys.size === pendingConditions.length;
   const allProceduresSelected = pendingProcedures.length > 0 && selectedProcedureIds.size === pendingProcedures.length;
+  const allMigrationSelected = migrationCandidates.length > 0 && selectedMigrationIds.size === migrationCandidates.length;
 
   const toggleSelectAllDrugs = () => {
     setSelectedDrugIds(allDrugsSelected ? new Set() : new Set(pendingDrugs.map(d => d.id)));
@@ -426,6 +531,10 @@ export default function AdminReviewPage() {
 
   const toggleSelectAllProcedures = () => {
     setSelectedProcedureIds(allProceduresSelected ? new Set() : new Set(pendingProcedures.map(p => p.id)));
+  };
+
+  const toggleSelectAllMigration = () => {
+    setSelectedMigrationIds(allMigrationSelected ? new Set() : new Set(migrationCandidates.map(d => d.id)));
   };
 
   const approveSelectedDrugs = async () => {
@@ -461,6 +570,19 @@ export default function AdminReviewPage() {
     setBulkBusy(false);
   };
 
+  const moveSelectedMigrationCandidates = async () => {
+    if (selectedMigrationIds.size === 0) return;
+    setBulkBusy(true); setBulkError('');
+    const targets = migrationCandidates.filter(d => selectedMigrationIds.has(d.id));
+    const results = await Promise.allSettled(
+      targets.map(d => moveDrugToProcedure({ drugId: d.id, name: d.generic_name, fields: mapDrugToProcedureFields(d) }))
+    );
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) setBulkError(`${failed} of ${targets.length} failed to move. Try again for those.`);
+    targets.forEach(d => handleMigrationHandled(d.id));
+    setBulkBusy(false);
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex items-center gap-3 mb-1">
@@ -490,6 +612,12 @@ export default function AdminReviewPage() {
           className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === 'procedures' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-drug-muted'}`}
         >
           Procedures ({pendingProcedures.length})
+        </button>
+        <button
+          onClick={() => setTab('migrate')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === 'migrate' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-drug-muted'}`}
+        >
+          Miscategorized ({migrationCandidates.length})
         </button>
       </div>
 
@@ -602,6 +730,47 @@ export default function AdminReviewPage() {
                   procedure={p}
                   selected={selectedProcedureIds.has(p.id)}
                   onToggleSelect={toggleProcedureSelect}
+                />
+              ))}
+            </div>
+          </>
+        )
+      )}
+
+      {tab === 'migrate' && (
+        migrationCandidates.length === 0 ? (
+          <div className="text-center text-sm text-drug-muted py-12">No drug entries look like procedures right now. 🎉</div>
+        ) : (
+          <>
+            <p className="text-xs text-drug-muted mb-3">
+              These are flagged by name/class keywords or missing dosing info — always double-check before moving.
+              "Not a procedure" hides it here for good.
+            </p>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <button
+                onClick={toggleSelectAllMigration}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-drug-muted hover:text-drug-text"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                {allMigrationSelected ? 'Deselect all' : `Select all (${migrationCandidates.length})`}
+              </button>
+              <button
+                onClick={moveSelectedMigrationCandidates}
+                disabled={selectedMigrationIds.size === 0 || bulkBusy}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                {bulkBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                Move selected ({selectedMigrationIds.size})
+              </button>
+            </div>
+            <div className="space-y-2">
+              {migrationCandidates.map(d => (
+                <MigrationReviewCard
+                  key={d.id}
+                  drug={d}
+                  selected={selectedMigrationIds.has(d.id)}
+                  onToggleSelect={toggleMigrationSelect}
+                  onHandled={handleMigrationHandled}
                 />
               ))}
             </div>
