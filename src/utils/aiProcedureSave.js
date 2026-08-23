@@ -49,6 +49,44 @@ export function slugifyProcedureName(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
 }
 
+// ── Fetch a short list of other procedure names in a category ──────────────
+// Powers the "Find more procedures in {category}" prompt on ProceduresPage.
+// Returns a plain array of names (already de-duplicated against
+// existingNames server-side, but caller should still guard against
+// re-adding a name that slipped through).
+export async function fetchProcedureSuggestions({ categoryName, existingNames = [], endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(apiUrl(endpoint), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'procedure_suggestions', categoryName, knownProcedureNames: existingNames }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+
+  const text = full.trim();
+  if (!text || /^none known$/i.test(text)) return [];
+
+  return text
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(name => !existingNames.some(existing => existing.toLowerCase() === name.toLowerCase()));
+}
+
 // ── Fetch AI text for a procedure ───────────────────────────────────────────
 export async function fetchAiProcedureText({ procedureName, endpoint = '/api/drug-ai-details' }) {
   const res = await fetch(apiUrl(endpoint), {

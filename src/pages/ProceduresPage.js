@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ClipboardList, ChevronRight } from 'lucide-react';
 import { useProcedures } from '../hooks/useProcedures';
 import AiProcedureSearchFallback from '../components/AiProcedureSearchFallback';
+import AiProcedureCategorySearchFallback from '../components/AiProcedureCategorySearchFallback';
 
 export default function ProceduresPage() {
   const { procedures: ALL_PROCEDURES, loading } = useProcedures();
@@ -48,6 +49,14 @@ export default function ProceduresPage() {
     return ALL_PROCEDURES.some(p => (p.name || '').toLowerCase() === q);
   }, [ALL_PROCEDURES, searchQuery]);
 
+  // Names already in the selected category (independent of the text search
+  // box), so the category AI insight doesn't re-suggest something we have.
+  const namesInSelectedCategory = useMemo(() => {
+    if (!filterCategory) return [];
+    const fc = filterCategory.trim().toLowerCase();
+    return ALL_PROCEDURES.filter(p => (p.category || '').toLowerCase() === fc).map(p => p.name).filter(Boolean);
+  }, [ALL_PROCEDURES, filterCategory]);
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
@@ -78,6 +87,10 @@ export default function ProceduresPage() {
           </select>
         </div>
       </div>
+
+      {filterCategory && (
+        <AiProcedureCategorySearchFallback category={filterCategory} existingNames={namesInSelectedCategory} />
+      )}
 
       {filteredProcedures.length === 0 ? (
         <div className="text-center py-16">
