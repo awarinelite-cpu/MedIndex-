@@ -51,6 +51,7 @@ async function coreHandler(req) {
     className, parentClassName, knownDrugNames,
     sectionHeaders, sectionLabel,
     categoryName, knownProcedureNames,
+    existingCategories,
   } = body || {};
 
   // clinical_plan is pinned to DEFAULT_MODEL regardless of whatever the
@@ -607,6 +608,21 @@ Write every section in full — if a section is not well established, write "Not
 Within each section, bold any sub-labels using **double asterisks**. Use bullet points (lines starting with "- ") for lists.
 
 Be precise, clinically accurate, and concise. Do not fabricate specifics if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
+  } else if (mode === 'procedure_categories') {
+    // Suggests NEW procedure categories not yet represented in the app —
+    // shown from the Procedures list page ("AI Insight" button), distinct
+    // from 'procedure_suggestions' which finds more procedure NAMES within
+    // an already-existing category.
+    const existingList = Array.isArray(existingCategories) ? existingCategories.filter(Boolean) : [];
+
+    prompt = `You are assisting the admin of a clinical procedures reference app for nurses in Nigeria. The app already has these procedure categories: ${existingList.length ? existingList.join(', ') : 'none yet'}.
+
+Suggest additional standard categories of medical, surgical, nursing, diagnostic, or obstetric procedures that are NOT already in that list, commonly relevant to Nigerian hospital and nursing practice.
+
+Reply with nothing but one category per line, in this exact pipe-delimited format:
+CategoryName|One-sentence description of what belongs in this category|Example procedure 1, Example procedure 2, Example procedure 3
+
+Do not add headers, numbering, markdown, or any other text — just the pipe-delimited lines. Suggest between 4 and 8 categories.`;
   } else {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
@@ -696,7 +712,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : mode === 'procedure_categories' ? 700 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — attached for every mode, including
             // classify_condition and clinical_plan as of 2026-08-22.
             //

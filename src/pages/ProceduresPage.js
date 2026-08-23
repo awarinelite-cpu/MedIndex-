@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ClipboardList, ChevronRight } from 'lucide-react';
+import { ClipboardList, ChevronRight, ChevronDown, Sparkles } from 'lucide-react';
 import { useProcedures } from '../hooks/useProcedures';
 import AiProcedureSearchFallback from '../components/AiProcedureSearchFallback';
 import AiProcedureCategorySearchFallback from '../components/AiProcedureCategorySearchFallback';
+import ProcedureCategoryAiInsight from '../components/ProcedureCategoryAiInsight';
 
 export default function ProceduresPage() {
   const { procedures: ALL_PROCEDURES, loading } = useProcedures();
@@ -18,6 +19,22 @@ export default function ProceduresPage() {
   const initialCategory = searchParams.get('category') || '';
   const [searchQuery, setSearchQuery] = useState(initialQ);
   const [filterCategory, setFilterCategory] = useState(initialCategory);
+  const [showCategoryInsight, setShowCategoryInsight] = useState(false);
+  const [openCategories, setOpenCategories] = useState(() => new Set());
+
+  const toggleCategoryOpen = (name) => {
+    setOpenCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  const selectSuggestedCategory = (name) => {
+    setFilterCategory(name);
+    setSearchQuery('');
+    setShowCategoryInsight(false);
+  };
 
   useEffect(() => {
     const next = new URLSearchParams();
@@ -57,16 +74,50 @@ export default function ProceduresPage() {
     return ALL_PROCEDURES.filter(p => (p.category || '').toLowerCase() === fc).map(p => p.name).filter(Boolean);
   }, [ALL_PROCEDURES, filterCategory]);
 
+  // Grouped-by-category view: only used when browsing the full list with no
+  // active text search — a category filter already narrows to one category,
+  // so grouping there would just be a single redundant section, and a text
+  // search is easier to scan as a flat list of matches.
+  const groupedByCategory = useMemo(() => {
+    if (searchQuery.trim() || filterCategory) return null;
+    const groups = new Map();
+    for (const p of filteredProcedures) {
+      const cat = p.category || 'Uncategorized';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat).push(p);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => {
+        if (a === 'Uncategorized') return 1;
+        if (b === 'Uncategorized') return -1;
+        return a.localeCompare(b);
+      });
+  }, [filteredProcedures, searchQuery, filterCategory]);
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-drug-text flex items-center gap-2">
-          <ClipboardList className="w-6 h-6 text-primary-600" /> Medical Procedures
-        </h1>
-        <p className="text-drug-muted mt-1">
-          {loading ? 'Loading…' : `${filteredProcedures.length} of ${ALL_PROCEDURES.length} procedures`}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-drug-text flex items-center gap-2">
+            <ClipboardList className="w-6 h-6 text-primary-600" /> Medical Procedures
+          </h1>
+          <p className="text-drug-muted mt-1">
+            {loading ? 'Loading…' : `${filteredProcedures.length} of ${ALL_PROCEDURES.length} procedures`}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCategoryInsight(v => !v)}
+          className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0 ${
+            showCategoryInsight ? 'text-primary-700 bg-primary-100' : 'text-primary-700 bg-primary-50 hover:bg-primary-100'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" /> AI Insight
+        </button>
       </div>
+
+      {showCategoryInsight && (
+        <ProcedureCategoryAiInsight existingCategories={ALL_CATEGORIES} onSelectCategory={selectSuggestedCategory} />
+      )}
 
       <div className="bg-white border border-drug-border rounded-xl p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
@@ -98,6 +149,40 @@ export default function ProceduresPage() {
           <p className="text-drug-muted text-lg">
             {searchQuery.trim() ? `No procedure matches "${searchQuery}".` : 'No procedures yet.'}
           </p>
+        </div>
+      ) : groupedByCategory ? (
+        <div className="space-y-3">
+          {groupedByCategory.map(([category, procs]) => {
+            const isOpen = openCategories.has(category);
+            return (
+              <div key={category} className="bg-white border border-drug-border rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleCategoryOpen(category)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors"
+                >
+                  <span className="font-bold text-sm text-drug-text">{category}</span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs text-drug-muted">{procs.length}</span>
+                    {isOpen ? <ChevronDown className="w-4 h-4 text-drug-muted" /> : <ChevronRight className="w-4 h-4 text-drug-muted" />}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="divide-y divide-drug-border border-t border-drug-border">
+                    {procs.map(p => (
+                      <Link
+                        key={p.id}
+                        to={`/procedure/${p.id}`}
+                        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="font-semibold text-sm text-drug-text truncate">{p.name}</span>
+                        <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white border border-drug-border rounded-xl divide-y divide-drug-border overflow-hidden">

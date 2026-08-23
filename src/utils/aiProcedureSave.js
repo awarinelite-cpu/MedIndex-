@@ -90,6 +90,48 @@ export async function fetchProcedureSuggestions({ categoryName, existingNames = 
     .filter(name => !existingNames.some(existing => existing.toLowerCase() === name.toLowerCase()));
 }
 
+// ── Fetch suggested NEW procedure categories not already in the app ────────
+// Returns [{ name, description, examples: [names] }]. Distinct from
+// fetchProcedureSuggestions, which finds more procedure names within an
+// existing category rather than suggesting whole new categories.
+export async function fetchProcedureCategorySuggestions({ existingCategories = [], endpoint = '/api/drug-ai-details' }) {
+  const res = await fetch(apiUrl(endpoint), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: 'procedure_categories', existingCategories }),
+  });
+
+  if (!res.ok) {
+    let message = 'Failed to reach the AI service.';
+    try { message = (await res.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  if (!res.body) throw new Error('No response body from AI service.');
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += decoder.decode(value, { stream: true });
+  }
+
+  return full
+    .trim()
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const [name, description, examplesRaw] = line.split('|').map(s => (s || '').trim());
+      if (!name) return null;
+      const examples = (examplesRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+      return { name, description: description || '', examples };
+    })
+    .filter(Boolean)
+    .filter(c => !existingCategories.some(existing => existing.toLowerCase() === c.name.toLowerCase()));
+}
+
 // ── Fetch AI text for a procedure ───────────────────────────────────────────
 export async function fetchAiProcedureText({ procedureName, endpoint = '/api/drug-ai-details' }) {
   const res = await fetch(apiUrl(endpoint), {
