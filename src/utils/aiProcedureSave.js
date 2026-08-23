@@ -188,15 +188,17 @@ export async function fetchProcedureInsight({ procedureName, categoryName, known
   return full.trim();
 }
 
-// Admin-only — writes the generated insight straight onto the procedure
-// record so it's cached for every future visitor (mirrors saveProcedureDetails).
-export async function saveProcedureInsight({ id, text }) {
+// Admin-only — merges newly-generated additive points directly into the
+// procedure's own section fields (fields = { overview: "<existing>\n<new
+// points>", ... } — the caller is responsible for concatenating existing +
+// new before calling this, since this just writes whatever it's given).
+export async function saveProcedureInsight({ id, fields }) {
   const contributor = await getContributorInfo();
   if (!contributor.isAdmin) {
     throw new Error('Only admins can save AI insight to the database.');
   }
   await updateDoc(doc(db, 'procedures', id), {
-    ai_insight: text,
+    ...fields,
     last_updated: serverTimestamp(),
   });
 }

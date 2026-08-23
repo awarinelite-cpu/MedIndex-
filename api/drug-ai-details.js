@@ -577,12 +577,12 @@ Within each section, bold any sub-labels using **double asterisks**. Use bullet 
 
 Be precise, clinically accurate, and thorough. Do not fabricate specific technique details if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
   } else if (mode === 'procedure_insight') {
-    // Supplementary nursing-focused insight for a procedure that ALREADY has
-    // its core reference sections filled in (overview, indications,
-    // equipment, pre/post care, steps, complications, contraindications —
-    // see the 'procedure' mode above). This mode is deliberately scoped to
-    // NOT repeat those sections, so it's additive rather than a duplicate
-    // wall of text when shown alongside them on the procedure detail page.
+    // Additive supplement to a procedure's EXISTING section content, not a
+    // separate topic set. Reuses the same section headers as the 'procedure'
+    // mode above (so the client can parse it with the same
+    // parseAiProcedureDetail and merge the result straight into those
+    // fields) but is instructed to add NEW points to each section rather
+    // than rewrite it, and to omit any section it has nothing new for.
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'procedure name is required.' }), {
         status: 400,
@@ -592,22 +592,20 @@ Be precise, clinically accurate, and thorough. Do not fabricate specific techniq
 
     const alwaysSearchNote = `\nBefore writing your answer, use Google Search to verify current best practice for this procedure against up-to-date clinical sources — do this even if you already feel confident about it, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n`;
 
-    prompt = `You are assisting a licensed nurse using a clinical reference app in Nigeria. The app already shows this nurse the core reference sections for the procedure below (overview, indications, equipment needed, pre-procedure care, procedure steps, post-procedure care, complications, and contraindications). Provide ADDITIONAL clinical insight that goes beyond those sections — do not repeat them.
+    prompt = `You are assisting a licensed nurse using a clinical reference app in Nigeria. The app already has content for the procedure below, shown organized under these section headers: Overview, Indications, Equipment Needed, Pre-Procedure Care, Procedure Steps, Post-Procedure Care, Complications, Contraindications.
+
+Your job is NOT to rewrite or restate that content. Your job is to ADD new, genuinely additional points to whichever of those sections could use more depth — details a nurse would find useful that are missing from what's there now.
 ${alwaysSearchNote}
 Procedure: ${genericName}${categoryName ? ` (${categoryName})` : ''}
-${knownData ? `\nCore reference sections already shown to the nurse (for context only — do not repeat this content):\n${knownData}` : ''}
+${knownData ? `\nExisting content already shown to the nurse, section by section (do not repeat, restate, or rephrase anything below — only add what's genuinely missing):\n${knownData}` : '\n(No existing content yet for this procedure.)\n'}
 
-Structure your response with these sections, using clear markdown headers (##):
-- Nursing Considerations (what the nurse specifically should watch for, prioritize, or do differently that isn't already covered by generic pre/post-procedure care — e.g. positioning nuances, communication with the patient during the procedure, coordination with the wider care team)
-- Patient Education (what to explain to the patient and family in plain language — purpose, what to expect, and realistic recovery expectations)
-- Clinical Pearls (practical tips, common pitfalls, or things experienced practitioners know that aren't always written in standard protocols)
-- Red Flags & When to Escalate (specific signs during or after the procedure that mean the nurse should call for help immediately, distinct from the general Complications list)
+Reply using markdown headers (##) that EXACTLY match this list: Overview, Indications, Equipment Needed, Pre-Procedure Care, Procedure Steps, Post-Procedure Care, Complications, Contraindications.
 
-Write every section in full — if a section is not well established, write "Not well established / consult current clinical guidelines" rather than omitting it. Aim for genuine depth (roughly 3-6 bullet points or sentences per section) without padding.
+Only include a header if you genuinely have new points to add to that section — omit any header where the existing content is already thorough or you have nothing new and accurate to contribute. Do not force content into every section.
 
-Within each section, bold any sub-labels using **double asterisks**. Use bullet points (lines starting with "- ") for lists.
+Under each included header, write ONLY the new additional points as bullet points (lines starting with "- "), each a self-contained point that reads naturally appended after the existing content. Do not number these as "additional" or reference the existing content directly (e.g. don't write "Also, ..." or "In addition to the above..." — just state the new point itself). Bold sub-labels with **double asterisks** where useful.
 
-Be precise, clinically accurate, and concise. Do not fabricate specifics if you are not confident — note where current institutional/clinical guidelines should be consulted instead. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
+Be precise, clinically accurate, and concise. Do not fabricate specifics if you are not confident. This is reference material only, not a substitute for hands-on clinical training or the current procedure protocol at the nurse's facility.`;
   } else if (mode === 'procedure_categories') {
     // Suggests NEW procedure categories not yet represented in the app —
     // shown from the Procedures list page ("AI Insight" button), distinct
