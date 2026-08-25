@@ -243,16 +243,44 @@ async function handleCondition(chatId, term) {
   if (!matches.length) { await sendMessage(chatId, `No condition matched \"${escapeHtml(term)}\".`); return; }
   const cond = matches[0];
 
+  // Clinical info lives in its own collection (one doc per condition,
+  // doc ID = conditionId) — same source the web app's
+  // ConditionClinicalInfoPanel reads via useConditionClinicalInfo.js.
+  // Shown first, same order as the web app: clinical info above, drugs below.
+  const infoSnap = await adminDb().collection('condition_clinical_info').doc(cond.id).get();
+  const info = infoSnap.exists ? infoSnap.data() : null;
+
   // Live matching in the app is STRICT and tag-based (condition_tags on
   // the drug doc), not a live keyword scan — see getDrugConditions in
   // systemConditions.js. Mirror that here so bot results agree with what
   // the app itself shows on the Browse/System pages.
   const snap = await adminDb().collection('drugs').where('condition_tags', 'array-contains', cond.id).limit(30).get();
-  if (snap.empty) { await sendMessage(chatId, `No drugs are tagged for "${escapeHtml(cond.label)}" yet.`); return; }
-  const text = snap.docs.map((d, i) => `${i + 1}. ${escapeHtml(d.data().generic_name)}`).join('\n');
-  await sendMessage(chatId,
-    `<b>${escapeHtml(cond.icon || '')} ${escapeHtml(cond.label)}</b>\n${text}\n\nUse <code>/drug &lt;name&gt;</code> for full details.` +
-    (matches.length > 1 ? `\n\n(${matches.length - 1} other condition${matches.length - 1 === 1 ? '' : 's'} also matched "${escapeHtml(term)}" — be more specific to see a different one)` : ''));
+
+  const header = `<b>${escapeHtml(cond.icon || '')} ${escapeHtml(cond.label)}</b>`;
+
+  const infoSections = info ? [
+    info.introduction ? `\n<b>Introduction</b>\n${escapeHtml(info.introduction)}` : null,
+    info.etiology ? `\n<b>Etiology</b>\n${escapeHtml(info.etiology)}` : null,
+    info.clinicalManifestation ? `\n<b>Clinical Manifestation</b>\n${escapeHtml(info.clinicalManifestation)}` : null,
+    info.diagnosis ? `\n<b>Diagnosis and Investigation</b>\n${escapeHtml(info.diagnosis)}` : null,
+    info.management ? `\n<b>Medical Management</b>\n${escapeHtml(info.management)}` : null,
+  ].filter(Boolean) : [];
+
+  const drugsText = snap.empty
+    ? '\n<i>No drugs are tagged for this condition yet.</i>'
+    : `\n<b>Drugs</b>\n${snap.docs.map((d, i) => `${i + 1}. ${escapeHtml(d.data().generic_name)}`).join('\n')}`;
+
+  let text = [header, ...infoSections, drugsText].join('\n');
+  const footer = `\n\nUse <code>/drug &lt;name&gt;</code> for full drug details.` +
+    (matches.length > 1 ? `\n(${matches.length - 1} other condition${matches.length - 1 === 1 ? '' : 's'} also matched "${escapeHtml(term)}" — be more specific to see a different one)` : '');
+
+  // Telegram messages cap at 4096 chars — clinical info alone can exceed
+  // that, so truncate the body (not the footer) if needed, same pattern
+  // handleLabs uses.
+  const budget = 3900 - footer.length;
+  if (text.length > budget) text = text.slice(0, budget) + '\n… (truncated — see full clinical info in the app)';
+
+  await sendMessage(chatId, text + footer);
 }
 
 async function handleFavorites(chatId, args) {
