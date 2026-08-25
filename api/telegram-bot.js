@@ -164,42 +164,73 @@ async function searchDrugs(term) {
 }
 
 // ── AI fallback for terms not in the local database ────────────────
-// Mirrors the app's own on-demand AI lookup (api/drug-ai-details.js's
-// notInDatabase path) but calls Claude directly and inline, same pattern
-// as handleAi below, since the Gemini edge endpoint streams and this is a
-// plain Node function. Costs one credit per lookup (waived for admins),
-// same accounting as /ai and /plan, since it's the same kind of on-demand
-// generation, not a database read.
+// Costs one AI credit per lookup (waived for admins), same accounting as
+// /ai and /plan, since it's on-demand generation, not a database read.
+
+// Same production-URL resolution order Vercel recommends: an explicit
+// override first, then the stable production domain, then the
+// deployment's own URL as a last resort (works even on preview deploys).
+function appBaseUrl() {
+  if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return null;
+}
+
+// Converts the AI endpoint's markdown ("## Header" section headers,
+// "**bold**" sub-labels) into Telegram-safe HTML. Escape first so any
+// stray < > & in the generated text stay safe, since escaping never
+// touches # or *.
+function mdToTelegramHtml(s = '') {
+  return escapeHtml(s)
+    .replace(/^##\s+(.+)$/gm, '<b>$1</b>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+}
+
+// Drug and condition lookups go through the app's own Gemini endpoint —
+// same engine as AI Drug Insight / AI Clinical Consult on the web, with
+// Google Search grounding plus openFDA/RxNorm live data for drugs. Labs
+// has no AI mode on that endpoint yet, so it still falls back to a
+// direct Claude call (same pattern as /ai) until one is added there.
+async function aiFallbackGemini(chatId, mode, body) {
+  const base = appBaseUrl();
+  if (!base) { await sendMessage(chatId, 'AI lookup is not configured on the server (missing APP_BASE_URL).'); return; }
+
+  let res;
+  try {
+    res = await fetch(`${base}/api/drug-ai-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    await sendMessage(chatId, `AI request failed: ${escapeHtml(e.message)}`);
+    return;
+  }
+
+  if (!res.ok) {
+    let msg = 'Failed to reach the AI service.';
+    try { msg = (await res.json())?.error || msg; } catch {}
+    await sendMessage(chatId, `⚠️ ${escapeHtml(msg)}`);
+    return;
+  }
+
+  let text = (await res.text()).trim();
+  if (!text) { await sendMessage(chatId, 'No response generated.'); return; }
+  text = mdToTelegramHtml(text);
+  if (text.length > 3800) text = text.slice(0, 3800) + '\n… (truncated — see full entry in the app)';
+  await sendMessage(chatId, `⚠️ <b>AI-generated, not in the verified database. Verify before clinical use.</b>\n\n${text}`);
+}
+
 const AI_FALLBACK_PROMPTS = {
-  drug: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's verified drug database. Before answering, use your best clinical knowledge; you do not have live search here, so if you are not confident this is a real generic or brand-name drug, say so plainly at the top instead of inventing details.
-
-If it is real, resolve any brand/trade name to its generic ingredient(s) and reply with these sections, each starting with **Label:** on its own line: Overview, Indications, Adult Dose, Contraindications, Adverse Effects, Interactions, Pregnancy/Lactation. Keep each section to 1-3 sentences. Do not fabricate specific numeric dosing if unsure; say to consult current prescribing information instead. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
-  condition: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's condition database. If you are not confident this is a real recognized clinical condition, say so plainly instead of inventing information.
-
-If it is real, reply with these sections, each starting with **Label:** on its own line: Overview, Etiology, Clinical Manifestation, Diagnosis, Management. Keep each section to 2-4 sentences. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
   labs: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's lab reference database. If you are not confident this is a real recognized lab test, say so plainly instead of inventing information.
 
 If it is real, reply with these sections, each starting with **Label:** on its own line: Normal Range, Causes Of High, Management High, Causes Of Low, Management Low. Keep each section short and practical. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
 };
 
-async function aiFallback(chatId, kind, term) {
-  const link = await requireLink(chatId);
-  if (!link) return;
-
-  const admin = await isAdminUid(link.uid, link.email);
-  if (!admin) {
-    try {
-      await consumeCredits(link.uid, CLINICAL_PLAN_COST);
-    } catch (e) {
-      await sendMessage(chatId, `⚠️ ${e.message} Buy more from the app: More → AI Credits.`);
-      return;
-    }
-  }
-
+async function aiFallbackClaude(chatId, kind, term) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) { await sendMessage(chatId, 'AI is not configured on the server.'); return; }
-
-  await sendMessage(chatId, `🤖 "${escapeHtml(term)}" isn't in the verified database yet. Checking with AI…`);
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -223,6 +254,31 @@ async function aiFallback(chatId, kind, term) {
     await sendMessage(chatId, `⚠️ <b>AI-generated, not in the verified database. Verify before clinical use.</b>\n\n${text}`);
   } catch (e) {
     await sendMessage(chatId, `AI request failed: ${escapeHtml(e.message)}`);
+  }
+}
+
+async function aiFallback(chatId, kind, term) {
+  const link = await requireLink(chatId);
+  if (!link) return;
+
+  const admin = await isAdminUid(link.uid, link.email);
+  if (!admin) {
+    try {
+      await consumeCredits(link.uid, CLINICAL_PLAN_COST);
+    } catch (e) {
+      await sendMessage(chatId, `⚠️ ${e.message} Buy more from the app: More → AI Credits.`);
+      return;
+    }
+  }
+
+  await sendMessage(chatId, `🤖 "${escapeHtml(term)}" isn't in the verified database yet. Checking with AI…`);
+
+  if (kind === 'drug') {
+    await aiFallbackGemini(chatId, 'drug', { genericName: term, notInDatabase: true });
+  } else if (kind === 'condition') {
+    await aiFallbackGemini(chatId, 'condition_insight', { mode: 'condition_insight', conditionLabel: term });
+  } else {
+    await aiFallbackClaude(chatId, kind, term);
   }
 }
 
