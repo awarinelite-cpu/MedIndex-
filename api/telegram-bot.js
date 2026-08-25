@@ -218,6 +218,43 @@ async function handleLabs(chatId, term) {
   await sendMessage(chatId, text);
 }
 
+async function handleCondition(chatId, term) {
+  if (!term) { await sendMessage(chatId, 'Usage: <code>/condition peptic ulcer</code>'); return; }
+  let SYSTEM_CONDITIONS;
+  try {
+    ({ SYSTEM_CONDITIONS } = await import('../src/data/systemConditions.js'));
+  } catch {
+    await sendMessage(chatId, 'Condition data is unavailable right now.');
+    return;
+  }
+  const needle = term.trim().toLowerCase();
+  // Find matching condition(s) by label across every system — same
+  // condition can only live in one system, but we don't know which one
+  // the sender means, so scan all of them (same approach as handleLabs'
+  // flattened search over LABS).
+  const matches = [];
+  for (const [systemId, conditions] of Object.entries(SYSTEM_CONDITIONS)) {
+    for (const cond of conditions) {
+      if ((cond.label || '').toLowerCase().includes(needle) || cond.id === needle.replace(/\s+/g, '_')) {
+        matches.push({ ...cond, systemId });
+      }
+    }
+  }
+  if (!matches.length) { await sendMessage(chatId, `No condition matched \"${escapeHtml(term)}\".`); return; }
+  const cond = matches[0];
+
+  // Live matching in the app is STRICT and tag-based (condition_tags on
+  // the drug doc), not a live keyword scan — see getDrugConditions in
+  // systemConditions.js. Mirror that here so bot results agree with what
+  // the app itself shows on the Browse/System pages.
+  const snap = await adminDb().collection('drugs').where('condition_tags', 'array-contains', cond.id).limit(30).get();
+  if (snap.empty) { await sendMessage(chatId, `No drugs are tagged for "${escapeHtml(cond.label)}" yet.`); return; }
+  const text = snap.docs.map((d, i) => `${i + 1}. ${escapeHtml(d.data().generic_name)}`).join('\n');
+  await sendMessage(chatId,
+    `<b>${escapeHtml(cond.icon || '')} ${escapeHtml(cond.label)}</b>\n${text}\n\nUse <code>/drug &lt;name&gt;</code> for full details.` +
+    (matches.length > 1 ? `\n\n(${matches.length - 1} other condition${matches.length - 1 === 1 ? '' : 's'} also matched "${escapeHtml(term)}" — be more specific to see a different one)` : ''));
+}
+
 async function handleFavorites(chatId, args) {
   const link = await requireLink(chatId);
   if (!link) return;
@@ -339,6 +376,7 @@ async function handleHelp(chatId) {
     '/search &lt;term&gt; — find drugs',
     '/drug &lt;name&gt; — full drug details',
     '/labs &lt;test&gt; — lab reference',
+    '/condition &lt;name&gt; — drugs for a condition',
     '/favorites [add|remove] &lt;drug&gt; — saved drugs',
     '/ai &lt;question&gt; — AI clinical consult (uses 1 credit)',
     '/credits — check AI credit balance',
@@ -386,6 +424,7 @@ export default async function handler(req, res) {
       case '/search': await handleSearch(chatId, arg); break;
       case '/drug': await handleDrug(chatId, arg); break;
       case '/labs': await handleLabs(chatId, arg); break;
+      case '/condition': await handleCondition(chatId, arg); break;
       case '/favorites': await handleFavorites(chatId, arg); break;
       case '/ai': await handleAi(chatId, arg); break;
       case '/pending': await handlePending(chatId); break;
