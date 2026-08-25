@@ -192,7 +192,7 @@ function mdToTelegramHtml(s = '') {
 // Google Search grounding plus openFDA/RxNorm live data for drugs. Labs
 // has no AI mode on that endpoint yet, so it still falls back to a
 // direct Claude call (same pattern as /ai) until one is added there.
-async function aiFallbackGemini(chatId, mode, body) {
+async function aiFallbackGemini(chatId, mode, body, notice = '⚠️ <b>AI-generated, not in the verified database. Verify before clinical use.</b>') {
   const base = appBaseUrl();
   if (!base) { await sendMessage(chatId, 'AI lookup is not configured on the server (missing APP_BASE_URL).'); return; }
 
@@ -219,7 +219,7 @@ async function aiFallbackGemini(chatId, mode, body) {
   if (!text) { await sendMessage(chatId, 'No response generated.'); return; }
   text = mdToTelegramHtml(text);
   if (text.length > 3800) text = text.slice(0, 3800) + '\n… (truncated — see full entry in the app)';
-  await sendMessage(chatId, `⚠️ <b>AI-generated, not in the verified database. Verify before clinical use.</b>\n\n${text}`);
+  await sendMessage(chatId, notice ? `${notice}\n\n${text}` : text);
 }
 
 const AI_FALLBACK_PROMPTS = {
@@ -492,31 +492,12 @@ async function handleAi(chatId, question) {
     }
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) { await sendMessage(chatId, 'AI is not configured on the server.'); return; }
-
+  // Routed through the app's own Gemini endpoint (mode: 'consult') —
+  // Google Search grounding plus best-effort openFDA/RxNorm lookups for
+  // any drug names in the question, same engine/grounding as /drug and
+  // /condition. See the 'consult' mode in api/drug-ai-details.js.
   await sendMessage(chatId, '🤖 Thinking…');
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 700,
-        system: 'You are a clinical drug/lab reference assistant for nurses and clinicians at a Nigerian hospital. Be concise, practical, and safety-focused. This is not a substitute for a pharmacist or physician for high-risk decisions.',
-        messages: [{ role: 'user', content: question }],
-      }),
-    });
-    const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-    await sendMessage(chatId, text ? escapeHtml(text) : 'No response generated.');
-  } catch (e) {
-    await sendMessage(chatId, `AI request failed: ${escapeHtml(e.message)}`);
-  }
+  await aiFallbackGemini(chatId, 'consult', { question }, '');
 }
 
 async function handlePending(chatId) {

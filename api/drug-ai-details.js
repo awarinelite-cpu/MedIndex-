@@ -52,6 +52,7 @@ async function coreHandler(req) {
     sectionHeaders, sectionLabel,
     categoryName, knownProcedureNames,
     existingCategories,
+    question,
   } = body || {};
 
   // clinical_plan is pinned to DEFAULT_MODEL regardless of whatever the
@@ -621,6 +622,54 @@ Reply with nothing but one category per line, in this exact pipe-delimited forma
 CategoryName|One-sentence description of what belongs in this category|Example procedure 1, Example procedure 2, Example procedure 3
 
 Do not add headers, numbering, markdown, or any other text — just the pipe-delimited lines. Suggest between 4 and 8 categories.`;
+  } else if (mode === 'consult') {
+    // Open-ended free-text clinical Q&A — powers the Telegram bot's /ai
+    // command (e.g. "should I combine ibuprofen with warfarin?"). Unlike
+    // 'clinical_plan' this is NOT the structured DIAGNOSIS/THERAPY engine
+    // and has no credits/auth gate at this endpoint — the Telegram bot
+    // has no Firebase ID token to forward, and already meters its own
+    // credits against Firestore directly (see aiFallback() in
+    // api/telegram-bot.js) before ever reaching this endpoint, the same
+    // pattern already used here for 'drug' and 'condition_insight'.
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      return new Response(JSON.stringify({ error: 'question is required.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Best-effort openFDA/RxNorm grounding: unlike 'drug' mode we don't
+    // know which word(s) in a free-text question are actual drug names,
+    // so try every plausible token. fetchExternalDrugContext already
+    // degrades to '' on no match / timeout for each one, so a token that
+    // isn't a real drug just costs a cheap, silently-discarded lookup —
+    // it can never inject wrong data. Capped at 6 candidates so a long
+    // question can't fan out into dozens of parallel external calls.
+    const stopwords = new Set(['should', 'with', 'that', 'this', 'have', 'does', 'what', 'when', 'which', 'their', 'there', 'about', 'while', 'taking', 'combine', 'giving', 'patient', 'nurse', 'dose', 'dosage', 'safe', 'okay']);
+    const candidates = [...new Set(
+      question
+        .toLowerCase()
+        .replace(/[^a-z\s-]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 4 && !stopwords.has(w))
+    )].slice(0, 6);
+
+    const externalResults = await Promise.all(
+      candidates.map(term => fetchExternalDrugContext(term).catch(() => ''))
+    );
+    const externalContext = externalResults.filter(Boolean).join('\n\n');
+
+    const alwaysSearchNote = `\nBefore writing your answer, use Google Search to verify any drug names, doses, interactions, or clinical facts in the question against up-to-date sources — do this even if you already feel confident, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n`;
+
+    const externalNote = externalContext
+      ? `\nVerified external reference data, fetched live from openFDA and RxNorm for drug names detected in the question — prioritize this over your own training-data recall wherever the two conflict. Do not quote it verbatim; synthesize it into your answer in your own words:\n${externalContext}\n`
+      : '';
+
+    prompt = `You are a clinical drug/lab reference assistant for nurses and clinicians at a Nigerian hospital, answering a question sent via a Telegram bot. Be concise, practical, and safety-focused. This is reference material only, not a substitute for a pharmacist or physician for high-risk decisions — do not fabricate specific numeric dosing if you are not confident.
+${alwaysSearchNote}${externalNote}
+Question: "${question.trim()}"
+
+Answer directly and concisely (aim for well under 300 words unless the question genuinely needs more). Use **double asterisks** to bold key terms and short bullet points (lines starting with "- ") where a list genuinely helps, but do not force headers or sections onto a simple question — just answer it.`;
   } else {
     if (!genericName || typeof genericName !== 'string') {
       return new Response(JSON.stringify({ error: 'genericName is required.' }), {
@@ -710,7 +759,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : mode === 'procedure_categories' ? 700 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
+            generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : mode === 'procedure_categories' ? 700 : mode === 'consult' ? 900 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — attached for every mode, including
             // classify_condition and clinical_plan as of 2026-08-22.
             //
