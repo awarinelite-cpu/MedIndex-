@@ -42,6 +42,15 @@ function escapeHtml(s = '') {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// AI-generated clinical info text uses markdown-style **bold** (same source
+// renderAiText.js renders as bold on the web) — Telegram doesn't understand
+// markdown asterisks, it needs real HTML tags. Escape first (so any stray
+// < > & in the source stay safe), then convert **text** -> <b>text</b> on
+// the now-escaped string, since escaping never touches asterisks.
+function escapeHtmlWithBold(s = '') {
+  return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+}
+
 // ── Link resolution ──────────────────────────────────────────────
 async function getLinkedUser(chatId) {
   const snap = await adminDb().collection('telegram_links').where('chatId', '==', chatId).limit(1).get();
@@ -259,11 +268,11 @@ async function handleCondition(chatId, term) {
   const header = `<b>${escapeHtml(cond.icon || '')} ${escapeHtml(cond.label)}</b>`;
 
   const infoSections = info ? [
-    info.introduction ? `\n<b>Introduction</b>\n${escapeHtml(info.introduction)}` : null,
-    info.etiology ? `\n<b>Etiology</b>\n${escapeHtml(info.etiology)}` : null,
-    info.clinicalManifestation ? `\n<b>Clinical Manifestation</b>\n${escapeHtml(info.clinicalManifestation)}` : null,
-    info.diagnosis ? `\n<b>Diagnosis and Investigation</b>\n${escapeHtml(info.diagnosis)}` : null,
-    info.management ? `\n<b>Medical Management</b>\n${escapeHtml(info.management)}` : null,
+    info.introduction ? `\n<b>Introduction</b>\n${escapeHtmlWithBold(info.introduction)}` : null,
+    info.etiology ? `\n<b>Etiology</b>\n${escapeHtmlWithBold(info.etiology)}` : null,
+    info.clinicalManifestation ? `\n<b>Clinical Manifestation</b>\n${escapeHtmlWithBold(info.clinicalManifestation)}` : null,
+    info.diagnosis ? `\n<b>Diagnosis and Investigation</b>\n${escapeHtmlWithBold(info.diagnosis)}` : null,
+    info.management ? `\n<b>Medical Management</b>\n${escapeHtmlWithBold(info.management)}` : null,
   ].filter(Boolean) : [];
 
   const drugsText = snap.empty
@@ -278,7 +287,19 @@ async function handleCondition(chatId, term) {
   // that, so truncate the body (not the footer) if needed, same pattern
   // handleLabs uses.
   const budget = 3900 - footer.length;
-  if (text.length > budget) text = text.slice(0, budget) + '\n… (truncated — see full clinical info in the app)';
+  if (text.length > budget) {
+    text = text.slice(0, budget);
+    // A hard slice can land mid-tag (e.g. "...Treatmen<b>t") or leave a
+    // <b> open with no matching </b> — either breaks Telegram's HTML
+    // parser and the whole message fails to send. Trim back to the last
+    // safe boundary and close any unmatched <b>.
+    const lastLt = text.lastIndexOf('<');
+    if (lastLt !== -1 && text.indexOf('>', lastLt) === -1) text = text.slice(0, lastLt);
+    const opens = (text.match(/<b>/g) || []).length;
+    const closes = (text.match(/<\/b>/g) || []).length;
+    if (opens > closes) text += '</b>'.repeat(opens - closes);
+    text += '\n… (truncated — see full clinical info in the app)';
+  }
 
   await sendMessage(chatId, text + footer);
 }
