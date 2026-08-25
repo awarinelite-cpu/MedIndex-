@@ -4,7 +4,8 @@
   "devCommand": "npm start",
   "functions": {
     "api/drug-ai-claude.js": { "maxDuration": 60 },
-    "api/ocr-drug-name.js": { "maxDuration": 30 }
+    "api/ocr-drug-name.js": { "maxDuration": 30 },
+    "api/telegram-bot.js": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }

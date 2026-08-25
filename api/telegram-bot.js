@@ -361,38 +361,42 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Always ack fast — Telegram retries aggressively on non-200/slow
-  // responses, which would otherwise double-fire commands.
-  res.status(200).json({ ok: true });
-
+  // IMPORTANT: await all real work BEFORE sending the response. Vercel can
+  // freeze/terminate the function the instant a response is sent, so any
+  // async work kicked off "in the background" after res.status(200) here
+  // is not guaranteed to ever finish — that was silently swallowing every
+  // reply (Telegram saw 200 OK; the sendMessage() call underneath it never
+  // actually completed).
   try {
     const update = req.body || {};
     const msg = update.message;
-    if (!msg || !msg.text) return;
+    if (!msg || !msg.text) { res.status(200).json({ ok: true }); return; }
     const chatId = msg.chat.id;
     const [cmdRaw, ...rest] = msg.text.trim().split(' ');
     const cmd = cmdRaw.split('@')[0]; // strip @BotName in group chats
     const arg = rest.join(' ');
 
     switch (cmd) {
-      case '/start': return await handleStart(chatId);
-      case '/help': return await handleHelp(chatId);
-      case '/link': return await handleLink(chatId, msg.from, arg);
-      case '/unlink': return await handleUnlink(chatId);
-      case '/status': return await handleStatus(chatId);
-      case '/credits': return await handleCredits(chatId);
-      case '/search': return await handleSearch(chatId, arg);
-      case '/drug': return await handleDrug(chatId, arg);
-      case '/labs': return await handleLabs(chatId, arg);
-      case '/favorites': return await handleFavorites(chatId, arg);
-      case '/ai': return await handleAi(chatId, arg);
-      case '/pending': return await handlePending(chatId);
-      case '/approve': return await handleReviewAction(chatId, arg, true);
-      case '/reject': return await handleReviewAction(chatId, arg, false);
+      case '/start': await handleStart(chatId); break;
+      case '/help': await handleHelp(chatId); break;
+      case '/link': await handleLink(chatId, msg.from, arg); break;
+      case '/unlink': await handleUnlink(chatId); break;
+      case '/status': await handleStatus(chatId); break;
+      case '/credits': await handleCredits(chatId); break;
+      case '/search': await handleSearch(chatId, arg); break;
+      case '/drug': await handleDrug(chatId, arg); break;
+      case '/labs': await handleLabs(chatId, arg); break;
+      case '/favorites': await handleFavorites(chatId, arg); break;
+      case '/ai': await handleAi(chatId, arg); break;
+      case '/pending': await handlePending(chatId); break;
+      case '/approve': await handleReviewAction(chatId, arg, true); break;
+      case '/reject': await handleReviewAction(chatId, arg, false); break;
       default:
         await sendMessage(chatId, "Didn't recognize that command. Send /help to see what I can do.");
     }
   } catch (e) {
     console.error('[telegram-bot] handler error:', e);
   }
+
+  res.status(200).json({ ok: true });
 }
