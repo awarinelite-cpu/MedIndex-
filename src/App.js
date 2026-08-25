@@ -34,6 +34,7 @@ import MorePage from './pages/MorePage';
 import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
 import AiCreditsPage from './pages/AiCreditsPage';
 import AppLockGate from './components/AppLockGate';
+import BackButtonHandler from './components/BackButtonHandler';
 function App() {
   return (
     <ErrorBoundary>
@@ -42,6 +43,7 @@ function App() {
       <AiProviderProvider>
       <AiInsightProvider>
       <AppLockGate>
+      <BackButtonHandler />
       <Routes>
 {/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
