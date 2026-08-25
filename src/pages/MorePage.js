@@ -17,6 +17,8 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
 import AiProviderDropdown from '../components/AiProviderDropdown';
 import { isBiometricAvailable, isBiometricEnrolled, enrollBiometric, disableBiometric } from '../utils/biometricAuth';
+import { generateLinkCode, listenTelegramLink, unlinkTelegram } from '../lib/telegramLink';
+import { Send } from 'lucide-react';
 
 const NAV_LINKS = [
   { to: '/',            label: 'Home',              icon: Home         },
@@ -41,6 +43,41 @@ export default function MorePage() {
   const [bioSupported, setBioSupported] = useState(false);
   const [bioEnrolled, setBioEnrolled] = useState(false);
   const [bioBusy, setBioBusy] = useState(false);
+
+  const [tgLink, setTgLink] = useState(null);      // telegram_links/{uid} doc, or null if not linked
+  const [tgCode, setTgCode] = useState(null);       // freshly generated code, shown until they link
+  const [tgLoading, setTgLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = listenTelegramLink(user.uid, (link) => {
+      setTgLink(link);
+      if (link) setTgCode(null); // clear the shown code once linking succeeds
+    });
+    return unsub;
+  }, [user]);
+
+  const handleGenerateTgCode = async () => {
+    if (!user) return;
+    setTgLoading(true);
+    try {
+      const code = await generateLinkCode(user.uid, user.email, user.displayName);
+      setTgCode(code);
+    } catch (err) {
+      console.error('[MorePage] generateLinkCode failed:', err);
+    } finally {
+      setTgLoading(false);
+    }
+  };
+
+  const handleUnlinkTg = async () => {
+    if (!user) return;
+    await unlinkTelegram(user.uid);
+  };
+
+  const copy = (text, label) => {
+    navigator.clipboard?.writeText(text);
+  };
   const [bioError, setBioError] = useState('');
 
   useEffect(() => { isBiometricAvailable().then(setBioSupported); }, []);
@@ -172,6 +209,45 @@ export default function MorePage() {
               )}
             </>
           )}
+
+          <p className="text-xs text-drug-muted uppercase tracking-widest font-bold mb-2 mt-5">Telegram Bot</p>
+          <div className="mb-5 px-1">
+            {tgLink ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">
+                  <Send className="w-4 h-4 flex-shrink-0 text-primary-600" />
+                  <span className="truncate">Linked{tgLink.telegramUsername ? ` as @${tgLink.telegramUsername}` : ''}</span>
+                </div>
+                <button
+                  onClick={handleUnlinkTg}
+                  className="px-3 py-1.5 bg-drug-bg border border-drug-border rounded-lg text-drug-text text-sm font-medium hover:bg-gray-100 transition-colors flex-shrink-0"
+                >
+                  Unlink
+                </button>
+              </div>
+            ) : tgCode ? (
+              <div className="text-sm text-drug-text">
+                <p className="mb-2">Message the bot with:</p>
+                <div className="flex items-center gap-2">
+                  <code style={{ fontSize: 16, fontWeight: 700 }}>/link {tgCode}</code>
+                  <button className="btn btn-sm" onClick={() => copy(`/link ${tgCode}`, 'Command')}>
+                    Copy
+                  </button>
+                </div>
+                <p className="text-xs text-drug-muted mt-2">Code expires in 15 minutes.</p>
+              </div>
+            ) : (
+              <button
+                onClick={handleGenerateTgCode}
+                disabled={tgLoading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold
+                           bg-drug-bg border border-drug-border text-drug-text hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {tgLoading ? 'Generating…' : 'Generate link code'}
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center justify-between px-1 py-2">
             <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">

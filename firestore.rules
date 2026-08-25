@@ -92,6 +92,26 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Telegram bot account linking — a signed-in user may create a link
+    // code for THEMSELVES (uid must match), never read/update/delete one
+    // (redemption happens server-side via the Admin SDK in
+    // api/telegram-bot.js, which bypasses these rules). The resulting
+    // telegram_links/{uid} doc is owner-read-only and never client-written
+    // (only the bot's webhook, via Admin SDK, links/unlinks it) — this
+    // stops a user from linking someone else's uid to their own chat.
+    match /link_codes/{code} {
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+      allow read, update, delete: if false;
+    }
+    match /telegram_links/{uid} {
+      allow read:   if request.auth != null && (request.auth.uid == uid || isAdmin());
+      // Only the user themself may unlink (delete) from the web app;
+      // creating/updating the link happens only server-side when a code
+      // is redeemed, via the Admin SDK (which bypasses these rules).
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if false;
+    }
+
     // Everything else — signed-in only
     match /{document=**} {
       allow read, write: if request.auth != null;
