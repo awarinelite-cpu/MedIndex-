@@ -213,18 +213,42 @@ async function handleLabs(chatId, term) {
     if (Array.isArray(test.children)) all.push(...test.children);
   }
   const needle = term.trim().toLowerCase();
-  const match = all.find(l => (l.name || '').toLowerCase().includes(needle) || (l.abbr || '').toLowerCase().includes(needle));
-  if (!match) { await sendMessage(chatId, `No lab test matched "${escapeHtml(term)}".`); return; }
-  const listify = (v) => Array.isArray(v) ? v.join('; ') : v;
+  const matches = all
+    .filter(l => (l.name || '').toLowerCase().includes(needle) || (l.abbr || '').toLowerCase().includes(needle))
+    // Rank so the plain systemic/serum test (e.g. "Blood Glucose") outranks
+    // compartment-specific variants ("Urine Glucose", "CSF Glucose") and
+    // derived/related tests ("OGTT", "G6PD") when someone just searches "glucose".
+    .sort((a, b) => {
+      const score = (l) => {
+        const n = (l.name || '').toLowerCase();
+        if (n === needle) return 0;
+        if (n.startsWith('blood ' + needle) || n.startsWith('serum ' + needle) || n.startsWith('plasma ' + needle)) return 1;
+        if (n.startsWith(needle)) return 2;
+        if (n.includes(' ' + needle) || n.includes('(' + needle)) return 3;
+        return 4;
+      };
+      const as = score(a), bs = score(b);
+      if (as !== bs) return as - bs;
+      return (a.name || '').length - (b.name || '').length;
+    });
+  if (!matches.length) { await sendMessage(chatId, `No lab test matched "${escapeHtml(term)}".`); return; }
+  const match = matches[0];
+  const listify = (v) => Array.isArray(v) ? v.map(x => `• ${x}`).join('\n') : v;
   const sections = [
     `<b>${escapeHtml(match.name)}</b>${match.abbr ? ' (' + escapeHtml(match.abbr) + ')' : ''}`,
     match.normal ? `Normal range: ${escapeHtml(match.normal)}` : null,
-    match.highCauses ? `\n<b>Causes of high:</b>\n${escapeHtml(listify(match.highCauses))}` : null,
-    match.lowCauses ? `\n<b>Causes of low:</b>\n${escapeHtml(listify(match.lowCauses))}` : null,
+    match.highCauses ? `\n<b>⬆️ Causes of high:</b>\n${escapeHtml(listify(match.highCauses))}` : null,
+    match.solutionHigh ? `\n<b>🩺 Management (high):</b>\n${escapeHtml(listify(match.solutionHigh))}` : null,
+    match.lowCauses ? `\n<b>⬇️ Causes of low:</b>\n${escapeHtml(listify(match.lowCauses))}` : null,
+    match.solutionLow ? `\n<b>🩺 Management (low):</b>\n${escapeHtml(listify(match.solutionLow))}` : null,
   ].filter(Boolean);
   let text = sections.join('\n');
-  if (text.length > 3800) text = text.slice(0, 3800) + '\n… (truncated)';
+  if (text.length > 3800) text = text.slice(0, 3800) + '\n… (truncated — see full entry in the app)';
   await sendMessage(chatId, text);
+  if (matches.length > 1) {
+    const others = matches.slice(1, 6).map(m => m.name).join(', ');
+    await sendMessage(chatId, `(Other matches: ${escapeHtml(others)}${matches.length > 6 ? '…' : ''} — send <code>/labs</code> with a more specific term to see one of these instead)`);
+  }
 }
 
 async function handleCondition(chatId, term) {
