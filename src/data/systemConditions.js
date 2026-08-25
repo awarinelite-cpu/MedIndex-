@@ -941,9 +941,15 @@ export const SYSTEM_CONDITIONS = {
     },
     {
       id: 'peptic_ulcer',
-      label: 'Peptic Ulcer & GERD',
+      label: 'Peptic Ulcer Disease',
       icon: '🔥',
-      keywords: ['peptic ulcer', 'gerd', 'gastro-oesophageal', 'gastroesophageal', 'reflux', 'antacid', 'proton pump', 'h2 blocker', 'h2-receptor', 'h2 receptor', 'antiulcer', 'helicobacter', 'h. pylori'],
+      keywords: ['peptic ulcer', 'duodenal ulcer', 'gastric ulcer', 'stomach ulcer', 'antiulcer', 'helicobacter', 'h. pylori', 'h pylori', 'sucralfate', 'proton pump', 'ppi', 'h2 blocker', 'h2-receptor', 'h2 receptor', 'antacid'],
+    },
+    {
+      id: 'gerd',
+      label: 'GERD (Acid Reflux)',
+      icon: '🔥',
+      keywords: ['gerd', 'gastro-oesophageal', 'gastroesophageal', 'reflux', 'heartburn', 'proton pump', 'ppi', 'h2 blocker', 'h2-receptor', 'h2 receptor', 'antacid'],
     },
     {
       id: 'peritonitis',
