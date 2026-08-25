@@ -163,10 +163,73 @@ async function searchDrugs(term) {
   return results;
 }
 
+// ── AI fallback for terms not in the local database ────────────────
+// Mirrors the app's own on-demand AI lookup (api/drug-ai-details.js's
+// notInDatabase path) but calls Claude directly and inline, same pattern
+// as handleAi below, since the Gemini edge endpoint streams and this is a
+// plain Node function. Costs one credit per lookup (waived for admins),
+// same accounting as /ai and /plan, since it's the same kind of on-demand
+// generation, not a database read.
+const AI_FALLBACK_PROMPTS = {
+  drug: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's verified drug database. Before answering, use your best clinical knowledge; you do not have live search here, so if you are not confident this is a real generic or brand-name drug, say so plainly at the top instead of inventing details.
+
+If it is real, resolve any brand/trade name to its generic ingredient(s) and reply with these sections, each starting with **Label:** on its own line: Overview, Indications, Adult Dose, Contraindications, Adverse Effects, Interactions, Pregnancy/Lactation. Keep each section to 1-3 sentences. Do not fabricate specific numeric dosing if unsure; say to consult current prescribing information instead. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
+  condition: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's condition database. If you are not confident this is a real recognized clinical condition, say so plainly instead of inventing information.
+
+If it is real, reply with these sections, each starting with **Label:** on its own line: Overview, Etiology, Clinical Manifestation, Diagnosis, Management. Keep each section to 2-4 sentences. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
+  labs: (term) => `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. "${escapeHtml(term).replace(/&amp;|&lt;|&gt;/g, '')}" was searched but is not yet in the app's lab reference database. If you are not confident this is a real recognized lab test, say so plainly instead of inventing information.
+
+If it is real, reply with these sections, each starting with **Label:** on its own line: Normal Range, Causes Of High, Management High, Causes Of Low, Management Low. Keep each section short and practical. No preamble, no closing text, no markdown headers, just the bolded labels and their content.`,
+};
+
+async function aiFallback(chatId, kind, term) {
+  const link = await requireLink(chatId);
+  if (!link) return;
+
+  const admin = await isAdminUid(link.uid, link.email);
+  if (!admin) {
+    try {
+      await consumeCredits(link.uid, CLINICAL_PLAN_COST);
+    } catch (e) {
+      await sendMessage(chatId, `⚠️ ${e.message} Buy more from the app: More → AI Credits.`);
+      return;
+    }
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { await sendMessage(chatId, 'AI is not configured on the server.'); return; }
+
+  await sendMessage(chatId, `🤖 "${escapeHtml(term)}" isn't in the verified database yet. Checking with AI…`);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 900,
+        system: 'You are a clinical reference assistant for nurses and clinicians at a Nigerian hospital. Be concise, practical, and safety-focused. This is not a substitute for a pharmacist, physician, or the current product monograph/guidelines for high-risk decisions.',
+        messages: [{ role: 'user', content: AI_FALLBACK_PROMPTS[kind](term) }],
+      }),
+    });
+    const data = await res.json();
+    let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (!text) { await sendMessage(chatId, 'No response generated.'); return; }
+    text = escapeHtmlWithBold(text);
+    if (text.length > 3800) text = text.slice(0, 3800) + '\n… (truncated)';
+    await sendMessage(chatId, `⚠️ <b>AI-generated, not in the verified database. Verify before clinical use.</b>\n\n${text}`);
+  } catch (e) {
+    await sendMessage(chatId, `AI request failed: ${escapeHtml(e.message)}`);
+  }
+}
+
 async function handleSearch(chatId, term) {
   if (!term) { await sendMessage(chatId, 'Usage: <code>/search amoxicillin</code>'); return; }
   const results = await searchDrugs(term);
-  if (!results.length) { await sendMessage(chatId, `No drugs matched "${escapeHtml(term)}".`); return; }
+  if (!results.length) { await sendMessage(chatId, `No drugs matched "${escapeHtml(term)}" in the database.\n\nUse <code>/drug ${escapeHtml(term)}</code> for an AI-generated lookup instead.`); return; }
   const top = results.slice(0, 8);
   const text = top.map((d, i) => `${i + 1}. ${escapeHtml(d.generic_name)}${d.drug_class ? ' — ' + escapeHtml(d.drug_class) : ''}`).join('\n');
   await sendMessage(chatId,
@@ -176,7 +239,7 @@ async function handleSearch(chatId, term) {
 async function handleDrug(chatId, term) {
   if (!term) { await sendMessage(chatId, 'Usage: <code>/drug amoxicillin</code>'); return; }
   const results = await searchDrugs(term);
-  if (!results.length) { await sendMessage(chatId, `No drug matched "${escapeHtml(term)}".`); return; }
+  if (!results.length) { await aiFallback(chatId, 'drug', term); return; }
   const d = results[0];
   const sections = [
     fmtDrugSummary(d),
@@ -231,7 +294,7 @@ async function handleLabs(chatId, term) {
       if (as !== bs) return as - bs;
       return (a.name || '').length - (b.name || '').length;
     });
-  if (!matches.length) { await sendMessage(chatId, `No lab test matched "${escapeHtml(term)}".`); return; }
+  if (!matches.length) { await aiFallback(chatId, 'labs', term); return; }
   const match = matches[0];
   const listify = (v) => Array.isArray(v) ? v.map(x => `• ${x}`).join('\n') : v;
   const sections = [
@@ -273,7 +336,7 @@ async function handleCondition(chatId, term) {
       }
     }
   }
-  if (!matches.length) { await sendMessage(chatId, `No condition matched \"${escapeHtml(term)}\".`); return; }
+  if (!matches.length) { await aiFallback(chatId, 'condition', term); return; }
   const cond = matches[0];
 
   // Clinical info lives in its own collection (one doc per condition,
