@@ -11,8 +11,15 @@
 // showInstall stays true (until actually installed) on every load — there
 // is deliberately no "dismissed forever" flag written to storage, so the
 // prompt keeps appearing on return visits until the user installs the app.
+//
+// Most iOS visitors never notice the thin top banner, so on iOS the
+// instructions modal also opens itself automatically — once per browser
+// session (sessionStorage), so it doesn't reappear on every in-app
+// navigation, but still comes back on the next fresh visit until installed.
 
 import { useState, useEffect } from 'react';
+
+const IOS_AUTO_PROMPT_KEY = 'medindex_ios_install_auto_shown';
 
 function detectIOS() {
   const ua = window.navigator.userAgent;
@@ -48,6 +55,20 @@ export function usePwaInstall() {
     if (detectIOS()) {
       setPlatform('ios');
       setShowInstall(true);
+
+      // Auto-open the instructions once per browser session, since the
+      // slim top banner alone is easy to miss.
+      let alreadyShownThisSession = false;
+      try {
+        alreadyShownThisSession = sessionStorage.getItem(IOS_AUTO_PROMPT_KEY) === '1';
+      } catch {
+        // Private browsing / storage disabled — just fall back to showing
+        // it every load rather than blocking the feature entirely.
+      }
+      if (!alreadyShownThisSession) {
+        setShowIosInstructions(true);
+        try { sessionStorage.setItem(IOS_AUTO_PROMPT_KEY, '1'); } catch {}
+      }
     }
 
     const onBeforeInstall = (e) => {
