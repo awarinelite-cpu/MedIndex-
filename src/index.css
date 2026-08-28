@@ -8,6 +8,7 @@
   --drug-border: #e2e8f0;
   --drug-text: #1e293b;
   --drug-muted: #64748b;
+  --tap-highlight: rgba(15, 23, 42, 0.08);
   color-scheme: light;
 }
 
@@ -17,6 +18,7 @@
   --drug-border: #334155;
   --drug-text: #f1f5f9;
   --drug-muted: #94a3b8;
+  --tap-highlight: rgba(148, 163, 184, 0.25);
   color-scheme: dark;
 }
 
@@ -24,6 +26,15 @@
   html {
     overflow-x: hidden;
     width: 100%;
+    /* Mobile browsers flash a default gray/white overlay on tap
+       (-webkit-tap-highlight-color). In dark mode that white flash
+       washes out the text underneath it, so we override it with a
+       subtle tint that matches the current theme instead. */
+    -webkit-tap-highlight-color: var(--tap-highlight);
+  }
+
+  * {
+    -webkit-tap-highlight-color: var(--tap-highlight);
   }
   body {
     @apply bg-drug-bg text-drug-text antialiased;
