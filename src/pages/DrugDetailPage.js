@@ -622,6 +622,7 @@ function DrugImageGallery({ images, altBase }) {
       <div
         ref={trackRef}
         onScroll={handleScroll}
+        data-swipe-gallery="true"
         className="flex overflow-x-auto snap-x snap-mandatory rounded-lg border border-drug-border scroll-smooth"
         style={{ scrollbarWidth: 'none' }}
       >
@@ -1561,6 +1562,10 @@ export default function DrugDetailPage() {
   // ── Swipe between tabs (left = next tab, right = previous tab) ──────────
   const swipeStartRef = useRef({ x: 0, y: 0 });
   const swipeDeltaRef = useRef({ x: 0, y: 0 });
+  // When a touch starts inside a multi-picture image gallery, let the
+  // gallery's own native scroll-snap handle the swipe instead of the
+  // page's tab-swipe logic (so swiping photos doesn't also change tabs).
+  const swipeInGalleryRef = useRef(false);
 
   const handleSectionFilled = (updates) => {
     setAiPatch(p => ({ ...p, ...updates }));
@@ -1595,12 +1600,19 @@ export default function DrugDetailPage() {
   };
 
   const handleTabTouchStart = (e) => {
+    // If the touch started inside a multi-picture gallery, hand the whole
+    // gesture over to the gallery's own swipe — don't switch tabs.
+    swipeInGalleryRef.current = !!e.target.closest('[data-swipe-gallery="true"]');
+    if (swipeInGalleryRef.current) return;
+
     const t = e.touches[0];
     swipeStartRef.current = { x: t.clientX, y: t.clientY };
     swipeDeltaRef.current = { x: 0, y: 0 };
   };
 
   const handleTabTouchMove = (e) => {
+    if (swipeInGalleryRef.current) return;
+
     const t = e.touches[0];
     swipeDeltaRef.current = {
       x: t.clientX - swipeStartRef.current.x,
@@ -1609,6 +1621,11 @@ export default function DrugDetailPage() {
   };
 
   const handleTabTouchEnd = () => {
+    if (swipeInGalleryRef.current) {
+      swipeInGalleryRef.current = false;
+      return;
+    }
+
     const { x, y } = swipeDeltaRef.current;
     const SWIPE_THRESHOLD = 60; // min horizontal distance in px
     // Only fire if the gesture is clearly more horizontal than vertical,
