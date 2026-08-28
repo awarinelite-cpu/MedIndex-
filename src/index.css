@@ -153,6 +153,22 @@
 .dark .shadow-md,
 .dark .shadow-lg          { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
 
+/* On touch devices, hover:bg-white / hover:bg-gray-50 / hover:bg-gray-100
+   can get "stuck" active after a tap (no mouse ever moves away to clear
+   it). That leaves a light background with the dark theme's light text
+   still sitting on top of it, invisible. This does NOT change the
+   background at all — only forces the text on top of it to a bright,
+   readable green, and only for as long as that light hover background
+   is actually engaged. */
+.dark .hover\:bg-white:hover,
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-white:hover :not([class*="bg-"]),
+.dark .hover\:bg-gray-50:hover :not([class*="bg-"]),
+.dark .hover\:bg-gray-100:hover :not([class*="bg-"]) {
+  color: #16a34a !important;
+}
+
 @layer components {
   .section-card {
     @apply bg-white rounded-xl border border-drug-border overflow-hidden transition-shadow hover:shadow-md;
