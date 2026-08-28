@@ -623,8 +623,14 @@ function DrugImageGallery({ images, altBase }) {
         ref={trackRef}
         onScroll={handleScroll}
         data-swipe-gallery="true"
+        // Stop every touch event here from bubbling up to the page's
+        // tab-swipe listener, so swiping a picture can NEVER also be
+        // read as a page/tab swipe — regardless of any other logic.
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         className="flex overflow-x-auto snap-x snap-mandatory rounded-lg border border-drug-border scroll-smooth"
-        style={{ scrollbarWidth: 'none' }}
+        style={{ scrollbarWidth: 'none', touchAction: 'pan-x' }}
       >
         {images.map((img, i) => (
           <img
