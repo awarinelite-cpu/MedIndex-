@@ -4,6 +4,15 @@ module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
+  future: {
+    // Makes every `hover:` utility apply only on devices with a real
+    // mouse (@media (hover: hover) and (pointer: fine)). Without this,
+    // tapping a `hover:bg-...` row/button on a touchscreen leaves that
+    // hover background "stuck" on (no mouse ever moves away to clear
+    // it), which in dark mode showed as a white block hiding the text
+    // underneath it until something else was tapped.
+    hoverOnlyWhenSupported: true,
+  },
   theme: {
     extend: {
       colors: {
