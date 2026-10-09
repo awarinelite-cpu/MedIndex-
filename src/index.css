@@ -273,3 +273,45 @@
     @apply bg-gray-400;
   }
 }
+
+/* ===== Capsule-tablet look (ported from EliteReg) =====
+   Glossy cylinder-shaded cards and raised 3D capsule buttons. Gradients are
+   layered on top of the existing background colour (background-image), so
+   light/dark colour overrides elsewhere keep working. */
+.section-card,
+.bg-white.rounded-xl:not([class*="max-h-"]),
+.bg-white.rounded-2xl:not([class*="max-h-"]) {
+  border: 1px solid #c3ccd8;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.95) 0%, rgba(255,255,255,0) 28%, rgba(71,85,105,.07) 62%, rgba(71,85,105,.20) 100%);
+  box-shadow:
+    inset 0 3px 3px rgba(255,255,255,.9),
+    inset 0 -10px 14px rgba(71,85,105,.18),
+    0 10px 14px -9px rgba(15,23,42,.45);
+}
+.dark .section-card,
+.dark .bg-white.rounded-xl:not([class*="max-h-"]),
+.dark .bg-white.rounded-2xl:not([class*="max-h-"]) {
+  border-color: #3b4a61;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 30%, rgba(0,0,0,.14) 65%, rgba(0,0,0,.34) 100%);
+  box-shadow:
+    inset 0 2px 2px rgba(255,255,255,.14),
+    inset 0 -10px 14px rgba(0,0,0,.30),
+    0 10px 14px -9px rgba(0,0,0,.7);
+}
+
+/* raised capsule buttons: any button with a background colour */
+.btn-primary, .btn-secondary,
+button[class*="bg-"]:not([class*="bg-transparent"]) {
+  border-bottom-width: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 8px -1px rgba(15,23,42,.30);
+  transition: transform .1s, border-width .1s, box-shadow .1s, background-color .15s;
+}
+.btn-primary { border: 1px solid #1e3a8a; border-bottom: 4px solid #172554; background-image: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%); }
+.btn-secondary { border-bottom: 4px solid #94a3b8; background-image: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%); }
+.dark .btn-secondary { border-bottom-color: #0b1220; background-image: linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.20)); }
+.btn-primary:active, .btn-secondary:active,
+button[class*="bg-"]:not([class*="bg-transparent"]):active {
+  transform: translateY(3px);
+  border-bottom-width: 1px;
+  box-shadow: inset 0 1px 2px rgba(15,23,42,.3);
+}
