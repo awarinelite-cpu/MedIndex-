@@ -129,11 +129,11 @@ export default function AdminLayout({ children }) {
 
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0 min-w-0">
-              <div style={{ background: 'linear-gradient(135deg,#00C9A7,#0070F3)', borderRadius: 8 }} className="w-8 h-8 flex items-center justify-center shrink-0">
+              <div style={{ background: 'linear-gradient(135deg,#00C9A7,#0070F3)', borderRadius: 32 }} className="w-8 h-8 flex items-center justify-center shrink-0">
                 <Pill className="w-4 h-4 text-white" />
               </div>
               <span className="text-base font-bold hidden xs:inline sm:inline">MedIndex</span>
-              <span style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7', fontSize: 10, padding: '2px 8px', borderRadius: 20 }} className="font-bold shrink-0">
+              <span style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7', fontSize: 10, padding: '2px 8px', borderRadius: 32 }} className="font-bold shrink-0">
                 Admin
               </span>
             </div>

@@ -58,7 +58,7 @@ export default function BiometricLockScreen({ onUnlock }) {
         onClick={attempt}
         disabled={status === 'checking'}
         style={{
-          marginTop: 22, padding: '13px 30px', borderRadius: 12, border: 'none',
+          marginTop: 22, padding: '13px 30px', borderRadius: 32, border: 'none',
           background: 'linear-gradient(135deg,#00C9A7,#0070F3)', color: '#fff',
           fontWeight: 700, fontSize: 15, cursor: status === 'checking' ? 'not-allowed' : 'pointer',
         }}

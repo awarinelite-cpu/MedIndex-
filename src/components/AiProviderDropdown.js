@@ -61,7 +61,7 @@ export default function AiProviderDropdown({ placement = 'right' }) {
           minWidth:     190,
           background:   '#0F172A',
           border:       '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 14,
+          borderRadius: 32,
           boxShadow:    '0 8px 32px rgba(0,0,0,0.5)',
           overflow:     'hidden',
           padding:      '6px 0',

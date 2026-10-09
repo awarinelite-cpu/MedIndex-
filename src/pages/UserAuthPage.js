@@ -90,7 +90,7 @@ export default function UserAuthPage() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
-            width: 60, height: 60, borderRadius: 16,
+            width: 60, height: 60, borderRadius: 32,
             background: 'linear-gradient(135deg,#00C9A7,#0070F3)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 14px', boxShadow: '0 8px 32px rgba(0,201,167,0.3)'
@@ -106,7 +106,7 @@ export default function UserAuthPage() {
         </div>
 
         {/* Tab toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', borderRadius: 12, padding: 4, marginBottom: 24 }}>
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', borderRadius: 32, padding: 4, marginBottom: 24 }}>
           {[['login', 'Sign In', LogIn], ['register', 'Create Account', UserPlus]].map(([m, label, Icon]) => (
             <button
               key={m}
@@ -126,7 +126,7 @@ export default function UserAuthPage() {
         </div>
 
         {/* Card */}
-        <div style={{ background: '#fff', borderRadius: 20, padding: '28px 24px', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}>
+        <div style={{ background: '#fff', borderRadius: 32, padding: '28px 24px', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 20px', color: '#0B1F3A' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h2>
@@ -205,7 +205,7 @@ export default function UserAuthPage() {
 
             {/* Error */}
             {error && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 13px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 32, padding: '10px 13px', marginBottom: 16 }}>
                 <AlertCircle style={{ width: 15, height: 15, color: '#DC2626', flexShrink: 0, marginTop: 1 }} />
                 <span style={{ fontSize: 13, color: '#DC2626' }}>{error}</span>
               </div>
@@ -215,7 +215,7 @@ export default function UserAuthPage() {
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '13px',
               background: loading ? '#94A3B8' : 'linear-gradient(135deg,#0070F3,#0050CC)',
-              color: '#fff', border: 'none', borderRadius: 10,
+              color: '#fff', border: 'none', borderRadius: 32,
               fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer'
             }}>
               {loading

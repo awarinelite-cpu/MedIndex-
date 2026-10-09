@@ -1290,7 +1290,7 @@ function AiInsightsTab({ drug }) {
                 disabled={saveState === 'saving'}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                  padding: '7px 14px', borderRadius: 32, fontSize: 13, fontWeight: 700,
                   background: saveState === 'error' ? '#FEF2F2' : '#1e40af',
                   color: saveState === 'error' ? '#DC2626' : '#fff',
                   border: saveState === 'error' ? '1px solid #FECACA' : 'none',

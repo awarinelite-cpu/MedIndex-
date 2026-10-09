@@ -43,7 +43,7 @@ export default function ProtectedUserRoute({ children }) {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '8px 16px', background: '#00C9A7', color: '#0B1F3A',
-                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                border: 'none', borderRadius: 32, fontWeight: 700, fontSize: 13, cursor: 'pointer',
               }}
             >
               <RefreshCw style={{ width: 14, height: 14 }} /> Reload

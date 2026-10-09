@@ -987,7 +987,7 @@ export default function AdminPage() {
 
       {/* Toast */}
       {toast && (
-        <div style={{position:'fixed',top:20,right:20,zIndex:9999,background:toast.type==='error'?'#FEF2F2':toast.type==='info'?'#EFF6FF':'#F0FDF4',border:`1px solid ${toast.type==='error'?'#FECACA':toast.type==='info'?'#BFDBFE':'#BBF7D0'}`,color:toast.type==='error'?'#991B1B':toast.type==='info'?'#1e40af':'#166534',padding:'12px 18px',borderRadius:10,fontWeight:600,fontSize:14,boxShadow:'0 4px 20px rgba(0,0,0,0.12)',display:'flex',alignItems:'center',gap:8,maxWidth:360}}>
+        <div style={{position:'fixed',top:20,right:20,zIndex:9999,background:toast.type==='error'?'#FEF2F2':toast.type==='info'?'#EFF6FF':'#F0FDF4',border:`1px solid ${toast.type==='error'?'#FECACA':toast.type==='info'?'#BFDBFE':'#BBF7D0'}`,color:toast.type==='error'?'#991B1B':toast.type==='info'?'#1e40af':'#166534',padding:'12px 18px',borderRadius: 32,fontWeight:600,fontSize:14,boxShadow:'0 4px 20px rgba(0,0,0,0.12)',display:'flex',alignItems:'center',gap:8,maxWidth:360}}>
           {toast.type==='error'?<AlertTriangle className="w-4 h-4 flex-shrink-0"/>:toast.type==='info'?<RefreshCw className="w-4 h-4 flex-shrink-0"/>:'✅'}{toast.msg}
         </div>
       )}
@@ -995,8 +995,8 @@ export default function AdminPage() {
       {/* Confirm Delete Modal */}
       {confirmDelete && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-          <div style={{background:'#fff',borderRadius:16,padding:'28px 24px',maxWidth:420,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
-            <div style={{width:48,height:48,background:'#FEF2F2',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+          <div style={{background:'#fff',borderRadius: 32,padding:'28px 24px',maxWidth:420,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
+            <div style={{width:48,height:48,background:'#FEF2F2',borderRadius: 32,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
               <Trash2 className="w-5 h-5 text-red-600"/>
             </div>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:8}}>{confirmDelete==='bulk'?`Delete ${selectedIds.size} drug${selectedIds.size>1?'s':''}?`:'Delete this drug?'}</h3>
@@ -1012,15 +1012,15 @@ export default function AdminPage() {
       {/* Confirm Force Regenerate ALL Modal */}
       {confirmForceRegen && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
-          <div style={{background:'#fff',borderRadius:16,padding:'28px 24px',maxWidth:460,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
-            <div style={{width:48,height:48,background:'#FEF2F2',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+          <div style={{background:'#fff',borderRadius: 32,padding:'28px 24px',maxWidth:460,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
+            <div style={{width:48,height:48,background:'#FEF2F2',borderRadius: 32,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
               <AlertTriangle className="w-5 h-5 text-red-600"/>
             </div>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:8}}>Force-regenerate all {drugs.length} drugs?</h3>
             <p style={{color:'#64748B',fontSize:14,marginBottom:12}}>
               This rewrites <strong>every</strong> AI-generated field on <strong>every drug</strong> using Gemini's new grounded lookup (openFDA + RxNorm + always-on Google Search) — including fields that already have content, and including any manual edits or admin-verified content. Nothing is skipped.
             </p>
-            <p style={{color:'#B45309',fontSize:13,marginBottom:24,background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:8,padding:'10px 12px'}}>
+            <p style={{color:'#B45309',fontSize:13,marginBottom:24,background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius: 32,padding:'10px 12px'}}>
               This cannot be undone. It runs one Gemini call per drug and may take a while for a large database — you can stop it partway and re-run later to pick up where you left off.
             </p>
             <div style={{display:'flex',gap:10}}>
@@ -1034,23 +1034,23 @@ export default function AdminPage() {
       {/* Edit Modal */}
       {editingDrug && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:20,overflowY:'auto'}}>
-          <div style={{background:'#fff',borderRadius:16,padding:'28px 24px',maxWidth:640,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
+          <div style={{background:'#fff',borderRadius: 32,padding:'28px 24px',maxWidth:640,width:'100%',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.25)'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
               <h3 style={{fontSize:18,fontWeight:800}}>Edit: {editingDrug.generic_name}</h3>
-              <button onClick={()=>setEditingDrug(null)} style={{background:'#F1F5F9',border:'none',borderRadius:8,padding:'6px 8px',cursor:'pointer'}}><X className="w-4 h-4 text-gray-500"/></button>
+              <button onClick={()=>setEditingDrug(null)} style={{background:'#F1F5F9',border:'none',borderRadius: 32,padding:'6px 8px',cursor:'pointer'}}><X className="w-4 h-4 text-gray-500"/></button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
               {EDITABLE_FIELDS.map(field=>(
                 <div key={field.key}>
                   <label style={{display:'block',fontSize:11,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:5}}>{field.label}{field.required&&<span style={{color:'#DC2626'}}> *</span>}</label>
                   {field.type==='select'?(
-                    <select value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',background:'#fff'}}>
+                    <select value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius: 32,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',background:'#fff'}}>
                       <option value="">Select...</option>{field.options.map(o=><option key={o} value={o}>{o}</option>)}
                     </select>
                   ):field.type==='textarea'?(
-                    <textarea value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} rows={3} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',resize:'vertical',boxSizing:'border-box'}}/>
+                    <textarea value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} rows={3} style={{width:'100%',padding:'10px 12px',borderRadius: 32,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',resize:'vertical',boxSizing:'border-box'}}/>
                   ):(
-                    <input type="text" value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:8,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+                    <input type="text" value={editForm[field.key]||''} onChange={e=>setEditForm(p=>({...p,[field.key]:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius: 32,border:'1.5px solid #E2E8F0',fontSize:13,outline:'none',boxSizing:'border-box'}}/>
                   )}
                 </div>
               ))}
@@ -1231,33 +1231,33 @@ export default function AdminPage() {
                   placeholder="Search name, class, subclass, indication..."
                   className="w-full pl-10 pr-4 py-2.5 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 text-sm"/>
               </div>
-              <button onClick={()=>setShowFilters(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:showFilters?'1.5px solid #1e40af':'1.5px solid #E2E8F0',background:showFilters?'#EFF6FF':'#fff',color:showFilters?'#1e40af':'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+              <button onClick={()=>setShowFilters(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:showFilters?'1.5px solid #1e40af':'1.5px solid #E2E8F0',background:showFilters?'#EFF6FF':'#fff',color:showFilters?'#1e40af':'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                 <Filter className="w-4 h-4"/>Filters
                 {activeFilterCount>0&&<span style={{background:'#1e40af',color:'#fff',borderRadius:'50%',width:18,height:18,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900}}>{activeFilterCount}</span>}
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters?'rotate-180':''}`}/>
               </button>
               {selectedIds.size>0&&(
-                <button onClick={promptBulkDelete} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                <button onClick={promptBulkDelete} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Trash2 className="w-4 h-4"/>Delete {selectedIds.size} selected
                 </button>
               )}
               {!bulkFixRunning && !globalFixRunning && selectedIncomplete.length>0 && (
-                <button onClick={()=>bulkFixWithAI(selectedIncomplete)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                <button onClick={()=>bulkFixWithAI(selectedIncomplete)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Sparkles className="w-4 h-4"/>AI Insight: fix {selectedIncomplete.length} selected
                 </button>
               )}
               {!bulkFixRunning && !globalFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
-                <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
                 </button>
               )}
               {incompleteInView.length>0 && (
-                <button onClick={()=>downloadIncompleteCSV(incompleteInView, showToast)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #E2E8F0',background:'#fff',color:'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                <button onClick={()=>downloadIncompleteCSV(incompleteInView, showToast)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #E2E8F0',background:'#fff',color:'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Download className="w-4 h-4"/>Download {incompleteInView.length} incomplete (CSV)
                 </button>
               )}
               {bulkFixRunning && (
-                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
                   <RefreshCw className="w-4 h-4 animate-spin"/>
                   Fixing {bulkFixProgress.done} of {bulkFixProgress.total}…
                   <button onClick={stopBulkFix} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
@@ -1265,12 +1265,12 @@ export default function AdminPage() {
               )}
               {!forceRegenRunning && !bulkFixRunning && !globalFixRunning && drugs.length>0 && (
                 <button onClick={()=>setConfirmForceRegen(true)} title="Overwrite every field on every drug with a fresh Gemini lookup (openFDA + RxNorm + always-on search) — including fields that already have content"
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <RefreshCw className="w-4 h-4"/>Force Regenerate All {drugs.length}
                 </button>
               )}
               {forceRegenRunning && (
-                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius:8,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
                   <RefreshCw className="w-4 h-4 animate-spin"/>
                   Regenerating {forceRegenProgress.done} of {forceRegenProgress.total}…
                   <button onClick={stopForceRegen} style={{background:'none',border:'none',cursor:'pointer',color:'#DC2626',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
@@ -1288,7 +1288,7 @@ export default function AdminPage() {
               </div>
             )}
             {(forceRegenRunning || forceRegenCompleted.length>0) && forceRegenCompleted.length>0 && (
-              <div style={{border:'1px solid #FECACA',borderRadius:8,overflow:'hidden'}}>
+              <div style={{border:'1px solid #FECACA',borderRadius: 32,overflow:'hidden'}}>
                 <div style={{padding:'8px 12px',background:'#FEF2F2',fontSize:12,fontWeight:700,color:'#B91C1C',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <span>Done so far ({forceRegenCompleted.length}) — tap to open, opens in a new tab</span>
                   {!forceRegenRunning && (
@@ -1336,12 +1336,12 @@ export default function AdminPage() {
                 </div>
                 {activeFilterCount>0&&(
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {filterIncompleteOnly&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#FFFBEB',color:'#B45309',borderRadius:20,fontSize:12,fontWeight:700}}>⚠ Incomplete only<button onClick={()=>setFilterIncompleteOnly(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',padding:0}}>×</button></span>}
-                    {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                    {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                    {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                    {filterIndication&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius:20,fontSize:12,fontWeight:700}}>Indication: {filterIndication}<button onClick={()=>setFilterIndication('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
-                    <button onClick={clearAllFilters} style={{padding:'3px 10px',background:'none',border:'1px solid #E2E8F0',borderRadius:20,fontSize:12,fontWeight:700,color:'#64748B',cursor:'pointer'}}>Clear all</button>
+                    {filterIncompleteOnly&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#FFFBEB',color:'#B45309',borderRadius: 32,fontSize:12,fontWeight:700}}>⚠ Incomplete only<button onClick={()=>setFilterIncompleteOnly(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',padding:0}}>×</button></span>}
+                    {filterClass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius: 32,fontSize:12,fontWeight:700}}>Class: {filterClass}<button onClick={()=>{setFilterClass('');setFilterSubclass('');}} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterSubclass&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius: 32,fontSize:12,fontWeight:700}}>Subclass: {filterSubclass}<button onClick={()=>setFilterSubclass('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterStatus&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius: 32,fontSize:12,fontWeight:700}}>Status: {filterStatus}<button onClick={()=>setFilterStatus('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    {filterIndication&&<span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',background:'#EFF6FF',color:'#1e40af',borderRadius: 32,fontSize:12,fontWeight:700}}>Indication: {filterIndication}<button onClick={()=>setFilterIndication('')} style={{background:'none',border:'none',cursor:'pointer',color:'#1e40af',padding:0}}>×</button></span>}
+                    <button onClick={clearAllFilters} style={{padding:'3px 10px',background:'none',border:'1px solid #E2E8F0',borderRadius: 32,fontSize:12,fontWeight:700,color:'#64748B',cursor:'pointer'}}>Clear all</button>
                   </div>
                 )}
               </div>
@@ -1452,7 +1452,7 @@ export default function AdminPage() {
                 {/* Required fields reference */}
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {REQUIRED_FIELD_GROUPS.map(g => (
-                    <span key={g.label} style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:'rgba(99,102,241,0.1)',color:'#4338ca',fontWeight:600}}>{g.label}</span>
+                    <span key={g.label} style={{fontSize:11,padding:'2px 8px',borderRadius: 32,background:'rgba(99,102,241,0.1)',color:'#4338ca',fontWeight:600}}>{g.label}</span>
                   ))}
                 </div>
               </div>

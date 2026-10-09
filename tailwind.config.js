@@ -39,6 +39,17 @@ module.exports = {
           warning: '#d97706',
         }
       },
+      // Capsule / tablet shape everywhere: 2rem is >= half the height of any
+      // normal button, so short elements become full capsules, while tall
+      // cards get large tablet-style corners instead of a distorted pill.
+      borderRadius: {
+        DEFAULT: '2rem',
+        md: '2rem',
+        lg: '2rem',
+        xl: '2rem',
+        '2xl': '2rem',
+        '3xl': '2.5rem',
+      },
       fontFamily: {
         mono: ['SF Mono', 'Fira Code', 'Consolas', 'monospace'],
       }

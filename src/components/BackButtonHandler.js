@@ -63,7 +63,7 @@ export default function BackButtonHandler() {
         background: 'rgba(0,0,0,0.82)',
         color: '#fff',
         padding: '10px 18px',
-        borderRadius: '20px',
+        borderRadius: '32px',
         fontSize: '14px',
         zIndex: 9999,
         pointerEvents: 'none',

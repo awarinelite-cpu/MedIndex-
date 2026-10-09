@@ -92,15 +92,15 @@ export default function LoginPage() {
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 30% 20%, rgba(0,201,167,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(0,112,243,0.08) 0%, transparent 60%)' }} />
 
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
-        <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+        <div style={{ background: '#fff', borderRadius: 32, boxShadow: '0 32px 80px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
 
           {/* Header */}
           <div style={{ background: '#0B1F3A', padding: '28px 32px 24px', textAlign: 'center' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#00C9A7,#0070F3)', marginBottom: 14 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 32, background: 'linear-gradient(135deg,#00C9A7,#0070F3)', marginBottom: 14 }}>
               <Pill style={{ width: 26, height: 26, color: '#fff' }} />
             </div>
             <div style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 4 }}>MedIndex</div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,201,167,0.15)', color: '#00C9A7', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,201,167,0.15)', color: '#00C9A7', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 32 }}>
               <Shield style={{ width: 12, height: 12 }} />
               Admin Portal
             </div>
@@ -113,7 +113,7 @@ export default function LoginPage() {
             </p>
 
             {error && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '12px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 20, lineHeight: 1.5 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', padding: '12px 14px', borderRadius: 32, fontSize: 13, fontWeight: 600, marginBottom: 20, lineHeight: 1.5 }}>
                 <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }} />
                 {error}
               </div>
@@ -127,7 +127,7 @@ export default function LoginPage() {
                 <input
                   type="email" value={email} onChange={e => setEmail(e.target.value)}
                   required placeholder="admin@medindex.com" autoComplete="email"
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #E2E8F0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 32, border: '1.5px solid #E2E8F0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
                   onFocus={e => e.target.style.borderColor = '#0070F3'}
                   onBlur={e => e.target.style.borderColor = '#E2E8F0'}
                 />
@@ -141,7 +141,7 @@ export default function LoginPage() {
                   <input
                     type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
                     required placeholder="••••••••" autoComplete="current-password"
-                    style={{ width: '100%', padding: '12px 44px 12px 14px', borderRadius: 10, border: '1.5px solid #E2E8F0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    style={{ width: '100%', padding: '12px 44px 12px 14px', borderRadius: 32, border: '1.5px solid #E2E8F0', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
                     onFocus={e => e.target.style.borderColor = '#0070F3'}
                     onBlur={e => e.target.style.borderColor = '#E2E8F0'}
                   />
@@ -153,7 +153,7 @@ export default function LoginPage() {
               </div>
 
               <button type="submit" disabled={loading}
-                style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: loading ? '#94A3B8' : 'linear-gradient(135deg,#0070F3,#0050CC)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                style={{ width: '100%', padding: '13px', borderRadius: 32, border: 'none', background: loading ? '#94A3B8' : 'linear-gradient(135deg,#0070F3,#0050CC)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
             </form>

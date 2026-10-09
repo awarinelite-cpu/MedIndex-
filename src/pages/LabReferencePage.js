@@ -150,7 +150,7 @@ function ParamCard({ param, meta, depth = 0 }) {
     <div style={{
       background: depth === 0 ? theme.innerCardBg0 : theme.innerCardBg1,
       border: `1px solid ${open ? meta.border : theme.innerCardBorder}`,
-      borderRadius: 10, marginBottom: 8, overflow: 'hidden',
+      borderRadius: 32, marginBottom: 8, overflow: 'hidden',
       transition: 'border-color 0.2s',
       marginLeft: depth > 0 ? 16 : 0,
     }}>
@@ -168,7 +168,7 @@ function ParamCard({ param, meta, depth = 0 }) {
             <span style={{ fontWeight: 700, fontSize: S(BASE_FONT.paramName), color: theme.textHeading }}>{param.name}</span>
             {param.unit && (
               <span style={{
-                fontSize: S(BASE_FONT.paramUnit), padding: '2px 8px', borderRadius: 20,
+                fontSize: S(BASE_FONT.paramUnit), padding: '2px 8px', borderRadius: 32,
                 background: `${meta.color}22`, color: meta.color, fontWeight: 700,
               }}>
                 {param.unit}
@@ -216,7 +216,7 @@ function PanelCard({ lab }) {
   return (
     <div style={{
       background: theme.cardBg, border: `1.5px solid ${open ? meta.color + '55' : theme.cardBorder}`,
-      borderRadius: 14, marginBottom: 14, overflow: 'hidden',
+      borderRadius: 32, marginBottom: 14, overflow: 'hidden',
       boxShadow: open ? `0 4px 24px ${meta.color}15` : 'none',
       transition: 'border-color 0.2s, box-shadow 0.2s',
     }}>
@@ -234,7 +234,7 @@ function PanelCard({ lab }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 800, fontSize: S(BASE_FONT.panelName), color: theme.textHeading }}>{lab.name}</span>
             <span style={{
-              fontSize: S(BASE_FONT.panelBadge), padding: '3px 10px', borderRadius: 20,
+              fontSize: S(BASE_FONT.panelBadge), padding: '3px 10px', borderRadius: 32,
               background: meta.bg, color: meta.color, fontWeight: 700, border: `1px solid ${meta.border}`,
             }}>
               {lab.cat}
@@ -253,7 +253,7 @@ function PanelCard({ lab }) {
           )}
         </div>
         <div style={{
-          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+          width: 30, height: 30, borderRadius: 32, flexShrink: 0,
           background: open ? meta.bg : theme.chipInactiveBg,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           border: `1px solid ${open ? meta.border : 'transparent'}`,
@@ -283,7 +283,7 @@ function PanelCard({ lab }) {
               {/* Panel-level causes summary */}
               {(lab.lowCauses?.length > 0 || lab.highCauses?.length > 0) && (
                 <div style={{
-                  padding: '11px 12px', borderRadius: 8, marginBottom: 12,
+                  padding: '11px 12px', borderRadius: 32, marginBottom: 12,
                   background: theme.overviewBg, border: `1px solid ${theme.overviewBorder}`,
                 }}>
                   <div style={{ fontSize: S(BASE_FONT.overviewLabel), color: theme.textFaint, fontWeight: 700, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -316,7 +316,7 @@ function ModeToggle({ active, onClick, icon: Icon, label, theme, S }) {
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '7px 12px', borderRadius: 20,
+        padding: '7px 12px', borderRadius: 32,
         background: active ? theme.activeAllBg : theme.chipInactiveBg,
         color: active ? '#fff' : theme.chipInactiveText,
         border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: S(12),
@@ -399,7 +399,7 @@ export default function LabReferencePage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: 10,
+                  width: 44, height: 44, borderRadius: 32,
                   background: 'linear-gradient(135deg, #00C9A7, #0070F3)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: S(20),
                   flexShrink: 0,
@@ -441,7 +441,7 @@ export default function LabReferencePage() {
                 style={{
                   width: '100%', padding: '12px 12px 12px 38px',
                   background: theme.inputBg, border: `1px solid ${theme.inputBorder}`,
-                  borderRadius: 10, color: theme.textPrimary, fontSize: S(BASE_FONT.searchInput), outline: 'none',
+                  borderRadius: 32, color: theme.textPrimary, fontSize: S(BASE_FONT.searchInput), outline: 'none',
                   boxSizing: 'border-box',
                 }}
               />
@@ -466,7 +466,7 @@ export default function LabReferencePage() {
                     key={cat}
                     onClick={() => setActiveCat(cat)}
                     style={{
-                      padding: '6px 13px', borderRadius: 20, border: 'none',
+                      padding: '6px 13px', borderRadius: 32, border: 'none',
                       background: active ? (cat === 'All' ? theme.activeAllBg : meta.color) : theme.chipInactiveBg,
                       color: active ? '#fff' : theme.chipInactiveText,
                       fontWeight: 700, fontSize: S(BASE_FONT.chip), cursor: 'pointer', whiteSpace: 'nowrap',

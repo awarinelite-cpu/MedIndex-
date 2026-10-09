@@ -33,7 +33,7 @@ export default function ProtectedAdminRoute({ children }) {
       }}>
         <div style={{ textAlign: 'center', maxWidth: 360 }}>
           <div style={{
-            width: 56, height: 56, background: '#FEF2F2', borderRadius: 16,
+            width: 56, height: 56, background: '#FEF2F2', borderRadius: 32,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
           }}>
@@ -48,7 +48,7 @@ export default function ProtectedAdminRoute({ children }) {
           <a
             href="/login"
             style={{
-              display: 'inline-block', padding: '10px 24px', borderRadius: 10,
+              display: 'inline-block', padding: '10px 24px', borderRadius: 32,
               background: '#0B1F3A', color: '#fff', fontWeight: 700, fontSize: 14,
               textDecoration: 'none',
             }}

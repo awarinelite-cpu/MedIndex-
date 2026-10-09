@@ -813,7 +813,7 @@ function DraggableWidget({ id, defaultBottom = 20, defaultRight = 16, width = 30
     <div
       ref={elRef}
       style={{
-        ...outerStyle, background: '#0F172A', color: '#fff', borderRadius: 20,
+        ...outerStyle, background: '#0F172A', color: '#fff', borderRadius: 32,
         boxShadow: '0 8px 40px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)',
         overflow: 'hidden', userSelect: dragging ? 'none' : 'auto',
       }}
@@ -910,7 +910,7 @@ function GlobalAiInsightWidget() {
 
           <button
             onClick={stopGlobalFix}
-            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
           >
             ⏹ Stop
           </button>
@@ -936,7 +936,7 @@ function GlobalAiInsightWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
             </button>
@@ -996,7 +996,7 @@ function ConditionSaveWidget() {
 
           <button
             onClick={stopConditionSave}
-            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
           >
             ⏹ Stop
           </button>
@@ -1029,7 +1029,7 @@ function ConditionSaveWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissConditionSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
             </button>
@@ -1100,19 +1100,19 @@ function ClassSweepWidget() {
             <button
               onClick={() => jumpClassSweep('prev')}
               disabled={classSweepClassIndex <= 1}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: classSweepClassIndex <= 1 ? 'default' : 'pointer', opacity: classSweepClassIndex <= 1 ? 0.4 : 1 }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 10px', cursor: classSweepClassIndex <= 1 ? 'default' : 'pointer', opacity: classSweepClassIndex <= 1 ? 0.4 : 1 }}
             >
               ⏮ Prev
             </button>
             <button
               onClick={() => jumpClassSweep('next')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 10px', cursor: 'pointer' }}
             >
               Next ⏭
             </button>
             <button
               onClick={stopClassSweep}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               ⏹ Stop
             </button>
@@ -1142,7 +1142,7 @@ function ClassSweepWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissClassSweepSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
             </button>
@@ -1205,19 +1205,19 @@ function ClinicalInfoSweepWidget() {
             <button
               onClick={() => jumpClinicalSweep('prev')}
               disabled={clinicalSweepIndex <= 1}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: clinicalSweepIndex <= 1 ? 'default' : 'pointer', opacity: clinicalSweepIndex <= 1 ? 0.4 : 1 }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 10px', cursor: clinicalSweepIndex <= 1 ? 'default' : 'pointer', opacity: clinicalSweepIndex <= 1 ? 0.4 : 1 }}
             >
               ⏮ Prev
             </button>
             <button
               onClick={() => jumpClinicalSweep('next')}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 10px', cursor: 'pointer' }}
             >
               Next ⏭
             </button>
             <button
               onClick={stopClinicalInfoSweep}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               ⏹ Stop
             </button>
@@ -1255,7 +1255,7 @@ function ClinicalInfoSweepWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissClinicalSweepSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer' }}
+              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
             </button>
@@ -1329,7 +1329,7 @@ function PendingReviewWidget() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#fff', color: '#0F172A', borderRadius: 20, width: '100%', maxWidth: 420,
+              background: '#fff', color: '#0F172A', borderRadius: 32, width: '100%', maxWidth: 420,
               boxShadow: '0 20px 60px rgba(0,0,0,0.4)', overflow: 'hidden',
             }}
           >
@@ -1353,7 +1353,7 @@ function PendingReviewWidget() {
                   {current.drugClass && (
                     <div style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>{current.drugClass}</div>
                   )}
-                  <div style={{ fontSize: 13, color: '#334155', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 13, color: '#334155', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 32, padding: '10px 12px' }}>
                     Flagged as possibly indicated for <strong>{current.conditionLabel}</strong>
                     {current.systemName && <> ({current.systemName})</>} — the AI linked it here, but its stored
                     indications didn't clearly match. Confirm to tag it, or reject to drop the link.
@@ -1364,14 +1364,14 @@ function PendingReviewWidget() {
                   <button
                     disabled={busy}
                     onClick={handleReject}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', border: 'none', borderRadius: 12, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', border: 'none', borderRadius: 32, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
                   >
                     <X className="w-3.5 h-3.5" /> Reject
                   </button>
                   <button
                     disabled={busy}
                     onClick={handleConfirm}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#fff', background: '#16A34A', border: 'none', borderRadius: 12, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#fff', background: '#16A34A', border: 'none', borderRadius: 32, padding: '10px 0', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.5 : 1 }}
                   >
                     <Check className="w-3.5 h-3.5" /> Confirm
                   </button>
