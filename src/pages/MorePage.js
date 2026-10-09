@@ -133,13 +133,13 @@ export default function MorePage() {
         />
       </form>
 
-      <div className="rounded-xl border border-drug-border overflow-hidden bg-white mb-6">
+      <div className="space-y-3 mb-6">
         {NAV_LINKS.map((link, i) => (
           <Link
             key={link.to}
             to={link.to}
-            className={`flex items-center justify-between gap-2 px-4 py-3.5 text-sm font-medium text-drug-text
-                       hover:bg-gray-50 transition-colors ${i !== NAV_LINKS.length - 1 ? 'border-b border-drug-border' : ''}`}
+            className="flex items-center justify-between gap-2 px-5 py-3.5 text-sm font-medium text-drug-text
+                       bg-white border border-drug-border rounded-xl"
           >
             <span className="flex items-center gap-3">
               <link.icon className="w-4 h-4 text-primary-600" />
@@ -153,7 +153,7 @@ export default function MorePage() {
       {isAdmin && (
         <Link
           to="/admin"
-          className="flex items-center gap-2 px-4 py-3.5 rounded-xl text-sm font-bold mb-4"
+          className="section-card flex items-center gap-2 px-5 py-3.5 rounded-xl text-sm font-bold mb-4"
           style={{ background: 'rgba(0,201,167,0.12)', color: '#00997F' }}
         >
           ← Admin Portal
