@@ -299,19 +299,30 @@
     0 10px 14px -9px rgba(0,0,0,.7);
 }
 
-/* raised capsule buttons: any button with a background colour */
-.btn-primary, .btn-secondary,
-button[class*="bg-"]:not([class*="bg-transparent"]) {
-  border-bottom-width: 4px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 8px -1px rgba(15,23,42,.30);
-  transition: transform .1s, border-width .1s, box-shadow .1s, background-color .15s;
+/* raised capsule buttons: EVERY button (including inline-styled ones).
+   Uses only box-shadow + a translucent gloss layer so inline colours/borders
+   still apply. Text-link buttons (underline) are left alone. */
+button:not(.underline):not([class*="underline"]),
+input[type="button"], input[type="submit"],
+a[class*="bg-"][class*="px-"][class*="rounded"] {
+  border-radius: 9999px;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.30) 0%, rgba(255,255,255,.06) 50%, rgba(0,0,0,.10) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 4px 0 rgba(15,23,42,.30), 0 7px 9px -3px rgba(15,23,42,.30);
+  transition: transform .1s, box-shadow .1s, background-color .15s;
 }
-.btn-primary { border: 1px solid #1e3a8a; border-bottom: 4px solid #172554; background-image: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%); }
-.btn-secondary { border-bottom: 4px solid #94a3b8; background-image: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%); }
-.dark .btn-secondary { border-bottom-color: #0b1220; background-image: linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.20)); }
-.btn-primary:active, .btn-secondary:active,
-button[class*="bg-"]:not([class*="bg-transparent"]):active {
+button:not(.underline):not([class*="underline"]):disabled { box-shadow: 0 2px 0 rgba(15,23,42,.18); }
+.dark button:not(.underline):not([class*="underline"]),
+.dark input[type="button"], .dark input[type="submit"],
+.dark a[class*="bg-"][class*="px-"][class*="rounded"] {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.03) 50%, rgba(0,0,0,.20) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 4px 0 rgba(0,0,0,.55), 0 7px 9px -3px rgba(0,0,0,.6);
+}
+.btn-primary { background-image: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%); }
+.btn-secondary { background-image: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%); }
+.dark .btn-secondary { background-image: linear-gradient(180deg, rgba(255,255,255,.16), rgba(0,0,0,.20)); }
+button:not(.underline):not([class*="underline"]):not(:disabled):active,
+input[type="button"]:active, input[type="submit"]:active,
+a[class*="bg-"][class*="px-"][class*="rounded"]:active {
   transform: translateY(3px);
-  border-bottom-width: 1px;
-  box-shadow: inset 0 1px 2px rgba(15,23,42,.3);
+  box-shadow: inset 0 1px 2px rgba(15,23,42,.35), 0 1px 0 rgba(15,23,42,.30);
 }
