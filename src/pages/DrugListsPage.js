@@ -223,7 +223,8 @@ export default function DrugListsPage() {
             return (
               <div
                 key={list.id}
-                className="bg-white border border-drug-border rounded-xl p-4 flex items-center gap-4 hover:border-primary-300 hover:shadow-sm transition-all group"
+                onClick={() => { if (!isRenaming) navigate(`/lists/${list.id}`); }}
+                className={`bg-white border border-drug-border rounded-xl p-4 flex items-center gap-4 hover:border-primary-300 hover:shadow-sm transition-all group ${isRenaming ? '' : 'cursor-pointer'}`}
               >
                 {/* Icon */}
                 <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
@@ -231,7 +232,7 @@ export default function DrugListsPage() {
                 </div>
 
                 {/* Title + rename */}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0" onClick={isRenaming ? e => e.stopPropagation() : undefined}>
                   {isRenaming ? (
                     <RenameInput
                       value={list.title}
@@ -256,7 +257,10 @@ export default function DrugListsPage() {
 
                 {/* Actions */}
                 {!isRenaming && (
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
                     <button
                       onClick={() => setRenamingId(list.id)}
                       title="Rename"
@@ -278,7 +282,7 @@ export default function DrugListsPage() {
                 {/* Navigate arrow */}
                 {!isRenaming && (
                   <button
-                    onClick={() => navigate(`/lists/${list.id}`)}
+                    onClick={e => { e.stopPropagation(); navigate(`/lists/${list.id}`); }}
                     className="p-2 rounded-lg hover:bg-primary-50 text-drug-muted hover:text-primary-600 transition-colors flex-shrink-0"
                   >
                     <ChevronRight className="w-5 h-5" />
