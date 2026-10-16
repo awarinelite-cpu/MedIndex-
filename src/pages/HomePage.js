@@ -282,7 +282,7 @@ export default function HomePage() {
             <Link
               key={cat.id}
               to={cat.to}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl hover:shadow-md transition-all bg-white
+              className="card-sheen flex flex-col items-center gap-2 p-4 rounded-xl hover:shadow-md transition-all bg-white
                          border border-drug-border text-center"
             >
               <div className={`w-14 h-14 flex items-center justify-center rounded-2xl ${cat.bg}`}>

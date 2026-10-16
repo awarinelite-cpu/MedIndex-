@@ -138,7 +138,7 @@ export default function MorePage() {
           <Link
             key={link.to}
             to={link.to}
-            className="flex items-center justify-between gap-2 px-5 py-3.5 text-sm font-medium text-drug-text
+            className="card-sheen flex items-center justify-between gap-2 px-5 py-3.5 text-sm font-medium text-drug-text
                        bg-white border border-drug-border rounded-xl"
           >
             <span className="flex items-center gap-3">
