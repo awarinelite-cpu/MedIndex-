@@ -2,10 +2,16 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Pill, Eye, EyeOff, AlertCircle, UserPlus, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function UserAuthPage() {
+  const { isDark } = useTheme();
+  // Dashboard palette (light) with the original navy kept for dark mode.
+  const pal = isDark
+    ? { page: 'linear-gradient(135deg, #0B1F3A 0%, #0D2D5E 55%, #0B3A5E 100%)', title: '#fff', sub: '#64748B', tabsBg: 'rgba(255,255,255,0.08)', tabOff: '#94A3B8', foot: '#94A3B8' }
+    : { page: 'linear-gradient(180deg, #e8f1ff 0, #f4f8ff 320px, #ffffff 640px)', title: '#0b2a66', sub: '#6a7e9c', tabsBg: '#dbe8fb', tabOff: '#6a7e9c', foot: '#6a7e9c' };
   const [mode,     setMode]     = useState('login');
   const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
@@ -81,7 +87,7 @@ export default function UserAuthPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0B1F3A 0%, #0D2D5E 55%, #0B3A5E 100%)',
+      background: pal.page,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 24, fontFamily: "'Inter','Segoe UI',sans-serif"
     }}>
@@ -91,22 +97,22 @@ export default function UserAuthPage() {
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
             width: 60, height: 60, borderRadius: 32,
-            background: 'linear-gradient(135deg,#00C9A7,#0070F3)',
+            background: 'linear-gradient(145deg,#3b92ff,#1259d8)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 14px', boxShadow: '0 8px 32px rgba(0,201,167,0.3)'
+            margin: '0 auto 14px', boxShadow: '0 10px 24px -8px rgba(17,85,216,0.55)'
           }}>
             <Pill style={{ width: 28, height: 28, color: '#fff' }} />
           </div>
-          <h1 style={{ color: '#fff', fontSize: 26, fontWeight: 800, margin: '0 0 6px', letterSpacing: '-0.5px' }}>
+          <h1 style={{ color: pal.title, fontSize: 26, fontWeight: 800, margin: '0 0 6px', letterSpacing: '-0.5px' }}>
             MedIndex
           </h1>
-          <p style={{ color: '#64748B', fontSize: 14, margin: 0 }}>
+          <p style={{ color: pal.sub, fontSize: 14, margin: 0 }}>
             Clinical Drug Reference · Made by The Elite Nurses
           </p>
         </div>
 
         {/* Tab toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', borderRadius: 32, padding: 4, marginBottom: 24 }}>
+        <div style={{ display: 'flex', background: pal.tabsBg, borderRadius: 32, padding: 4, marginBottom: 24 }}>
           {[['login', 'Sign In', LogIn], ['register', 'Create Account', UserPlus]].map(([m, label, Icon]) => (
             <button
               key={m}
@@ -114,7 +120,7 @@ export default function UserAuthPage() {
               style={{
                 flex: 1, padding: '10px', borderRadius: 9, border: 'none', cursor: 'pointer',
                 background: mode === m ? '#fff' : 'transparent',
-                color: mode === m ? '#0B1F3A' : '#94A3B8',
+                color: mode === m ? '#0b2a66' : pal.tabOff,
                 fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center',
                 justifyContent: 'center', gap: 7, transition: 'all 0.2s'
               }}
@@ -126,7 +132,7 @@ export default function UserAuthPage() {
         </div>
 
         {/* Card */}
-        <div style={{ background: '#fff', borderRadius: 32, padding: '28px 24px', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}>
+        <div style={{ background: '#fff', borderRadius: 32, padding: '28px 24px', boxShadow: isDark ? '0 24px 64px rgba(0,0,0,0.35)' : '0 18px 40px -18px rgba(21,101,216,0.45)', border: isDark ? 'none' : '1px solid #e0e9f6' }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 20px', color: '#0B1F3A' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h2>
@@ -214,7 +220,7 @@ export default function UserAuthPage() {
             {/* Submit */}
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '13px',
-              background: loading ? '#94A3B8' : 'linear-gradient(135deg,#0070F3,#0050CC)',
+              background: loading ? '#94A3B8' : 'linear-gradient(100deg,#0a4cbd,#2a85f4)',
               color: '#fff', border: 'none', borderRadius: 32,
               fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer'
             }}>
@@ -225,7 +231,7 @@ export default function UserAuthPage() {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', color: '#334155', fontSize: 12, marginTop: 20 }}>
+        <p style={{ textAlign: 'center', color: pal.foot, fontSize: 12, marginTop: 20 }}>
           By signing in you agree to use this app for clinical reference purposes only.
         </p>
       </div>

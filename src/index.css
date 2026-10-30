@@ -379,7 +379,8 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
    Tailwind combos like `.bg-white.rounded-xl` and every <button>, and this
    screen is a flat, soft-gradient design, so it must not pick those up.
    =========================================================================== */
-.mi-home, .mi-header, .mi-tabbar {
+.mi-home, .mi-page, .mi-header, .mi-tabbar {
+  --mi-btn: #1769e0;
   --mi-ink: #0b2a66;
   --mi-body: #3b5073;
   --mi-muted: #6a7e9c;
@@ -387,7 +388,8 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
   --mi-surface: #ffffff;
   --mi-blue: #1769e0;
 }
-.dark .mi-home, .dark .mi-header, .dark .mi-tabbar {
+.dark .mi-home, .dark .mi-page, .dark .mi-header, .dark .mi-tabbar {
+  --mi-btn: #2b7bf0;
   --mi-ink: #e9f1ff;
   --mi-body: #b7c7e3;
   --mi-muted: #8ea2c2;
@@ -618,4 +620,91 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 
 @media (prefers-reduced-motion: reduce) {
   .mi-search-field, .mi-tab { transition: none; }
+}
+
+/* ===========================================================================
+   MedIndex inner pages (everything except home / admin) -- scoped to
+   <main class="mi-page"> so the dashboard look carries over without touching
+   page logic. Colours come from the same --mi-* tokens as the home screen;
+   the glass-bubble gloss on cards and buttons is switched off in here.
+   =========================================================================== */
+.mi-page {
+  --drug-card: var(--mi-surface);
+  --drug-border: var(--mi-line);
+  --drug-text: var(--mi-ink);
+  --drug-muted: var(--mi-muted);
+  color: var(--mi-ink);
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
+  line-height: 1.35;
+  background-color: #ffffff;
+  background-image: linear-gradient(180deg, #e8f1ff 0, #f4f8ff 260px, #ffffff 560px);
+  background-repeat: no-repeat;
+}
+.dark .mi-page {
+  background-color: #0b1220;
+  background-image: linear-gradient(180deg, #0f1c36 0, #0b1424 320px, #0b1220 640px);
+}
+.mi-page h1 { font-weight: 800; letter-spacing: -.3px; }
+.mi-page a { text-decoration: none; }
+
+/* hero banners use the AI Clinical Consult blue */
+.mi-page section[class*="from-primary-900"] {
+  background: linear-gradient(100deg, #0a4cbd 0%, #1264df 55%, #2a85f4 100%);
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 16px 28px -16px rgba(10, 76, 189, .85);
+}
+
+/* cards: flat white, soft blue-grey rim, no gloss */
+.mi-page .section-card,
+.mi-page .bg-white.rounded-xl:not([class*="max-h-"]),
+.mi-page .bg-white.rounded-2xl:not([class*="max-h-"]) {
+  background-image: none;
+  background-color: var(--mi-surface);
+  border-color: var(--mi-line);
+  border-radius: 20px;
+  box-shadow: 0 10px 24px -18px rgba(21, 101, 216, .45);
+  transform: none;
+}
+.mi-page .card-sheen { animation: none; background-image: none; }
+@media (hover: hover) {
+  .mi-page .section-card:hover { transform: none; box-shadow: 0 14px 28px -16px rgba(21, 101, 216, .55); }
+}
+
+/* buttons: flat capsules, primary = dashboard blue */
+.mi-page button:not(.underline):not([class*="underline"]),
+.mi-page input[type="button"], .mi-page input[type="submit"],
+.mi-page .btn-primary, .mi-page .btn-secondary,
+.mi-page a[class*="bg-"][class*="px-"][class*="rounded"] {
+  background-image: none;
+  box-shadow: none;
+  filter: none;
+}
+.mi-page button:not(.underline):not([class*="underline"]):not(:disabled):hover,
+.mi-page .btn-primary:hover, .mi-page .btn-secondary:hover {
+  filter: none;
+  transform: none;
+}
+.mi-page .bg-primary-600, .mi-page .bg-primary-700, .mi-page .btn-primary { background-color: var(--mi-btn); }
+.mi-page .btn-secondary { border-color: var(--mi-line); }
+
+/* fields: pill inputs like the home search bar */
+.mi-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.mi-page select {
+  border-color: var(--mi-line);
+  border-radius: 9999px;
+  background-color: var(--mi-surface);
+  color: var(--mi-ink);
+}
+.mi-page textarea {
+  border-color: var(--mi-line);
+  border-radius: 18px;
+  background-color: var(--mi-surface);
+  color: var(--mi-ink);
+}
+.mi-page input:focus, .mi-page select:focus, .mi-page textarea:focus {
+  outline: none;
+  border-color: var(--mi-blue);
+  box-shadow: 0 0 0 2px var(--mi-blue);
 }

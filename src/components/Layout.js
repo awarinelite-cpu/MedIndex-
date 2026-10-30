@@ -151,43 +151,41 @@ export default function Layout({ children }) {
       )}
       <IosInstallModal open={showIosInstructions} onClose={closeIosInstructions} />
 
-      {/* ── Dashboard header (home, phones) ──────────────────────────────── */}
-      {isHome && (
-        <header className="mi-header md:hidden">
-          <Link to="/" className="mi-brand" aria-label="MedIndex home">
-            <LogoMark className="mi-brand-logo" />
-            <span>
-              <span className="mi-brand-name" style={{ display: 'block' }}>Med<span>Index</span></span>
-              <span className="mi-brand-tag" style={{ display: 'block' }}>Trusted Medication Reference</span>
-            </span>
-          </Link>
-          <div className="mi-header-actions">
-            <div className="mi-bell-wrap" ref={miNotifRef}>
-              <button
-                type="button"
-                className="mi-bell"
-                onClick={() => setShowNotifications(v => !v)}
-                aria-label={notificationCount ? `Notifications (${notificationCount} new)` : 'Notifications'}
-              >
-                <Bell size={28} strokeWidth={1.8} />
-                {notificationCount > 0 && <span className="mi-badge">{notificationCount}</span>}
-              </button>
-              {showNotifications && (
-                <div className="mi-notif-pop">
-                  <h3>Notifications</h3>
-                  <p>No new notifications</p>
-                </div>
-              )}
-            </div>
-            <Link to="/more" className="mi-avatar" aria-label="Account and settings">
-              {user?.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}
-            </Link>
+      {/* ── Dashboard header (all pages, phones) ─────────────────────────── */}
+      <header className="mi-header md:hidden">
+        <Link to="/" className="mi-brand" aria-label="MedIndex home">
+          <LogoMark className="mi-brand-logo" />
+          <span>
+            <span className="mi-brand-name" style={{ display: 'block' }}>Med<span>Index</span></span>
+            <span className="mi-brand-tag" style={{ display: 'block' }}>Trusted Medication Reference</span>
+          </span>
+        </Link>
+        <div className="mi-header-actions">
+          <div className="mi-bell-wrap" ref={miNotifRef}>
+            <button
+              type="button"
+              className="mi-bell"
+              onClick={() => setShowNotifications(v => !v)}
+              aria-label={notificationCount ? `Notifications (${notificationCount} new)` : 'Notifications'}
+            >
+              <Bell size={28} strokeWidth={1.8} />
+              {notificationCount > 0 && <span className="mi-badge">{notificationCount}</span>}
+            </button>
+            {showNotifications && (
+              <div className="mi-notif-pop">
+                <h3>Notifications</h3>
+                <p>No new notifications</p>
+              </div>
+            )}
           </div>
-        </header>
-      )}
+          <Link to="/more" className="mi-avatar" aria-label="Account and settings">
+            {user?.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}
+          </Link>
+        </div>
+      </header>
 
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header className={`bg-primary-900 text-white sticky top-0 z-40 ${isHome ? 'hidden md:block' : ''}`}>
+      {/* ── Header (desktop) ─────────────────────────────────────────────── */}
+      <header className="bg-primary-900 text-white sticky top-0 z-40 hidden md:block">
         {/* Brand row — app identity + notifications, mirrors the native app bar */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
@@ -324,7 +322,7 @@ export default function Layout({ children }) {
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <main className="flex-1 pb-16 md:pb-0">
+      <main className={`flex-1 pb-16 md:pb-0 ${isHome ? '' : 'mi-page'}`}>
         {children}
       </main>
 
