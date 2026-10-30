@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, Bookmark, MoreHorizontal, ClipboardList } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Heart, LayoutGrid, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -8,6 +8,7 @@ import { usePrefetchDrugImages } from '../hooks/usePrefetchDrugImages';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from './IosInstallModal';
 import AiProviderDropdown from './AiProviderDropdown';
+import { LogoMark, HomeGlyph } from './dashboard/DashboardArt';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -21,6 +22,7 @@ export default function Layout({ children }) {
   const [showUpdate,      setShowUpdate]       = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef(null);
+  const miNotifRef = useRef(null);
 
   const location = useLocation();
   const navigate  = useNavigate();
@@ -28,7 +30,8 @@ export default function Layout({ children }) {
   // Close the notifications popover on outside click
   useEffect(() => {
     const onClick = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false);
+      const inside = [notifRef.current, miNotifRef.current].some(el => el && el.contains(e.target));
+      if (!inside) setShowNotifications(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
@@ -84,13 +87,22 @@ export default function Layout({ children }) {
     { to: '/calculators', label: 'Calculators', icon: Calculator   },
   ];
   const isActive = (path) => location.pathname === path;
+  // The home screen gets the light, branded dashboard header (phones); every
+  // other page keeps the standard header below.
+  const isHome = location.pathname === '/';
+  // Number of unread notifications. There is no notification feed yet, so this
+  // is 0 and the red badge stays hidden until one is wired in.
+  const notificationCount = 0;
+  const avatarLetter = (user?.displayName || user?.email || 'M').trim().charAt(0).toUpperCase();
 
   // ── Bottom tab bar (mobile) ─────────────────────────────────────────────
+  const path = location.pathname;
   const bottomTabs = [
-    { to: '/',        label: 'Home',      icon: Home     },
-    { to: '/browse',  label: 'Browse',    icon: Grid3X3  },
-    { to: '/browse',  label: 'Search',    icon: Search   },
-    { to: '/lists',   label: 'Favorites', icon: Bookmark },
+    { to: '/',        label: 'Home',      active: path === '/',                    render: (on) => <HomeGlyph filled={on} /> },
+    { to: '/browse',  label: 'Browse',    active: path.startsWith('/browse'),      render: () => <LayoutGrid strokeWidth={1.8} /> },
+    { to: '/browse',  label: 'Search',    active: false,                           render: () => <Search strokeWidth={1.8} /> },
+    { to: '/lists',   label: 'Favorites', active: path.startsWith('/lists'),       render: () => <Heart strokeWidth={1.8} /> },
+    { to: '/more',    label: 'More',      active: path === '/more',                render: () => <Menu strokeWidth={1.8} /> },
   ];
 
   return (
@@ -139,8 +151,43 @@ export default function Layout({ children }) {
       )}
       <IosInstallModal open={showIosInstructions} onClose={closeIosInstructions} />
 
+      {/* ── Dashboard header (home, phones) ──────────────────────────────── */}
+      {isHome && (
+        <header className="mi-header md:hidden">
+          <Link to="/" className="mi-brand" aria-label="MedIndex home">
+            <LogoMark className="mi-brand-logo" />
+            <span>
+              <span className="mi-brand-name" style={{ display: 'block' }}>Med<span>Index</span></span>
+              <span className="mi-brand-tag" style={{ display: 'block' }}>Trusted Medication Reference</span>
+            </span>
+          </Link>
+          <div className="mi-header-actions">
+            <div className="mi-bell-wrap" ref={miNotifRef}>
+              <button
+                type="button"
+                className="mi-bell"
+                onClick={() => setShowNotifications(v => !v)}
+                aria-label={notificationCount ? `Notifications (${notificationCount} new)` : 'Notifications'}
+              >
+                <Bell size={28} strokeWidth={1.8} />
+                {notificationCount > 0 && <span className="mi-badge">{notificationCount}</span>}
+              </button>
+              {showNotifications && (
+                <div className="mi-notif-pop">
+                  <h3>Notifications</h3>
+                  <p>No new notifications</p>
+                </div>
+              )}
+            </div>
+            <Link to="/more" className="mi-avatar" aria-label="Account and settings">
+              {user?.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}
+            </Link>
+          </div>
+        </header>
+      )}
+
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header className="bg-primary-900 text-white sticky top-0 z-40">
+      <header className={`bg-primary-900 text-white sticky top-0 z-40 ${isHome ? 'hidden md:block' : ''}`}>
         {/* Brand row — app identity + notifications, mirrors the native app bar */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
@@ -294,29 +341,18 @@ export default function Layout({ children }) {
       </footer>
 
       {/* ── Bottom tab bar (mobile) ─────────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-drug-border
-                       flex items-stretch pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+      <nav className="mi-tabbar md:hidden" aria-label="Main">
         {bottomTabs.map(tab => (
           <Link
             key={tab.label}
             to={tab.to}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
-              isActive(tab.to) ? 'text-primary-700' : 'text-drug-muted'
-            }`}
+            className={`mi-tab ${tab.active ? 'is-active' : ''}`}
+            aria-current={tab.active ? 'page' : undefined}
           >
-            <tab.icon className="w-5 h-5" strokeWidth={isActive(tab.to) ? 2.5 : 2} />
+            {tab.render(tab.active)}
             {tab.label}
           </Link>
         ))}
-        <Link
-          to="/more"
-          className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
-            isActive('/more') ? 'text-primary-700' : 'text-drug-muted'
-          }`}
-        >
-          <MoreHorizontal className="w-5 h-5" strokeWidth={isActive('/more') ? 2.5 : 2} />
-          More
-        </Link>
       </nav>
     </div>
   );
