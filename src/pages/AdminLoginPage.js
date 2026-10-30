@@ -86,21 +86,21 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #0B1F3A 0%, #0F2A50 50%, #0B1F3A 100%)',
+      background: 'linear-gradient(180deg, #e8f1ff 0, #f4f8ff 320px, #ffffff 640px)',
       padding: '24px', fontFamily: "'Inter','Segoe UI',sans-serif",
     }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse at 30% 20%, rgba(0,201,167,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(0,112,243,0.08) 0%, transparent 60%)' }} />
 
       <div style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 1 }}>
-        <div style={{ background: '#fff', borderRadius: 32, boxShadow: '0 32px 80px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+        <div style={{ background: '#fff', borderRadius: 32, boxShadow: '0 18px 40px -18px rgba(21,101,216,0.45)', border: '1px solid #e0e9f6', overflow: 'hidden' }}>
 
           {/* Header */}
-          <div style={{ background: '#0B1F3A', padding: '28px 32px 24px', textAlign: 'center' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 32, background: 'linear-gradient(135deg,#00C9A7,#0070F3)', marginBottom: 14 }}>
+          <div style={{ background: 'linear-gradient(100deg, #0a4cbd 0%, #1264df 55%, #2a85f4 100%)', padding: '28px 32px 24px', textAlign: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 32, background: 'rgba(255,255,255,0.18)', marginBottom: 14 }}>
               <Pill style={{ width: 26, height: 26, color: '#fff' }} />
             </div>
             <div style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 4 }}>MedIndex</div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(0,201,167,0.15)', color: '#00C9A7', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 32 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 32 }}>
               <Shield style={{ width: 12, height: 12 }} />
               Admin Portal
             </div>
@@ -153,7 +153,7 @@ export default function LoginPage() {
               </div>
 
               <button type="submit" disabled={loading}
-                style={{ width: '100%', padding: '13px', borderRadius: 32, border: 'none', background: loading ? '#94A3B8' : 'linear-gradient(135deg,#0070F3,#0050CC)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                style={{ width: '100%', padding: '13px', borderRadius: 32, border: 'none', background: loading ? '#94A3B8' : 'linear-gradient(100deg,#0a4cbd,#2a85f4)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
             </form>

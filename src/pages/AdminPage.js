@@ -1056,7 +1056,7 @@ export default function AdminPage() {
               ))}
             </div>
             <div style={{display:'flex',gap:10,marginTop:24}}>
-              <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:'12px',background:saving?'#94A3B8':'linear-gradient(135deg,#1e40af,#1e3a8a)',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <button onClick={saveEdit} disabled={saving} style={{flex:1,padding:'12px',background:saving?'#94A3B8':'linear-gradient(100deg,#0a4cbd,#2a85f4)',color:'#fff',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:saving?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
                 <Save className="w-4 h-4"/>{saving?'Saving…':'Save Changes'}
               </button>
               <button onClick={()=>setEditingDrug(null)} style={{flex:1,padding:'12px',background:'#F1F5F9',color:'#64748B',border:'none',borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>Cancel</button>

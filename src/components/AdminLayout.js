@@ -80,7 +80,7 @@ export default function AdminLayout({ children }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: isDark ? '#0f172a' : '#F0F4F8', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
+    <div className="min-h-screen flex flex-col mi-admin" style={{ fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
       {/* ── SW Update Toast ──────────────────────────────────────────────── */}
       {showUpdate && (
@@ -123,17 +123,17 @@ export default function AdminLayout({ children }) {
       )}
 
       {/* ── Admin Header ─────────────────────────────────────────────────── */}
-      <header style={{ background: '#0B1F3A' }} className="text-white sticky top-0 z-40 shadow-lg w-full">
+      <header className="mi-admin-header sticky top-0 z-40 w-full">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8" style={{ width: '100%', boxSizing: 'border-box' }}>
           <div className="flex items-center justify-between h-14 gap-2">
 
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0 min-w-0">
-              <div style={{ background: 'linear-gradient(135deg,#00C9A7,#0070F3)', borderRadius: 32 }} className="w-8 h-8 flex items-center justify-center shrink-0">
+              <div style={{ background: 'linear-gradient(145deg,#3b92ff,#1259d8)', borderRadius: 32, boxShadow: '0 6px 12px -4px rgba(17,85,216,.45)' }} className="w-8 h-8 flex items-center justify-center shrink-0">
                 <Pill className="w-4 h-4 text-white" />
               </div>
-              <span className="text-base font-bold hidden xs:inline sm:inline">MedIndex</span>
-              <span style={{ background: 'rgba(0,201,167,0.2)', color: '#00C9A7', fontSize: 10, padding: '2px 8px', borderRadius: 32 }} className="font-bold shrink-0">
+              <span className="mi-admin-brand text-base font-bold hidden xs:inline sm:inline">MedIndex</span>
+              <span style={{ background: 'rgba(23,105,224,0.12)', color: '#1769e0', fontSize: 10, padding: '2px 8px', borderRadius: 32 }} className="font-bold shrink-0">
                 Admin
               </span>
             </div>
@@ -150,8 +150,8 @@ export default function AdminLayout({ children }) {
                   to={link.to}
                   className={`flex items-center gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
                     isActive(link.to)
-                      ? 'bg-white/20 text-white'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                      ? 'mi-admin-link is-active'
+                      : 'mi-admin-link'
                   }`}
                 >
                   <link.icon className="w-4 h-4" />
@@ -168,7 +168,7 @@ export default function AdminLayout({ children }) {
               <button
                 onClick={toggleTheme}
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-1 shrink-0"
+                className="flex items-center justify-center w-9 h-9 rounded-lg mi-admin-link transition-colors ml-1 shrink-0"
               >
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
@@ -177,7 +177,7 @@ export default function AdminLayout({ children }) {
               <Link
                 to="/"
                 title="Public Site"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors ml-1 sm:ml-2 shrink-0"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors ml-1 sm:ml-2 shrink-0"
               >
                 <span aria-hidden="true">←</span>
                 <span className="hidden sm:inline">Public Site</span>
@@ -188,7 +188,7 @@ export default function AdminLayout({ children }) {
                 <button
                   onClick={handleLogout}
                   title={`Sign out (${user.email})`}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-red-500/20 transition-colors ml-1 shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors ml-1 shrink-0"
                 >
                   <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Sign Out</span>
@@ -200,13 +200,13 @@ export default function AdminLayout({ children }) {
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <main className="flex-1" style={{ width: '100%', maxWidth: '100vw', boxSizing: 'border-box', overflowX: 'hidden' }}>
+      <main className="flex-1 mi-page" style={{ width: '100%', maxWidth: '100vw', boxSizing: 'border-box', overflowX: 'hidden' }}>
         {children}
       </main>
 
       {/* ── Admin Footer ─────────────────────────────────────────────────── */}
-      <footer style={{ background: '#0B1F3A', borderTop: '1px solid rgba(255,255,255,0.08)' }} className="py-4">
-        <div className="max-w-7xl mx-auto px-4 text-center" style={{ fontSize: 12, color: '#475569' }}>
+      <footer style={{ background: 'var(--drug-card)', borderTop: '1px solid #e0e9f6' }} className="py-4">
+        <div className="max-w-7xl mx-auto px-4 text-center" style={{ fontSize: 12, color: '#6a7e9c' }}>
           MedIndex Admin Panel · Restricted Access
         </div>
       </footer>

@@ -708,3 +708,19 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
   border-color: var(--mi-blue);
   box-shadow: 0 0 0 2px var(--mi-blue);
 }
+
+/* ---- admin chrome: same light header language as the dashboard ---- */
+.mi-admin { --mi-ink:#0b2a66; --mi-muted:#6a7e9c; --mi-line:#e0e9f6; --mi-blue:#1769e0; }
+.dark .mi-admin { --mi-ink:#e9f1ff; --mi-muted:#8ea2c2; --mi-line:#22314d; --mi-blue:#4d94ff; }
+.mi-admin-header {
+  background: linear-gradient(180deg, #e8f1ff, #eef5ff);
+  box-shadow: 0 8px 20px -14px rgba(11, 42, 102, .35);
+  color: var(--mi-ink);
+}
+.dark .mi-admin-header { background: #0f1c36; }
+.mi-admin-brand { color: var(--mi-ink); }
+.mi-admin-header a.mi-admin-link, .mi-admin-header button.mi-admin-link {
+  color: var(--mi-muted); background: transparent; background-image: none; box-shadow: none;
+}
+.mi-admin-header a.mi-admin-link:hover, .mi-admin-header button.mi-admin-link:hover { color: var(--mi-ink); background: rgba(23,105,224,.08); }
+.mi-admin-header a.mi-admin-link.is-active { color: #fff; background: var(--mi-blue); }
