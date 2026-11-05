@@ -1,43 +1,37 @@
 import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Pill, ChevronRight, Clock, Syringe, ArrowRight,
-  ClipboardPlus, FlaskConical, Calculator,
+  Search, Pill, ChevronRight, Syringe, Stethoscope as StethoIcon,
+  PersonStanding, FilePlus2, Calculator, Bookmark,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
-import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useRecentlyViewed } from '../hooks/useRecentlyViewed';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
-import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { drugMatchesSystem } from '../utils/systemMatch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
-import { HeartIcon, PancreasIcon, BrainIcon, StomachIcon, LungsIcon } from '../components/icons/OrganIcons';
-import { PulseIcon, Stethoscope, Robot, Heartbeat, BoneIcon } from '../components/dashboard/DashboardArt';
+import { BannerArt } from '../components/dashboard/DashboardArt';
 
-// ── Quick Access: the four shortcut cards under the AI banner ──────────────
-const QUICK_ACCESS = [
-  { to: '/browse',      title: 'Drug Library', sub: 'Search & view drug details', Icon: Pill,         grad: ['#3b92ff', '#1259d8'], bg: '#edf5ff', line: '#d5e6fb' },
-  { to: '/procedures',  title: 'Procedures',   sub: 'Step-by-step guides',        Icon: ClipboardPlus, grad: ['#3688f5', '#1655cf'], bg: '#edf4ff', line: '#d5e4fa' },
-  { to: '/labs',        title: 'Lab Reference', sub: 'Tests & normal values',     Icon: FlaskConical, grad: ['#9a6cf4', '#6b3fd8'], bg: '#f3eeff', line: '#e2d8fb' },
-  { to: '/calculators', title: 'Calculators',  sub: 'Clinical tools & scores',    Icon: Calculator,   grad: ['#1fc1b2', '#0b8f94'], bg: '#e8f8f7', line: '#c9ece9' },
+// ── Explore medical topics: six shortcut cards ────────────────────────────
+const TOPICS = [
+  { to: '/conditions',      title: 'Conditions',          sub: 'Diseases & Disorders',   Icon: StethoIcon,     grad: ['#2b86ff', '#0a54d6'] },
+  { to: '/browse',          title: 'Medicines',           sub: 'Drugs & Pharmacology',   Icon: Pill,           grad: ['#22c9ae', '#0a8f86'] },
+  { to: '/systems',         title: 'Anatomy',             sub: 'Human Anatomy',          Icon: PersonStanding, grad: ['#7a55ea', '#4527b8'] },
+  { to: '/procedures',      title: 'Procedures',          sub: 'Clinical Procedures',    Icon: Syringe,        grad: ['#3fd685', '#12a05e'] },
+  { to: '/essential-drugs', title: 'Clinical Guidelines', sub: 'Evidence-Based Care',    Icon: FilePlus2,      grad: ['#22c4ad', '#0d8f88'] },
+  { to: '/calculators',     title: 'Calculators',         sub: 'Medical Calculators',    Icon: Calculator,     grad: ['#7357ec', '#3f2cc0'] },
 ];
 
-// ── Browse by System: one tile per organ system. The id still drives the
-// /system/:id link and the keyword matching used everywhere else. ──────────
-const SYSTEM_TILES = [
-  { id: 'cardiovascular',   label: 'Cardiovascular',   Icon: HeartIcon,    grad: ['#3b92ff', '#1259d8'], bg: '#eaf3ff', line: '#d3e4fb' },
-  { id: 'respiratory',      label: 'Respiratory',      Icon: LungsIcon,    grad: ['#34c48b', '#12985f'], bg: '#e8f8f1', line: '#cdeedd' },
-  { id: 'neurological',     label: 'Neurological',     Icon: BrainIcon,    grad: ['#a074f5', '#6b3fd8'], bg: '#f2ecff', line: '#e1d7fb' },
-  { id: 'gastrointestinal', label: 'Gastrointestinal', Icon: StomachIcon,  grad: ['#ffb54f', '#f27a10'], bg: '#fff3e5', line: '#f9dcba' },
-  { id: 'endocrine',        label: 'Endocrine',        Icon: PancreasIcon, grad: ['#27c6b6', '#0b8f94'], bg: '#e6f8f6', line: '#c7ece8' },
-  { id: 'musculoskeletal',  label: 'Musculoskeletal',  Icon: BoneIcon,     grad: ['#ff7390', '#e23a63'], bg: '#ffecf1', line: '#fad2dc' },
-]
-  .filter(tile => ANATOMICAL_SYSTEMS.some(s => s.id === tile.id));
+// ── Hero carousel slides ───────────────────────────────────────────────────
+const SLIDES = [
+  { title: 'Medical knowledge,',        accent: 'within reach',       body: 'Explore trusted medical information',    cta: 'Start Exploring',    to: '/browse' },
+  { title: 'Clinical answers,',         accent: 'when you need them', body: 'Ask the AI Clinical Consult',            cta: 'Start Chat',         to: '/ai-consult' },
+  { title: 'Lab values,',               accent: 'at your fingertips', body: 'Tests and normal ranges in one place',   cta: 'Open Lab Reference', to: '/labs' },
+];
 
 // Pill + avatar colours for the Recently Viewed rows, keyed by system id.
 const SYSTEM_PALETTE = {
@@ -85,31 +79,21 @@ function RxBadge({ status }) {
 
 
 export default function HomePage() {
-  const { user, isAdmin } = useAuth();
-  const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { user } = useAuth();
+  const { drugs: ALL_DRUGS } = useDrugs();
   const recentIds = useRecentlyViewed(user?.uid);
   const [showAllRecent, setShowAllRecent] = useState(false);
-  const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
-  const TOTAL       = ALL_DRUGS.length;
-  const CLASS_COUNT = useMemo(() => new Set(ALL_DRUGS.map(d => d.drug_class).filter(Boolean)).size, [ALL_DRUGS]);
-  const RX_COUNT    = useMemo(() => new Set(ALL_DRUGS.map(d => d.prescription_status).filter(Boolean)).size, [ALL_DRUGS]);
-  // Total conditions across every system — seeded (systemConditions.js) list
-  // minus any admin-hidden seeded ids, plus AI-suggested/admin-approved
-  // custom conditions stored in Firestore for that system.
-  const CONDITION_COUNT = useMemo(() => {
-    const systemIds = new Set([
-      ...Object.keys(SYSTEM_CONDITIONS),
-      ...Object.keys(customConditionsBySystem || {}),
-    ]);
-    let count = 0;
-    systemIds.forEach(systemId => {
-      const hiddenIds = new Set(hiddenConditionIdsBySystem?.[systemId] || []);
-      const seeded = (SYSTEM_CONDITIONS[systemId] || []).filter(c => !hiddenIds.has(c.id));
-      const custom = customConditionsBySystem?.[systemId] || [];
-      count += seeded.length + custom.length;
-    });
-    return count;
-  }, [customConditionsBySystem, hiddenConditionIdsBySystem]);
+
+  // Hero carousel: auto-advances every 6s unless the person prefers reduced
+  // motion; tapping a dot jumps to that slide and restarts the timer.
+  const [slide, setSlide] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const t = setTimeout(() => setSlide(i => (i + 1) % SLIDES.length), 6000);
+    return () => clearTimeout(t);
+  }, [slide]);
+  const current = SLIDES[slide];
+
   // Recently opened drugs, newest first — ids that no longer exist are skipped.
   const RECENT = useMemo(() => {
     const byId = new Map(ALL_DRUGS.map(d => [d.id, d]));
@@ -175,17 +159,10 @@ export default function HomePage() {
     <div className="mi-home">
       <div className="mi-container">
 
-        {/* Greeting banner */}
-        <section className="mi-hero">
-          <div className="mi-hero-text">
-            <span className="mi-hero-hello">{greeting()}</span>
-            <h1>
-              Healthcare Professional
-              <PulseIcon className="mi-hero-pulse" />
-            </h1>
-            <p>Reliable drug information, clinical tools and medical resources — all in one place.</p>
-          </div>
-          <Stethoscope className="mi-hero-art" />
+        {/* Greeting */}
+        <section className="mi-greet">
+          <span className="mi-greet-hello"><span aria-hidden="true">👋</span> {greeting()}</span>
+          <h1>Welcome to MedIndex!</h1>
         </section>
 
         {/* Search */}
@@ -196,8 +173,8 @@ export default function HomePage() {
               type="text"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true); }}
-              placeholder="Search drugs, conditions, procedures..."
-              aria-label="Search drugs, conditions, procedures"
+              placeholder="Search conditions, medicines, procedures..."
+              aria-label="Search conditions, medicines, procedures"
             />
             <button type="submit" className="mi-search-go" aria-label="Search">
               <Search size={22} strokeWidth={2.4} />
@@ -240,16 +217,6 @@ export default function HomePage() {
           )}
         </form>
 
-        {/* Live stats — internal figures, admin-only */}
-        {isAdmin && (
-          <div className="mi-admin-stats">
-            <div><b>{loading ? '—' : TOTAL}</b><span>Drugs</span></div>
-            <div><b>{loading ? '—' : CLASS_COUNT}</b><span>Drug Classes</span></div>
-            <div><b>{loading ? '—' : RX_COUNT}</b><span>Rx Categories</span></div>
-            <div><b>{loading ? '—' : CONDITION_COUNT}</b><span>Conditions</span></div>
-          </div>
-        )}
-
         {/* Condition insight — if the search matches (or is close to) a known
             condition, show its clinical overview + drug list right here; if it
             doesn't exist in the system yet, the AI lookup prompt appears
@@ -286,62 +253,56 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* AI Clinical Consult */}
-        <section className="mi-ai">
-          <Heartbeat className="mi-ai-beat" />
-          <div className="mi-ai-avatar"><Robot /></div>
-          <div className="mi-ai-body">
-            <h2>AI Clinical Consult</h2>
-            <p>Get instant, evidence-based answers to your clinical questions.</p>
-            <Link to="/ai-consult" className="mi-ai-cta">
-              Start Chat <ArrowRight size={16} strokeWidth={2.4} />
+        {/* Hero carousel */}
+        <section className="mi-banner" aria-roledescription="carousel" aria-label="Highlights">
+          <div className="mi-banner-text" key={slide}>
+            <h2>
+              {current.title}
+              <span>{current.accent}</span>
+            </h2>
+            <p>{current.body}</p>
+            <Link to={current.to} className="mi-banner-cta">
+              {current.cta} <ChevronRight size={18} strokeWidth={2.6} />
             </Link>
+          </div>
+          <BannerArt className="mi-banner-art" />
+          <div className="mi-dots" role="tablist" aria-label="Choose highlight">
+            {SLIDES.map((sl, i) => (
+              <button
+                key={sl.to}
+                type="button"
+                role="tab"
+                aria-selected={i === slide}
+                aria-label={`Show highlight ${i + 1}`}
+                className={`mi-dot ${i === slide ? 'is-on' : ''}`}
+                onClick={() => setSlide(i)}
+              />
+            ))}
           </div>
         </section>
 
-        {/* Quick Access */}
+        {/* Explore medical topics */}
         <div className="mi-sec-head">
-          <h2>Quick Access</h2>
-          <Link to="/more" className="mi-see-all">See all <ChevronRight size={18} strokeWidth={2.4} /></Link>
+          <h2 className="mi-bar">Explore medical topics</h2>
+          <Link to="/more" className="mi-see-all">View All <ChevronRight size={18} strokeWidth={2.4} /></Link>
         </div>
-        <div className="mi-qa">
-          {QUICK_ACCESS.map(({ to, title, sub, Icon, grad, bg, line }) => (
-            <Link
-              key={to}
-              to={to}
-              className="mi-qa-card"
-              style={{ '--tint-bg': bg, '--tint-line': line, '--grad': gradient(grad), '--glow': `${grad[1]}66` }}
-            >
-              <span className="mi-qa-icon"><Icon size={22} strokeWidth={2.2} /></span>
-              <span className="mi-qa-title">{title}<ChevronRight size={16} strokeWidth={2.4} /></span>
-              <span className="mi-qa-sub">{sub}</span>
+        <div className="mi-topics">
+          {TOPICS.map(({ to, title, sub, Icon, grad }) => (
+            <Link key={title} to={to} className="mi-topic" style={{ '--grad': gradient(grad), '--glow': `${grad[1]}66` }}>
+              <span className="mi-topic-icon"><Icon size={34} strokeWidth={1.9} /></span>
+              <span className="mi-topic-text">
+                <span className="mi-topic-title">{title}</span>
+                <span className="mi-topic-sub">{sub}</span>
+              </span>
+              <ChevronRight size={20} strokeWidth={2.4} className="mi-topic-chev" />
             </Link>
           ))}
         </div>
 
-        {/* Browse by System */}
+        {/* Recently viewed */}
         <div className="mi-sec-head">
-          <h2>Browse by System</h2>
-          <Link to="/systems" className="mi-see-all">See all <ChevronRight size={18} strokeWidth={2.4} /></Link>
-        </div>
-        <div className="mi-sys">
-          {SYSTEM_TILES.map(({ id, label, Icon, grad, bg, line }) => (
-            <Link
-              key={id}
-              to={`/system/${id}`}
-              className="mi-sys-tile"
-              style={{ '--tint-bg': bg, '--tint-line': line, '--grad': gradient(grad), '--glow': `${grad[1]}66` }}
-            >
-              <span className="mi-sys-ico"><Icon className="mi-sys-glyph" /></span>
-              <span className="mi-sys-label">{label}</span>
-            </Link>
-          ))}
-        </div>
-
-        {/* Recently Viewed */}
-        <div className="mi-sec-head">
-          <h2><Clock size={26} strokeWidth={2} className="mi-clock" /> Recently Viewed</h2>
-          {RECENT.length > 3 && (
+          <h2 className="mi-bar">Recently viewed</h2>
+          {RECENT.length > 3 ? (
             <span
               role="button"
               tabIndex={0}
@@ -349,10 +310,10 @@ export default function HomePage() {
               onClick={() => setShowAllRecent(v => !v)}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAllRecent(v => !v); } }}
             >
-              {showAllRecent ? 'Show less' : 'See all'}
+              {showAllRecent ? 'Show Less' : 'View All'}
               <ChevronRight size={18} strokeWidth={2.4} style={{ transform: showAllRecent ? 'rotate(-90deg)' : 'none' }} />
             </span>
-          )}
+          ) : null}
         </div>
         {recentShown.length > 0 ? (
           <div className="mi-recent">
@@ -361,24 +322,35 @@ export default function HomePage() {
               const RowIcon = info.systemId === 'infectious' ? Syringe : Pill;
               return (
                 <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-recent-row">
-                  <span className="mi-recent-ico" style={{ background: info.bg, color: info.fg }}>
-                    <RowIcon size={22} strokeWidth={2.2} />
+                  <span className="mi-recent-thumb" style={{ background: info.bg, color: info.fg }}>
+                    {drug.image_url
+                      ? <img src={drug.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                      : <RowIcon size={26} strokeWidth={2.2} />}
                   </span>
                   <span className="mi-recent-main">
                     <span className="mi-recent-name">{drug.generic_name}</span>
                     <span className="mi-recent-sub">{getDisplayDrugClass(drug)}</span>
                   </span>
-                  <span className="mi-tag" style={{ background: info.bg, color: info.fg }}>{info.label}</span>
-                  <ChevronRight size={18} strokeWidth={2.2} className="mi-recent-chev" />
+                  <ChevronRight size={20} strokeWidth={2.4} className="mi-recent-chev" />
                 </Link>
               );
             })}
           </div>
         ) : (
-          <div className="mi-recent mi-recent-empty">
+          <div className="mi-recent-empty">
             Drugs you open will show up here for quick access.
           </div>
         )}
+
+        {/* Saved references */}
+        <section className="mi-saved">
+          <span className="mi-saved-ico"><Bookmark size={34} strokeWidth={0} fill="currentColor" /></span>
+          <span className="mi-saved-text">
+            <b>Saved References</b>
+            <span>Access your saved topics</span>
+          </span>
+          <Link to="/lists" className="mi-saved-cta">View Saved <ChevronRight size={18} strokeWidth={2.6} /></Link>
+        </section>
 
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Heart, LayoutGrid, Menu } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Compass, Bookmark } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -93,16 +93,15 @@ export default function Layout({ children }) {
   // Number of unread notifications. There is no notification feed yet, so this
   // is 0 and the red badge stays hidden until one is wired in.
   const notificationCount = 0;
-  const avatarLetter = (user?.displayName || user?.email || 'M').trim().charAt(0).toUpperCase();
 
   // ── Bottom tab bar (mobile) ─────────────────────────────────────────────
   const path = location.pathname;
+  const exploring = path.startsWith('/browse') || path.startsWith('/system') || path === '/conditions';
   const bottomTabs = [
-    { to: '/',        label: 'Home',      active: path === '/',                    render: (on) => <HomeGlyph filled={on} /> },
-    { to: '/browse',  label: 'Browse',    active: path.startsWith('/browse'),      render: () => <LayoutGrid strokeWidth={1.8} /> },
-    { to: '/browse',  label: 'Search',    active: false,                           render: () => <Search strokeWidth={1.8} /> },
-    { to: '/lists',   label: 'Favorites', active: path.startsWith('/lists'),       render: () => <Heart strokeWidth={1.8} /> },
-    { to: '/more',    label: 'More',      active: path === '/more',                render: () => <Menu strokeWidth={1.8} /> },
+    { to: '/',       label: 'Home',    active: path === '/',                render: (on) => <HomeGlyph filled={on} /> },
+    { to: '/browse', label: 'Explore', active: exploring,                   render: () => <Compass strokeWidth={1.8} /> },
+    { to: '/lists',  label: 'Saved',   active: path.startsWith('/lists'),   render: () => <Bookmark strokeWidth={1.8} /> },
+    { to: '/more',   label: 'Profile', active: path === '/more',            render: () => <User strokeWidth={1.8} /> },
   ];
 
   return (
@@ -157,7 +156,7 @@ export default function Layout({ children }) {
           <LogoMark className="mi-brand-logo" />
           <span>
             <span className="mi-brand-name" style={{ display: 'block' }}>Med<span>Index</span></span>
-            <span className="mi-brand-tag" style={{ display: 'block' }}>Trusted Medication Reference</span>
+            <span className="mi-brand-tag" style={{ display: 'block' }}>Learn &bull; Reference &bull; Excel</span>
           </span>
         </Link>
         <div className="mi-header-actions">
@@ -179,7 +178,7 @@ export default function Layout({ children }) {
             )}
           </div>
           <Link to="/more" className="mi-avatar" aria-label="Account and settings">
-            {user?.photoURL ? <img src={user.photoURL} alt="" /> : avatarLetter}
+            {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={38} strokeWidth={0} fill="currentColor" />}
           </Link>
         </div>
       </header>

@@ -28,6 +28,7 @@ import BulkImageUploadPage from './pages/BulkImageUploadPage';
 import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
+import AllConditionsPage from './pages/AllConditionsPage';
 import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
@@ -93,6 +94,11 @@ function App() {
         <Route path="/lists/:listId" element={
           <ProtectedUserRoute>
             <Layout><DrugListDetailPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/conditions" element={
+          <ProtectedUserRoute>
+            <Layout><AllConditionsPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/systems" element={
