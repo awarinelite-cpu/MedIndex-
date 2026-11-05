@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Pill, ChevronRight, Clock, Syringe, ArrowRight,
-  ClipboardPlus, FlaskConical, Calculator,
+  Search, Pill, ChevronRight, Clock, Syringe,
+  ClipboardPlus, FlaskConical, Calculator, GraduationCap, FileText,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -17,7 +17,7 @@ import ConditionInsightCard, { normalizeConditionDrugName } from '../components/
 import AiSearchFallback from '../components/AiSearchFallback';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { HeartIcon, PancreasIcon, BrainIcon, StomachIcon, LungsIcon } from '../components/icons/OrganIcons';
-import { PulseIcon, Stethoscope, Robot, Heartbeat, BoneIcon } from '../components/dashboard/DashboardArt';
+import { PulseIcon, Stethoscope, BoneIcon } from '../components/dashboard/DashboardArt';
 
 // ── Quick Access: the four shortcut cards under the AI banner ──────────────
 const QUICK_ACCESS = [
@@ -38,6 +38,9 @@ const SYSTEM_TILES = [
   { id: 'musculoskeletal',  label: 'Musculoskeletal',  Icon: BoneIcon,     grad: ['#ff7390', '#e23a63'], bg: '#ffecf1', line: '#fad2dc' },
 ]
   .filter(tile => ANATOMICAL_SYSTEMS.some(s => s.id === tile.id));
+
+// The dashboard shows the first four; "See all" opens the full list.
+const SYSTEM_TILES_SHOWN = SYSTEM_TILES.slice(0, 4);
 
 // Pill + avatar colours for the Recently Viewed rows, keyed by system id.
 const SYSTEM_PALETTE = {
@@ -85,7 +88,7 @@ function RxBadge({ status }) {
 
 
 export default function HomePage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
   const recentIds = useRecentlyViewed(user?.uid);
   const [showAllRecent, setShowAllRecent] = useState(false);
@@ -240,15 +243,25 @@ export default function HomePage() {
           )}
         </form>
 
-        {/* Live stats — internal figures, admin-only */}
-        {isAdmin && (
-          <div className="mi-admin-stats">
-            <div><b>{loading ? '—' : TOTAL}</b><span>Drugs</span></div>
-            <div><b>{loading ? '—' : CLASS_COUNT}</b><span>Drug Classes</span></div>
-            <div><b>{loading ? '—' : RX_COUNT}</b><span>Rx Categories</span></div>
-            <div><b>{loading ? '—' : CONDITION_COUNT}</b><span>Conditions</span></div>
+        {/* Library stats */}
+        <section className="mi-stats" aria-label="Library totals">
+          <div className="mi-stat">
+            <Pill className="mi-stat-ico" size={30} strokeWidth={2.4} />
+            <b>{loading ? '-' : TOTAL}</b><span>Drugs</span>
           </div>
-        )}
+          <div className="mi-stat">
+            <GraduationCap className="mi-stat-ico" size={32} strokeWidth={2.2} />
+            <b>{loading ? '-' : CLASS_COUNT}</b><span>Drug Classes</span>
+          </div>
+          <div className="mi-stat">
+            <span className="mi-stat-rx" aria-hidden="true">Rx</span>
+            <b>{loading ? '-' : RX_COUNT}</b><span>Rx Categories</span>
+          </div>
+          <div className="mi-stat">
+            <FileText className="mi-stat-ico" size={30} strokeWidth={2.4} />
+            <b>{loading ? '-' : CONDITION_COUNT}</b><span>Conditions</span>
+          </div>
+        </section>
 
         {/* Condition insight — if the search matches (or is close to) a known
             condition, show its clinical overview + drug list right here; if it
@@ -286,22 +299,9 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* AI Clinical Consult */}
-        <section className="mi-ai">
-          <Heartbeat className="mi-ai-beat" />
-          <div className="mi-ai-avatar"><Robot /></div>
-          <div className="mi-ai-body">
-            <h2>AI Clinical Consult</h2>
-            <p>Get instant, evidence-based answers to your clinical questions.</p>
-            <Link to="/ai-consult" className="mi-ai-cta">
-              Start Chat <ArrowRight size={16} strokeWidth={2.4} />
-            </Link>
-          </div>
-        </section>
-
         {/* Quick Access */}
         <div className="mi-sec-head">
-          <h2>Quick Access</h2>
+          <h2 className="mi-bar">Quick Access</h2>
           <Link to="/more" className="mi-see-all">See all <ChevronRight size={18} strokeWidth={2.4} /></Link>
         </div>
         <div className="mi-qa">
@@ -312,8 +312,8 @@ export default function HomePage() {
               className="mi-qa-card"
               style={{ '--tint-bg': bg, '--tint-line': line, '--grad': gradient(grad), '--glow': `${grad[1]}66` }}
             >
-              <span className="mi-qa-icon"><Icon size={22} strokeWidth={2.2} /></span>
-              <span className="mi-qa-title">{title}<ChevronRight size={16} strokeWidth={2.4} /></span>
+              <span className="mi-qa-icon"><Icon size={28} strokeWidth={2} /></span>
+              <span className="mi-qa-title">{title}</span>
               <span className="mi-qa-sub">{sub}</span>
             </Link>
           ))}
@@ -321,11 +321,11 @@ export default function HomePage() {
 
         {/* Browse by System */}
         <div className="mi-sec-head">
-          <h2>Browse by System</h2>
+          <h2 className="mi-bar">Browse by System</h2>
           <Link to="/systems" className="mi-see-all">See all <ChevronRight size={18} strokeWidth={2.4} /></Link>
         </div>
         <div className="mi-sys">
-          {SYSTEM_TILES.map(({ id, label, Icon, grad, bg, line }) => (
+          {SYSTEM_TILES_SHOWN.map(({ id, label, Icon, grad, bg, line }) => (
             <Link
               key={id}
               to={`/system/${id}`}
@@ -340,7 +340,7 @@ export default function HomePage() {
 
         {/* Recently Viewed */}
         <div className="mi-sec-head">
-          <h2><Clock size={26} strokeWidth={2} className="mi-clock" /> Recently Viewed</h2>
+          <h2><Clock size={28} strokeWidth={2.2} className="mi-clock" /> Recently Viewed</h2>
           {RECENT.length > 3 && (
             <span
               role="button"
@@ -361,8 +361,10 @@ export default function HomePage() {
               const RowIcon = info.systemId === 'infectious' ? Syringe : Pill;
               return (
                 <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-recent-row">
-                  <span className="mi-recent-ico" style={{ background: info.bg, color: info.fg }}>
-                    <RowIcon size={22} strokeWidth={2.2} />
+                  <span className="mi-recent-thumb" style={{ background: info.bg, color: info.fg }}>
+                    {drug.image_url
+                      ? <img src={drug.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                      : <RowIcon size={24} strokeWidth={2.2} />}
                   </span>
                   <span className="mi-recent-main">
                     <span className="mi-recent-name">{drug.generic_name}</span>
