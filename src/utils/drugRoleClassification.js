@@ -183,3 +183,10 @@ export const THERAPY_ROLE_META = {
 };
 
 export const THERAPY_ROLE_ORDER = ['main', 'adjunct', 'combination'];
+
+// Does free text (e.g. the AI's one-line justification) mention any keyword?
+export function textMatchesKeywords(text, keywords) {
+  const kws = (Array.isArray(keywords) ? keywords : [])
+    .map(k => (k || '').trim().toLowerCase()).filter(k => k.length >= 3);
+  return matchesAnyKeyword(String(text || '').toLowerCase(), kws);
+}

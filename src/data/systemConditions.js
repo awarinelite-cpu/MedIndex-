@@ -12,6 +12,8 @@
 // intentional and clinically accurate (e.g. Metoprolol → Hypertension AND
 // Heart Failure AND Arrhythmia within the Cardiovascular system).
 
+import { explainMatch, textMatchesKeywords } from '../utils/drugRoleClassification';
+
 export const SYSTEM_CONDITIONS = {
 
   cardiovascular: [
@@ -4300,59 +4302,20 @@ export const SYSTEM_CONDITIONS = {
 // out of a multi-word keyword phrase before the all-words fallback below —
 // keeping those in would force a match against connector words that carry
 // no clinical meaning and are unlikely to appear verbatim in a drug's text.
-const KEYWORD_STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 'in', 'to', 'for']);
 
 function matchesConditionByKeyword(drug, cond, extraText = '') {
-  // Match against every field the top-of-file doc comment promises:
-  // indications/primary_indications AND overview AND drug_class/subclass —
-  // PLUS pharmacology/mechanism, added on top of that. A drug's mechanism
-  // text routinely states plainly what it's used for as part of explaining
-  // how it works (e.g. "...used in the treatment of lymphatic filariasis by
-  // paralyzing and killing microfilariae..."), which is exactly the kind of
-  // sentence that names a condition even when the Indications field itself
-  // is terse or uses a different clinical synonym. Skipping it was leaving
-  // real signal on the table — this is the "how the drug works, and what
-  // that tells you about what it treats" text, not just its clean indication
-  // list.
-  //
-  // extraText (optional) is the AI's OWN one-line justification for THIS
-  // specific drug/condition pairing, taken straight from its condition-list
-  // response (e.g. "PO; anti-Wolbachia agent for lymphatic filariasis") —
-  // not a second AI call, just the reasoning it already gave and that was
-  // previously discarded the moment we checked an existing drug's stored
-  // record. It's often more pointed than the drug's own general-purpose
-  // fields, which may never have been written with this specific,
-  // less-common indication in mind.
-  const text = [
-    drug.indications, drug.primary_indications, drug.off_label_use, drug.overview,
-    drug.drug_class, drug.drug_subclass, drug.pharmacology, drug.mechanism,
-    extraText,
-  ].filter(Boolean).join(' ').toLowerCase();
-  if (!text) return false;
-
-  const hasPhrase = (kw) => {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
-  };
-
-  return cond.keywords.some(kwRaw => {
-    const kw = kwRaw.trim().toLowerCase();
-    if (kw.length < 3) return false; // ignore ultra-short noise keywords
-    if (hasPhrase(kw)) return true;
-
-    // Fallback for the common case (roughly two-thirds of entries in this
-    // file) where a condition's ONLY keyword is its own full label copied
-    // verbatim — e.g. "lymphedema and elephantiasis". That exact phrase
-    // almost never appears in a drug's own indications wording, which was
-    // silently flagging well-established, correctly-indicated drugs as
-    // "unconfirmed" across most conditions in the app, not just this one.
-    // If the phrase itself doesn't match, fall back to requiring every
-    // significant word IN it (stopwords aside) to appear somewhere in the
-    // text — still a real signal, just not dependent on exact phrasing.
-    const words = kw.split(/\s+/).filter(w => w.length >= 3 && !KEYWORD_STOPWORDS.has(w));
-    if (words.length < 2) return false; // single-word keywords already tried as a phrase above
-    return words.every(w => hasPhrase(w));
-  });
+  // Strict by design. A drug is tied to a condition only when its OWN class,
+  // subclass or generic name matches one of the condition's keywords, or the
+  // condition is the first thing in its indications. Overview, pharmacology
+  // and mechanism text is deliberately NOT searched: those fields mention
+  // many conditions in passing and were tagging drugs onto conditions they
+  // don't treat (an antimalarial under Croup, antifungals under Malaria…).
+  // extraText is the AI's own one-line justification for THIS drug/condition
+  // pairing (e.g. "PO; anti-Wolbachia agent for lymphatic filariasis"); a
+  // keyword in that note counts too.
+  if (!Array.isArray(cond?.keywords) || cond.keywords.length === 0) return false;
+  if (explainMatch(drug, cond).strength >= 2) return true;
+  return !!extraText && textMatchesKeywords(extraText, cond.keywords);
 }
 
 // Same check as above, exported for use outside this module — specifically
