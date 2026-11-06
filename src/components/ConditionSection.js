@@ -16,7 +16,7 @@ import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks
 import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion, writeBatch, FieldPath, deleteField } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
-import { classifyDrugsByRole, getMainIndicationStrength, getStoredRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
+import { classifyDrugsByRole, getMainIndicationStrength, explainMatch, getStoredRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
@@ -578,6 +578,12 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     }
   };
 
+  // Admin-only hint under each drug: which keyword tied it to this condition.
+  const matchNote = (d) => {
+    const m = explainMatch(d, condition);
+    return m.keyword ? `matched "${m.keyword}" — ${m.where}` : 'no keyword match';
+  };
+
   // Admin: re-sort this condition's drugs into Main / Adjunct. Runs the
   // automatic classifier over the condition's full drug list and SAVES each
   // drug's role under this condition (drug.condition_roles[conditionId]), so
@@ -1104,6 +1110,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                                 {drug.generic_name}
                               </h3>
                               <p className="text-xs text-primary-600 mt-0.5">{drug.drug_subclass || getDisplayDrugClass(drug)}</p>
+                              {isAdmin && <p className="text-[11px] text-drug-muted mt-0.5">{matchNote(drug)}</p>}
                               <p className="text-xs text-drug-muted mt-1.5 line-clamp-2">
                                 {drug.indications || drug.primary_indications}
                               </p>
@@ -1146,6 +1153,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                                 <div className="text-xs text-primary-600 truncate">
                                   {drug.drug_subclass || getDisplayDrugClass(drug)}
                                 </div>
+                                {isAdmin && <div className="text-[11px] text-drug-muted truncate">{matchNote(drug)}</div>}
                               </div>
                               <AddToFavoritesHeart drug={drug} />
                               <RxBadge status={drug.prescription_status} />

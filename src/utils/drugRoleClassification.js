@@ -26,13 +26,11 @@
 //   1 — a keyword appears later in the indications (an incidental mention)
 //   0 — no match
 //
-// Strength 2 and 3 are always Main. Strength 1 is Main too, UNLESS the
-// condition has at least one strength-3 drug in its list — then the
-// condition clearly has dedicated drugs, and a drug that only mentions it in
-// passing (e.g. an antibiotic that lists "malaria prophylaxis" fourth, a
-// paracetamol label that says "fever, e.g. in malaria") drops to Adjunct.
-// Conditions whose keywords never match any drug's class or name (most of
-// them) have no strength-3 drugs, so nothing changes for those.
+// Strength 2 and 3 are Main. Strength 1 is always Adjunct: a drug that only
+// mentions the condition in passing (e.g. an antibiotic that lists "malaria
+// prophylaxis" fourth, a paracetamol label that says "fever, e.g. in
+// malaria") is never a main treatment, even when the condition has no
+// dedicated drugs.
 
 const STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 'in', 'to', 'for']);
 
@@ -66,27 +64,44 @@ function leadingIndication(text) {
   return first.trim();
 }
 
-export function getMainIndicationStrength(drug, condition) {
-  const keywords = conditionKeywords(condition);
-  if (keywords.length === 0) return 0;
-
-  // Drop a "with … activity" qualifier from class names: "Antibiotics with
-  // Antimalarial Activity" is an antibiotic class, not an antimalarial one.
-  const stripQualifier = (t) => String(t).replace(/\(?\s*\bwith\b[^)]*\)?/gi, ' ');
-  const identity = [stripQualifier(drug?.drug_class || ''), stripQualifier(drug?.drug_subclass || ''), drug?.generic_name]
+// Drop a "with … activity" qualifier from class names: "Antibiotics with
+// Antimalarial Activity" is an antibiotic class, not an antimalarial one.
+function identityText(drug) {
+  const strip = (t) => String(t || '').replace(/\(?\s*\bwith\b[^)]*\)?/gi, ' ');
+  return [strip(drug?.drug_class), strip(drug?.drug_subclass), drug?.generic_name]
     .filter(Boolean).join(' ').toLowerCase();
-  if (matchesAnyKeyword(identity, keywords)) return 3;
+}
+
+export function getMainIndicationStrength(drug, condition) {
+  return explainMatch(drug, condition).strength;
+}
+
+// Same scoring as above, but also says WHICH keyword matched and where, so an
+// admin can spot a bad keyword. Returns { strength, keyword, where }.
+export function explainMatch(drug, condition) {
+  const keywords = conditionKeywords(condition);
+  const none = { strength: 0, keyword: null, where: null };
+  if (keywords.length === 0) return none;
+  const firstHit = (text) => keywords.find(kw => matchesAnyKeyword(text, [kw])) || null;
+
+  const identity = identityText(drug);
+  const idHit = firstHit(identity);
+  if (idHit) return { strength: 3, keyword: idHit, where: 'class/name' };
 
   const indications = [drug?.indications, drug?.primary_indications]
     .filter(Boolean).join(' ').toLowerCase();
-  if (!indications) return 0;
-  if (!matchesAnyKeyword(indications, keywords)) return 0;
+  if (!indications) return none;
+  const anyHit = firstHit(indications);
+  if (!anyHit) return none;
 
   // Strength 2 if the keyword shows up in the leading indication of either
   // field (they can hold different text), otherwise it's an incidental mention.
   const leading = [drug?.indications, drug?.primary_indications]
     .filter(Boolean).map(t => leadingIndication(String(t).toLowerCase()));
-  return leading.some(l => matchesAnyKeyword(l, keywords)) ? 2 : 1;
+  const leadHit = leading.map(firstHit).find(Boolean);
+  return leadHit
+    ? { strength: 2, keyword: leadHit, where: 'first indication' }
+    : { strength: 1, keyword: anyHit, where: 'passing mention in indications' };
 }
 
 // Kept for any caller that just wants a yes/no: any supporting signal at all.
@@ -119,14 +134,12 @@ export function getStoredRole(drug, condition) {
 export function classifyDrugsByRole(drugs, condition, { ignoreStored = false } = {}) {
   const strengthByDrug = new Map();
   const storedByDrug = new Map();
-  let hasDedicated = false;
   for (const drug of drugs) {
     let s = drug?.is_combination_therapy ? 0 : getMainIndicationStrength(drug, condition);
     const stored = ignoreStored || drug?.is_combination_therapy ? null : getStoredRole(drug, condition);
     storedByDrug.set(drug, stored);
     if (stored === 'main') s = Math.max(s, 2); // keeps a manually-placed Main drug above incidental ones
     strengthByDrug.set(drug, s);
-    if (s === 3) hasDedicated = true;
   }
 
   const buckets = { main: [], adjunct: [], combination: [] };
@@ -134,7 +147,8 @@ export function classifyDrugsByRole(drugs, condition, { ignoreStored = false } =
     if (drug?.is_combination_therapy) { buckets.combination.push(drug); continue; }
     const s = strengthByDrug.get(drug);
     const stored = storedByDrug.get(drug);
-    const isMain = stored ? stored === 'main' : (s >= 2 || (s === 1 && !hasDedicated));
+    // A passing mention (strength 1) is never Main, even if the condition has no dedicated drugs.
+    const isMain = stored ? stored === 'main' : s >= 2;
     buckets[isMain ? 'main' : 'adjunct'].push(drug);
   }
 
