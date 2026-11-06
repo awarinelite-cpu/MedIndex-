@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ListChecks,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ListChecks, ShieldAlert,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -13,10 +13,10 @@ import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo, sil
 import { parseConditionClinicalInfo, hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
-import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion, writeBatch, FieldPath } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion, writeBatch, FieldPath, deleteField } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
-import { classifyDrugsByRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
+import { classifyDrugsByRole, getMainIndicationStrength, getStoredRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
@@ -593,7 +593,8 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       const targets = [
         ...auto.main.map(d => [d, 'main']),
         ...auto.adjunct.map(d => [d, 'adjunct']),
-      ].filter(([d, role]) => !d._seed && d.id && d.condition_roles?.[condition.id] !== role);
+      ].filter(([d, role]) => !d._seed && d.id && d.condition_roles?.[condition.id] !== role
+        && !(role === 'adjunct' && getMainIndicationStrength(d, condition) === 0)); // leave unrelated drugs for review
 
       for (let i = 0; i < targets.length; i += 400) {
         const batch = writeBatch(db);
@@ -614,6 +615,45 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     } finally {
       setResorting(false);
     }
+  };
+
+  // Drugs tagged to this condition with NO supporting evidence at all: no
+  // keyword in class / subclass / generic name / indications, and the admin
+  // hasn't confirmed them. These are the likely wrong-indication drugs.
+  const unrelated = useMemo(() => drugs.filter(d =>
+    !d.is_combination_therapy && !d._seed && !getStoredRole(d, condition) &&
+    getMainIndicationStrength(d, condition) === 0
+  ), [drugs, condition]);
+  const [showUnrelated, setShowUnrelated] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+
+  // Keep = confirm it belongs here (saved as Adjunct, leaves the review list).
+  const keepDrugs = async (list) => {
+    if (reviewBusy || list.length === 0) return;
+    setReviewBusy(true);
+    try {
+      const batch = writeBatch(db);
+      list.forEach(d => batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), 'adjunct'));
+      await batch.commit();
+    } catch (err) { console.error('Keep failed:', err); } finally { setReviewBusy(false); }
+  };
+  // Remove = untag from this condition only (the drug stays everywhere else).
+  const removeDrugs = async (list) => {
+    if (reviewBusy || list.length === 0) return;
+    setReviewBusy(true);
+    try {
+      for (let i = 0; i < list.length; i += 200) {
+        const batch = writeBatch(db);
+        list.slice(i, i + 200).forEach(d => batch.update(
+          doc(db, 'drugs', d.id),
+          'condition_tags', arrayRemove(condition.id),
+          new FieldPath('condition_roles', condition.id), deleteField(),
+          'last_updated', serverTimestamp(),
+        ));
+        await batch.commit();
+      }
+      if (onDrugRemoved) list.forEach(d => onDrugRemoved(d.id, condition.id));
+    } catch (err) { console.error('Remove failed:', err); } finally { setReviewBusy(false); }
   };
 
   // Apply filters within this condition
@@ -881,6 +921,47 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                 {resorting ? 'Re-sorting…' : 'Re-sort drugs'}
               </button>
               {resortMsg && <span className="text-xs text-drug-muted">{resortMsg}</span>}
+            </div>
+          )}
+
+          {isAdmin && unrelated.length > 0 && (
+            <div className="border-b border-drug-border bg-red-50/60">
+              <button
+                onClick={() => setShowUnrelated(o => !o)}
+                className="w-full flex items-center justify-between gap-2 px-5 py-2.5 text-left"
+              >
+                <span className="flex items-center gap-2 text-xs font-bold text-red-700">
+                  <ShieldAlert className="w-4 h-4" />
+                  {unrelated.length} drug{unrelated.length !== 1 ? 's' : ''} with no link to "{condition.label}" — review
+                </span>
+                {showUnrelated ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
+              </button>
+              {showUnrelated && (
+                <div className="px-5 pb-3">
+                  <p className="text-[11px] text-drug-muted mb-2">
+                    These are tagged here but their class, name and indications never mention this condition. Remove the ones that aren't indicated; Keep the ones that are.
+                  </p>
+                  {unrelated.map(d => (
+                    <div key={d.id} className="flex items-center gap-2 py-1.5 border-t border-red-100">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate">{d.generic_name}</div>
+                        <div className="text-[11px] text-drug-muted truncate">{d.drug_class || '—'} · {(d.indications || d.primary_indications || 'no indications').toString().slice(0, 70)}</div>
+                      </div>
+                      <button disabled={reviewBusy} onClick={() => keepDrugs([d])}
+                        className="text-xs font-semibold text-green-700 bg-green-100 hover:bg-green-200 px-2 py-1 rounded-lg disabled:opacity-50">Keep</button>
+                      <button disabled={reviewBusy} onClick={() => removeDrugs([d])}
+                        className="text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 px-2 py-1 rounded-lg disabled:opacity-50">Remove</button>
+                    </div>
+                  ))}
+                  <button
+                    disabled={reviewBusy}
+                    onClick={() => { if (window.confirm(`Remove all ${unrelated.length} drugs from "${condition.label}"? They stay in the database and under other conditions.`)) removeDrugs(unrelated); }}
+                    className="mt-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                  >
+                    {reviewBusy ? 'Working…' : `Remove all ${unrelated.length} from this condition`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
