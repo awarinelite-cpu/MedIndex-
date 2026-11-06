@@ -14,7 +14,6 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
-import { BannerArt } from '../components/dashboard/DashboardArt';
 
 // ── Explore medical topics: six shortcut cards ────────────────────────────
 const TOPICS = [
@@ -25,6 +24,15 @@ const TOPICS = [
   { to: '/essential-drugs', title: 'Clinical Guidelines', sub: 'Evidence-Based Care',    Icon: FilePlus2,      grad: ['#22c4ad', '#0d8f88'] },
   { to: '/calculators',     title: 'Calculators',         sub: 'Medical Calculators',    Icon: Calculator,     grad: ['#7357ec', '#3f2cc0'] },
 ];
+
+// Organ artwork for the recently-viewed rows (falls back to the drug photo,
+// then to a coloured icon tile for systems without artwork).
+const PUBLIC = process.env.PUBLIC_URL || '';
+const ORGAN_THUMBS = {
+  respiratory: `${PUBLIC}/img/organ-lungs.webp`,
+  cardiovascular: `${PUBLIC}/img/organ-heart.webp`,
+  renal: `${PUBLIC}/img/organ-kidneys.webp`,
+};
 
 // ── Hero carousel slides ───────────────────────────────────────────────────
 const SLIDES = [
@@ -265,7 +273,7 @@ export default function HomePage() {
               {current.cta} <ChevronRight size={18} strokeWidth={2.6} />
             </Link>
           </div>
-          <BannerArt className="mi-banner-art" />
+          <div className="mi-banner-art" aria-hidden="true" style={{ backgroundImage: `url(${PUBLIC}/img/banner-art.webp)` }} />
           <div className="mi-dots" role="tablist" aria-label="Choose highlight">
             {SLIDES.map((sl, i) => (
               <button
@@ -323,9 +331,9 @@ export default function HomePage() {
               return (
                 <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-recent-row">
                   <span className="mi-recent-thumb" style={{ background: info.bg, color: info.fg }}>
-                    {drug.image_url
-                      ? <img src={drug.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
-                      : <RowIcon size={26} strokeWidth={2.2} />}
+                    {(ORGAN_THUMBS[info.systemId] || drug.image_url)
+                      ? <img src={ORGAN_THUMBS[info.systemId] || drug.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
+                      : <RowIcon size={22} strokeWidth={2.2} />}
                   </span>
                   <span className="mi-recent-main">
                     <span className="mi-recent-name">{drug.generic_name}</span>

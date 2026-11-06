@@ -745,3 +745,69 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .mi-cond-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; line-height: 1.25; }
 .mi-cond-sys { flex: 0 0 auto; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--mi-blue); background: rgba(23, 105, 224, .09); }
 .mi-cond-empty { margin-top: 28px; text-align: center; font-size: 14px; color: var(--mi-muted); }
+
+/* ---- home dashboard: proportions matched to the mockup ---- */
+.mi-brand-name { font-size: 28px; }
+.mi-brand-logo { width: 58px; height: 42px; }
+.mi-greet-hello { font-size: 17px; }
+.mi-greet h1 { font-size: 20px; }
+.mi-search-field { height: 46px; border-radius: 23px; }
+.mi-search-field input { font-size: 13.5px; }
+.mi-search button.mi-search-go { flex-basis: 44px; width: 44px; height: 38px; border-radius: 19px; margin-right: 4px; }
+
+.mi-banner { margin-top: 14px; padding: 18px 16px 30px; min-height: 168px; border-radius: 20px; }
+.mi-banner-text { max-width: 58%; }
+.mi-banner h2 { font-size: clamp(19px, 5.4vw, 24px); }
+.mi-banner h2 span::after { width: 40px; height: 2px; margin-top: 6px; }
+.mi-banner p { margin-top: 8px; font-size: 13px; max-width: 170px; }
+.mi-banner-cta { margin-top: 10px; height: 32px; padding: 0 14px; font-size: 13px; border-radius: 16px; }
+.mi-banner-art {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 64%; max-width: 420px; max-height: none; pointer-events: none;
+  background-position: right center; background-size: auto 100%; background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22%);
+          mask-image: linear-gradient(to right, transparent 0, #000 22%);
+}
+.mi-dots { bottom: 10px; gap: 6px; }
+.mi-banner button.mi-dot { width: 6px; height: 6px; }
+.mi-banner button.mi-dot.is-on { width: 20px; }
+
+.mi-sec-head { margin: 18px 0 9px; }
+.mi-sec-head h2 { font-size: 19px; }
+.mi-sec-head h2.mi-bar::before { width: 4px; height: 20px; }
+.mi-see-all { font-size: 13px; }
+
+.mi-topics { gap: 8px; }
+.mi-topic { min-height: 60px; padding: 7px 8px 7px 7px; gap: 9px; border-radius: 16px; }
+.mi-topic-icon { flex-basis: 46px; width: 46px; height: 46px; border-radius: 12px; }
+.mi-topic-icon svg { width: 24px; height: 24px; }
+.mi-topic-title { font-size: 13px; }
+.mi-topic-sub { font-size: 10.5px; }
+.mi-topic-chev { width: 16px; height: 16px; }
+
+.mi-recent { gap: 6px; }
+.mi-recent-row { min-height: 46px; padding: 4px 12px 4px 5px; gap: 10px; border-radius: 14px; }
+.mi-recent-thumb { flex-basis: 68px; width: 68px; height: 36px; border-radius: 8px; }
+.mi-recent-name { font-size: 14px; }
+.mi-recent-sub { font-size: 11.5px; }
+.mi-recent-chev { width: 16px; height: 16px; }
+
+.mi-saved { margin-top: 14px; padding: 9px 9px 9px 14px; gap: 10px; border-radius: 16px; }
+.mi-saved-ico svg { width: 26px; height: 26px; }
+.mi-saved-text b { font-size: 15px; }
+.mi-saved-text span { font-size: 12px; }
+.mi-saved-cta { height: 36px; padding: 0 14px; font-size: 13px; border-radius: 18px; }
+
+@media (min-width: 520px) {
+  .mi-banner { min-height: 220px; padding: 26px 24px 36px; }
+  .mi-banner h2 { font-size: 30px; }
+  .mi-banner p { font-size: 16px; max-width: 240px; }
+  .mi-banner-cta { height: 40px; font-size: 15px; padding: 0 18px; }
+  .mi-topic { min-height: 84px; }
+  .mi-topic-icon { flex-basis: 60px; width: 60px; height: 60px; }
+  .mi-topic-title { font-size: 15px; }
+  .mi-topic-sub { font-size: 12.5px; }
+  .mi-recent-row { min-height: 60px; }
+  .mi-recent-thumb { flex-basis: 84px; width: 84px; height: 44px; }
+  .mi-recent-name { font-size: 16px; }
+  .mi-recent-sub { font-size: 13px; }
+}

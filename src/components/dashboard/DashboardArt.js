@@ -6,23 +6,22 @@ import React from 'react';
 
 export function LogoMark({ className }) {
   return (
-    <svg viewBox="0 0 56 56" className={className} aria-hidden="true">
+    <svg viewBox="0 0 72 52" className={className} aria-hidden="true">
       <defs>
         <linearGradient id="mi-logo-a" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3d95ff" />
-          <stop offset="1" stopColor="#0b4fd0" />
+          <stop offset="0" stopColor="#27d3c4" />
+          <stop offset="1" stopColor="#1769e0" />
         </linearGradient>
-        <linearGradient id="mi-logo-b" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#0a3fb0" />
-          <stop offset="1" stopColor="#1f74ee" />
+        <linearGradient id="mi-logo-b" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#cfe4ff" />
         </linearGradient>
       </defs>
-      <g transform="rotate(-38 28 28)">
-        <rect x="3" y="11" width="50" height="34" rx="15" fill="url(#mi-logo-a)" />
-        <path d="M28 11h10a15 15 0 0 1 15 15v4a15 15 0 0 1-15 15H28z" fill="url(#mi-logo-b)" opacity=".55" />
-      </g>
-      <rect x="23.5" y="14" width="9" height="28" rx="3.2" fill="#fff" />
-      <rect x="14" y="23.5" width="28" height="9" rx="3.2" fill="#fff" />
+      <path d="M4 14c11-3 22-2 32 4v28C26 40 15 39 4 42z" fill="url(#mi-logo-a)" />
+      <path d="M68 14C57 11 46 12 36 18v28c10-6 21-7 32-4z" fill="url(#mi-logo-a)" />
+      <path d="M8 16c9-2 18-1 26 4v22c-8-4-17-5-26-3z" fill="url(#mi-logo-b)" />
+      <path d="M64 16c-9-2-18-1-26 4v22c8-4 17-5 26-3z" fill="url(#mi-logo-b)" />
+      <path d="M30 2h12v10h10v12H42v10H30V24H20V12h10z" fill="#0b3fb4" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }

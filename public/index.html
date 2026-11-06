@@ -56,5 +56,19 @@
   <body>
     <noscript>MedIndex requires JavaScript. Please enable it in your browser settings.</noscript>
     <div id="root"></div>
+      <script>
+      // If the app has not drawn anything after 8s, show why instead of a blank page.
+      (function () {
+        var last = '';
+        window.addEventListener('error', function (e) { last = (e && e.message) || last; });
+        window.addEventListener('unhandledrejection', function (e) { last = String((e && e.reason && (e.reason.message || e.reason)) || last); });
+        setTimeout(function () {
+          var r = document.getElementById('root');
+          if (r && !r.firstChild) {
+            r.innerHTML = '<div style="font-family:system-ui,sans-serif;padding:24px;text-align:center;color:#0b2a66"><h2 style="margin:0 0 8px">MedIndex could not start</h2><p style="margin:0 0 12px;font-size:14px">Try reloading. If it keeps happening, send this message to support:</p><code style="display:block;font-size:12px;word-break:break-word;background:#eef4ff;padding:10px;border-radius:8px">' + (last || 'No error was reported (the app script may not have loaded).').replace(/</g, '&lt;') + '</code><button onclick="location.reload()" style="margin-top:14px;padding:10px 18px;border:0;border-radius:20px;background:#1769e0;color:#fff;font-size:14px">Reload</button></div>';
+          }
+        }, 8000);
+      })();
+    </script>
   </body>
 </html>
