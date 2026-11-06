@@ -38,7 +38,8 @@ const STOPWORDS = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'with', 'in', 't
 
 function hasPhrase(text, kw) {
   const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  // Optional plural so "Antimalarials" / "Artemisinins" match "antimalarial" / "artemisinin".
+  return new RegExp(`(^|[^a-z0-9])${escaped}(s|es)?([^a-z0-9]|$)`, 'i').test(text);
 }
 
 function conditionKeywords(condition) {
@@ -69,7 +70,10 @@ export function getMainIndicationStrength(drug, condition) {
   const keywords = conditionKeywords(condition);
   if (keywords.length === 0) return 0;
 
-  const identity = [drug?.drug_class, drug?.drug_subclass, drug?.generic_name]
+  // Drop a "with … activity" qualifier from class names: "Antibiotics with
+  // Antimalarial Activity" is an antibiotic class, not an antimalarial one.
+  const stripQualifier = (t) => String(t).replace(/\(?\s*\bwith\b[^)]*\)?/gi, ' ');
+  const identity = [stripQualifier(drug?.drug_class || ''), stripQualifier(drug?.drug_subclass || ''), drug?.generic_name]
     .filter(Boolean).join(' ').toLowerCase();
   if (matchesAnyKeyword(identity, keywords)) return 3;
 
