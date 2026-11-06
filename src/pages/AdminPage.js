@@ -20,6 +20,7 @@ import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { generateDrugOnce, saveParsedDrug, forceRegenerateDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
 import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
+import ResetDrugPlacement from '../components/ResetDrugPlacement';
 import { useAiInsight } from '../context/AiInsightContext';
 import { useAiProvider, AI_PROVIDERS } from '../context/AiProviderContext';
 import { useCustomConditions, addCustomConditions, slugifyConditionLabel, normalizeConditionLabel } from '../hooks/useCustomConditions';
@@ -1486,6 +1487,7 @@ export default function AdminPage() {
         <div className="space-y-4">
 
           <ClinicalInfoMigration showToast={showToast} />
+          <ResetDrugPlacement showToast={showToast} />
 
           {/* Intro banner */}
           <div className="bg-gradient-to-r from-primary-50 to-purple-50 border border-primary-200 rounded-xl p-5">
