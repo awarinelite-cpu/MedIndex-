@@ -98,15 +98,29 @@ export function getDrugTherapyRole(drug, condition) {
   return getMainIndicationStrength(drug, condition) > 0 ? 'main' : 'adjunct';
 }
 
+// Admin-saved role for this drug under this condition, written by the
+// "Re-sort drugs" button (drug.condition_roles[conditionId] = 'main' | 'adjunct').
+// When present it wins over the automatic score, so a re-sort sticks.
+export function getStoredRole(drug, condition) {
+  const r = drug?.condition_roles?.[condition?.id];
+  return r === 'main' || r === 'adjunct' ? r : null;
+}
+
 // Splits a condition's drugs into the three buckets. The Main bucket is
 // sorted strongest first (dedicated drugs, then drugs that lead with the
 // condition, then the rest), alphabetically within a tier. `strengthByDrug`
 // maps each drug object to its score, for ordering groups on screen.
-export function classifyDrugsByRole(drugs, condition) {
+// Pass { ignoreStored: true } to get the purely automatic result (used by
+// the Re-sort button to decide what to save).
+export function classifyDrugsByRole(drugs, condition, { ignoreStored = false } = {}) {
   const strengthByDrug = new Map();
+  const storedByDrug = new Map();
   let hasDedicated = false;
   for (const drug of drugs) {
-    const s = drug?.is_combination_therapy ? 0 : getMainIndicationStrength(drug, condition);
+    let s = drug?.is_combination_therapy ? 0 : getMainIndicationStrength(drug, condition);
+    const stored = ignoreStored || drug?.is_combination_therapy ? null : getStoredRole(drug, condition);
+    storedByDrug.set(drug, stored);
+    if (stored === 'main') s = Math.max(s, 2); // keeps a manually-placed Main drug above incidental ones
     strengthByDrug.set(drug, s);
     if (s === 3) hasDedicated = true;
   }
@@ -115,7 +129,8 @@ export function classifyDrugsByRole(drugs, condition) {
   for (const drug of drugs) {
     if (drug?.is_combination_therapy) { buckets.combination.push(drug); continue; }
     const s = strengthByDrug.get(drug);
-    const isMain = s >= 2 || (s === 1 && !hasDedicated);
+    const stored = storedByDrug.get(drug);
+    const isMain = stored ? stored === 'main' : (s >= 2 || (s === 1 && !hasDedicated));
     buckets[isMain ? 'main' : 'adjunct'].push(drug);
   }
 

@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ListChecks,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -13,7 +13,7 @@ import { fetchConditionDrugList, isDrugComplete, fetchConditionClinicalInfo, sil
 import { parseConditionClinicalInfo, hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
-import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion, writeBatch, FieldPath } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import { classifyDrugsByRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
@@ -499,6 +499,8 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   const [renameFieldError, setRenameFieldError] = useState('');
   const [sharingCondition, setSharingCondition] = useState(false);
   const [shareError, setShareError] = useState('');
+  const [resorting, setResorting] = useState(false);
+  const [resortMsg, setResortMsg] = useState('');
 
   // Keep the draft in sync if the label changes from elsewhere (e.g. another
   // admin renames it while this one isn't actively editing).
@@ -573,6 +575,44 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       setShareError(err.message || 'Failed to share condition note.');
     } finally {
       setSharingCondition(false);
+    }
+  };
+
+  // Admin: re-sort this condition's drugs into Main / Adjunct. Runs the
+  // automatic classifier over the condition's full drug list and SAVES each
+  // drug's role under this condition (drug.condition_roles[conditionId]), so
+  // misplaced drugs (e.g. an antimalarial sitting in Adjunct) move to where
+  // they belong and stay there. Only drugs whose saved role changes are written.
+  const handleResort = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (resorting) return;
+    setResorting(true);
+    setResortMsg('');
+    try {
+      const auto = classifyDrugsByRole(drugs, condition, { ignoreStored: true });
+      const targets = [
+        ...auto.main.map(d => [d, 'main']),
+        ...auto.adjunct.map(d => [d, 'adjunct']),
+      ].filter(([d, role]) => !d._seed && d.id && d.condition_roles?.[condition.id] !== role);
+
+      for (let i = 0; i < targets.length; i += 400) {
+        const batch = writeBatch(db);
+        targets.slice(i, i + 400).forEach(([d, role]) => {
+          batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), role);
+        });
+        await batch.commit();
+      }
+
+      const beforeMain = new Set(classifyDrugsByRole(drugs, condition).main);
+      const moved = targets.filter(([d, role]) => (role === 'main') !== beforeMain.has(d)).length;
+      setResortMsg(targets.length === 0
+        ? 'Already sorted correctly.'
+        : `Re-sorted: ${auto.main.length} Main, ${auto.adjunct.length} Adjunct${moved ? ` (${moved} moved)` : ''}.`);
+    } catch (err) {
+      console.error('Failed to re-sort drugs:', err);
+      setResortMsg(`Re-sort failed: ${err.message || 'unknown error'}`);
+    } finally {
+      setResorting(false);
     }
   };
 
@@ -828,6 +868,21 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
         <div className="border-t border-drug-border">
           <ConditionImagesPanel condition={condition} images={images} />
           <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
+
+          {isAdmin && !isEmpty && (
+            <div className="px-5 py-2.5 border-b border-drug-border flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleResort}
+                disabled={resorting}
+                title="Move each drug to Main or Adjunct for this condition based on its class and indications"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                <ListChecks className={`w-3.5 h-3.5 ${resorting ? 'animate-pulse' : ''}`} />
+                {resorting ? 'Re-sorting…' : 'Re-sort drugs'}
+              </button>
+              {resortMsg && <span className="text-xs text-drug-muted">{resortMsg}</span>}
+            </div>
+          )}
 
           {isEmpty ? (
             <p className="px-5 pt-4 text-sm text-drug-muted">
