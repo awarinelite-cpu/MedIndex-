@@ -24,7 +24,7 @@ import { classifyDrugsByRole, getMainIndicationStrength } from '../utils/drugRol
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const hasIndications = (d) => !!String(d.indications || d.primary_indications || '').trim();
 
-function buildPlan(drugs, conditions) {
+function buildPlan(drugs, conditions, strict = false) {
   const knownIds = new Set(conditions.map(c => c.id));
   const labelById = new Map(conditions.map(c => [c.id, c.label]));
 
@@ -38,7 +38,9 @@ function buildPlan(drugs, conditions) {
   for (const d of eligible) {
     const old = Array.isArray(d.condition_tags) ? d.condition_tags : [];
     const keptUnknown = old.filter(t => !knownIds.has(t));
-    const matched = conditions.filter(c => getMainIndicationStrength(d, c) > 0).map(c => c.id);
+    // Strict: only class/name matches or a first-indication match keep a link; passing mentions are unlinked.
+    const minStrength = strict ? 2 : 1;
+    const matched = conditions.filter(c => getMainIndicationStrength(d, c) >= minStrength).map(c => c.id);
     finalTags.set(d, [...new Set([...keptUnknown, ...matched])]);
   }
 
@@ -91,6 +93,7 @@ export default function ResetDrugPlacement({ showToast }) {
   const [plan, setPlan] = useState(null);
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [strict, setStrict] = useState(false);
 
   const conditions = useMemo(() => {
     const seen = new Set();
@@ -117,7 +120,8 @@ export default function ResetDrugPlacement({ showToast }) {
     }
   };
 
-  const preview = () => { setConfirmText(''); setPlan(buildPlan(drugs, conditions)); };
+  const preview = (strictMode = strict) => { setConfirmText(''); setPlan(buildPlan(drugs, conditions, strictMode)); };
+  const toggleStrict = (e) => { setStrict(e.target.checked); if (plan) preview(e.target.checked); };
 
   const applyReset = async () => {
     if (!plan || confirmText !== 'RESET' || busy) return;
@@ -170,7 +174,7 @@ export default function ResetDrugPlacement({ showToast }) {
       </p>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={preview} disabled={busy}
+        <button onClick={() => preview()} disabled={busy}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 px-3 py-1.5 rounded-lg disabled:opacity-50">
           <Eye className="w-3.5 h-3.5" /> Preview reset
         </button>
@@ -182,9 +186,16 @@ export default function ResetDrugPlacement({ showToast }) {
         )}
       </div>
 
+      <label className="mt-3 flex items-start gap-2 text-xs cursor-pointer">
+        <input type="checkbox" checked={strict} onChange={toggleStrict} disabled={busy} className="mt-0.5 accent-red-600" />
+        <span>
+          <b>Strict mode</b> — keep a drug under a condition only if its class/name matches or the condition is its first listed indication. Drugs that only mention it in passing are unlinked.
+        </span>
+      </label>
+
       {plan && (
         <div className="mt-3 border border-red-200 bg-red-50/50 rounded-xl p-3 text-xs space-y-1.5">
-          <div className="font-bold text-red-700 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Preview — nothing saved yet</div>
+          <div className="font-bold text-red-700 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Preview{strict ? ' (strict)' : ''} — nothing saved yet</div>
           <div>Checked {plan.checked} drugs against {conditions.length} conditions.</div>
           <div><b>{plan.changes.length}</b> drugs will change: <b>+{plan.added}</b> condition links added, <b>−{plan.removed}</b> removed, <b>{plan.roleChanges}</b> Main/Adjunct changes.</div>
           {plan.skipped.noIndications > 0 && <div className="text-drug-muted">{plan.skipped.noIndications} drugs have no indications written — left untouched.</div>}
