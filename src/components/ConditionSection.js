@@ -21,6 +21,7 @@ import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 import AiClassFallback from './AiClassInsight';
+import ConditionImagesPanel from './ConditionImagesPanel';
 
 export function RxBadge({ status }) {
   const cls =
@@ -488,7 +489,7 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, images, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   const { drugs: allDrugs } = useDrugs();
@@ -809,6 +810,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
 
       {open && !mergeMode && (
         <div className="border-t border-drug-border">
+          <ConditionImagesPanel condition={condition} images={images} />
           <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
 
           {isEmpty ? (

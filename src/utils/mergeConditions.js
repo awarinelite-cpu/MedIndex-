@@ -15,9 +15,10 @@
 //      if custom, record as "hidden" if seeded — never touches the drugs'
 //      own data).
 //   3. If the primary has no saved clinical info yet but a duplicate does,
-//      copies the first duplicate's clinical info onto the primary, then
-//      deletes the duplicates' clinical info docs so nothing orphaned is
-//      left behind under a hidden id.
+//      copies the first duplicate's clinical info onto the primary, adds the
+//      duplicates' condition pictures to the primary's, then deletes the
+//      duplicates' clinical info docs so nothing orphaned is left behind
+//      under a hidden id.
 //
 // Nothing here is done inside a single atomic transaction — a failure
 // partway through (e.g. network drop after the drug re-tag batch commits
@@ -72,18 +73,36 @@ export async function mergeConditions(systemId, primaryId, duplicateIds, allDrug
 
   // ── 2. Consolidate clinical info (best-effort — never blocks the merge) ─
   try {
+    // A condition's doc holds its clinical-info text AND its pasted pictures
+    // (`images`), so treat them separately: text is copied from the first
+    // duplicate that has any (only if the primary has none), while pictures
+    // from every duplicate are added to the primary's (deduped by URL).
     const primaryRef = doc(db, CLINICAL_INFO_COLLECTION, primaryId);
     const primarySnap = await getDoc(primaryRef);
-    if (!primarySnap.exists()) {
-      for (const dupId of dupSet) {
-        const dupRef = doc(db, CLINICAL_INFO_COLLECTION, dupId);
-        const dupSnap = await getDoc(dupRef);
-        if (dupSnap.exists()) {
-          await setDoc(primaryRef, { ...dupSnap.data(), generatedAt: serverTimestamp() });
-          break; // first one found wins — good enough, admin can regenerate if needed
+    const { images: primaryImagesRaw, ...primaryText } = primarySnap.exists() ? primarySnap.data() : {};
+    const primaryImages = Array.isArray(primaryImagesRaw) ? primaryImagesRaw : [];
+    const primaryNeedsText = Object.keys(primaryText).length === 0;
+
+    const mergedImages = [...primaryImages];
+    let textToCopy = null;
+    for (const dupId of dupSet) {
+      const dupSnap = await getDoc(doc(db, CLINICAL_INFO_COLLECTION, dupId));
+      if (!dupSnap.exists()) continue;
+      const { images: dupImages, ...dupText } = dupSnap.data();
+      // First one found wins — good enough, admin can regenerate if needed.
+      if (primaryNeedsText && !textToCopy && Object.keys(dupText).length > 0) textToCopy = dupText;
+      if (Array.isArray(dupImages)) {
+        for (const img of dupImages) {
+          if (img?.url && !mergedImages.some(m => m.url === img.url)) mergedImages.push(img);
         }
       }
     }
+
+    const patch = {};
+    if (textToCopy) Object.assign(patch, textToCopy, { generatedAt: serverTimestamp() });
+    if (mergedImages.length > primaryImages.length) patch.images = mergedImages;
+    if (Object.keys(patch).length > 0) await setDoc(primaryRef, patch, { merge: true });
+
     for (const dupId of dupSet) {
       try { await deleteDoc(doc(db, CLINICAL_INFO_COLLECTION, dupId)); } catch { /* no-op if missing */ }
     }

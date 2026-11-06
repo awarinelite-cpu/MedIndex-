@@ -132,7 +132,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
     if (!localMatch) return [];
     return dbDrugs.filter(d => Array.isArray(d.condition_tags) && d.condition_tags.includes(localMatch.id));
   }, [dbDrugs, localMatch]);
-  const { clinicalInfoByCondition } = useConditionClinicalInfo();
+  const { clinicalInfoByCondition, imagesByCondition } = useConditionClinicalInfo();
   const [conditionOpen, setConditionOpen] = useState(true);
   useEffect(() => { setConditionOpen(true); }, [localMatch?.id]);
   const [deletingCondition, setDeletingCondition] = useState(false);
@@ -343,6 +343,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
             systemId={localMatch.systemId}
             onDrugRemoved={() => {}}
             clinicalInfo={clinicalInfoByCondition[localMatch.id]}
+            images={imagesByCondition[localMatch.id]}
             onDeleteCondition={handleDeleteLocalCondition}
             isDeleting={deletingCondition}
           />

@@ -604,7 +604,7 @@ export default function SystemPage() {
   const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
-  const { clinicalInfoByCondition } = useConditionClinicalInfo();
+  const { clinicalInfoByCondition, imagesByCondition } = useConditionClinicalInfo();
   // Track drug↔condition links the admin just removed, so they disappear
   // immediately without waiting for a Firestore refetch. Keyed "drugId::condId".
   const [removedLinks, setRemovedLinks] = useState(() => new Set());
@@ -1314,6 +1314,7 @@ export default function SystemPage() {
                   systemId={systemId}
                   onDrugRemoved={handleDrugRemoved}
                   clinicalInfo={clinicalInfoByCondition[entry.condition.id]}
+                  images={imagesByCondition[entry.condition.id]}
                   onDeleteCondition={handleDeleteCondition}
                   isDeleting={deletingConditionId === entry.condition.id}
                   onRenameCondition={handleRenameCondition}
