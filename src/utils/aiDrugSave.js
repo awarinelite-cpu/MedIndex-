@@ -882,6 +882,7 @@ export async function silentSaveConditionItems({ items, conditionId, conditionKe
     try {
       const existing = existingByName.get(normalizeDrugNameForMatch(item.name));
       if (existing) {
+        if (Array.isArray(existing.condition_excluded) && existing.condition_excluded.includes(conditionId)) continue; // removed on purpose
         const relevant = drugMatchesConditionKeywords(existing, conditionKeywords, item.note);
         if (relevant === false) {
           await updateDoc(doc(db, 'drugs', existing.id || slugifyDrugName(item.name)), {

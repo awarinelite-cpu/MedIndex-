@@ -24,6 +24,11 @@ export async function autoTagDrugConditions(docId, drug) {
       suggestConditionTagsForDrug(drug, systemId, extra).forEach(id => matchedTags.add(id));
     }
 
+    // Skip conditions an admin has removed this drug from on purpose.
+    const own = await getDoc(doc(db, 'drugs', docId));
+    const excluded = own.exists() && Array.isArray(own.data().condition_excluded) ? own.data().condition_excluded : [];
+    excluded.forEach(id => matchedTags.delete(id));
+
     if (matchedTags.size > 0) {
       await updateDoc(doc(db, 'drugs', docId), {
         condition_tags: arrayUnion(...matchedTags),

@@ -40,7 +40,10 @@ function buildPlan(drugs, conditions, strict = false) {
     const keptUnknown = old.filter(t => !knownIds.has(t));
     // Strict: only class/name matches or a first-indication match keep a link; passing mentions are unlinked.
     const minStrength = strict ? 2 : 1;
-    const matched = conditions.filter(c => getMainIndicationStrength(d, c) >= minStrength).map(c => c.id);
+    const excluded = Array.isArray(d.condition_excluded) ? d.condition_excluded : [];
+    const matched = conditions
+      .filter(c => !excluded.includes(c.id) && getMainIndicationStrength(d, c) >= minStrength)
+      .map(c => c.id);
     finalTags.set(d, [...new Set([...keptUnknown, ...matched])]);
   }
 

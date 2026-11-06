@@ -219,6 +219,11 @@ export function AiInsightProvider({ children }) {
         // than discarding it and checking only the drug's general-purpose
         // stored fields (which may predate/never mention a more specific
         // or less common indication the AI is correctly aware of).
+        if (Array.isArray(existing.condition_excluded) && existing.condition_excluded.includes(conditionId)) {
+          done++;
+          setConditionProgress({ done, total: items.length });
+          continue; // an admin removed this drug from this condition on purpose
+        }
         const relevant = drugMatchesConditionKeywords(existing, conditionKeywords, item.note);
         if (relevant === false) {
           // Don't just drop it — the AI still thinks it belongs here, so

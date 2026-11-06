@@ -96,6 +96,7 @@ export function AiConditionFallback({ conditionId, conditionLabel, conditionKeyw
     try {
       await updateDoc(doc(db, 'drugs', drug.id), {
         condition_tags: arrayUnion(conditionId),
+        condition_excluded: arrayRemove(conditionId),
         pending_condition_tags: arrayRemove(conditionId),
         last_updated: serverTimestamp(),
       });
@@ -549,6 +550,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     try {
       await updateDoc(doc(db, 'drugs', drug.id), {
         condition_tags: arrayRemove(condition.id),
+        condition_excluded: arrayUnion(condition.id),
         last_updated:   serverTimestamp(),
       });
       if (onDrugRemoved) onDrugRemoved(drug.id, condition.id);
@@ -654,12 +656,24 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           doc(db, 'drugs', d.id),
           'condition_tags', arrayRemove(condition.id),
           new FieldPath('condition_roles', condition.id), deleteField(),
+          'condition_excluded', arrayUnion(condition.id), // remembered, so auto-tagging / reset never re-adds it
           'last_updated', serverTimestamp(),
         ));
         await batch.commit();
       }
       if (onDrugRemoved) list.forEach(d => onDrugRemoved(d.id, condition.id));
     } catch (err) { console.error('Remove failed:', err); } finally { setReviewBusy(false); }
+  };
+
+  // Remove a WHOLE drug class from this condition (every drug in that class,
+  // in both Main and Adjunct). Drugs stay everywhere else.
+  const removeClassFromCondition = (className, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const list = drugs.filter(d => !d.is_combination_therapy && !d._seed && (d.drug_class || 'Other') === className);
+    if (list.length === 0) return;
+    if (window.confirm(`Remove the whole "${className}" class (${list.length} drug${list.length !== 1 ? 's' : ''}) from "${condition.label}"?\n\nThey stay in the database and under other conditions, and won't be added back here automatically.`)) {
+      removeDrugs(list);
+    }
   };
 
   // Apply filters within this condition
@@ -1047,6 +1061,19 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                           )}
                         </div>
                         <span className="flex items-center gap-2 flex-shrink-0">
+                          {!classMergeMode && isAdmin && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${className} from ${condition.label}`}
+                              title={`Remove the whole "${className}" class from this condition`}
+                              onClick={(e) => removeClassFromCondition(className, e)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') removeClassFromCondition(className, e); }}
+                              className={`p-1 rounded-md text-red-400 hover:bg-red-50 hover:text-red-600 ${reviewBusy ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </span>
+                          )}
                           {!classMergeMode && isAdmin && (
                             <span
                               role="button"
