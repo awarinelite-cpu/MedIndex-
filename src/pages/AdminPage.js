@@ -7,11 +7,12 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
-  Shield, Upload, Database, Trash2, Edit,
+  Upload, Database, Trash2, Edit,
   Search, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
   Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
   FileText, Stethoscope, Settings as SettingsIcon,
+  Pill, ShieldCheck, AlertCircle, BadgeCheck, Image as ImageIcon, ClipboardCheck,
 } from 'lucide-react';
 import seedDrugs from '../data/seedDrugs.json';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -1065,115 +1066,175 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-primary-100 rounded-xl"><Shield className="w-6 h-6 text-primary-700"/></div>
+      {/* Dashboard: welcome hero, primary actions, AI banners, stats, quick actions */}
+      <div className="ad-dash">
+        <div className="ad-hero">
           <div>
-            <h1 className="text-2xl font-bold">Admin Portal</h1>
-            <p className="text-drug-muted text-sm">Manage the drug database</p>
+            <span className="ad-hero-hello">Welcome Back,</span>
+            <h1>Admin Portal <BadgeCheck className="ad-verified" aria-label="Verified admin"/></h1>
+            <p className="ad-hero-sub">Manage the drug database efficiently</p>
           </div>
+          <svg className="ad-hero-art" viewBox="0 0 200 170" aria-hidden="true">
+            <defs>
+              <linearGradient id="adBook" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#6aa5ff"/><stop offset="1" stopColor="#1f5fd6"/>
+              </linearGradient>
+            </defs>
+            <path d="M18 122 L120 100 L190 118 L92 146 Z" fill="url(#adBook)"/>
+            <path d="M18 122 L92 146 L92 157 L18 133 Z" fill="#1a4fb8"/>
+            <path d="M92 146 L190 118 L190 129 L92 157 Z" fill="#2a6fe6"/>
+            <path d="M62 16 C40 20 38 54 62 68 C84 80 108 72 112 48 C115 28 100 16 82 16" fill="none" stroke="#0b2f7a" strokeWidth="7" strokeLinecap="round"/>
+            <path d="M96 68 C90 98 120 112 140 102" fill="none" stroke="#0b2f7a" strokeWidth="7" strokeLinecap="round"/>
+            <circle cx="62" cy="16" r="7" fill="#0b2f7a"/>
+            <circle cx="82" cy="16" r="7" fill="#0b2f7a"/>
+            <circle cx="148" cy="100" r="17" fill="#d5deee" stroke="#0b2f7a" strokeWidth="5"/>
+            <circle cx="148" cy="100" r="8" fill="#8fa3c4"/>
+          </svg>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={loadDrugs} className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors">
-            <RefreshCw className="w-4 h-4"/> Refresh
+
+        <div className="ad-actions">
+          <button onClick={loadDrugs} className="ad-btn ad-btn-dark">
+            <RefreshCw/> Refresh
           </button>
-          <Link to="/admin/upload" className="btn-primary flex items-center gap-2">
-            <Upload className="w-4 h-4"/> Bulk Upload
+          <Link to="/admin/upload" className="ad-btn ad-btn-blue">
+            <Upload/> Bulk Upload
           </Link>
-          {stats.incomplete > 0 && (
-            <button
-              onClick={() => downloadIncompleteCSV(drugs.filter(isIncomplete), showToast)}
-              className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors"
-            >
-              <Download className="w-4 h-4"/> Download Incomplete ({stats.incomplete})
-            </button>
-          )}
-          {globalFixRunning ? (
-            <div className="flex items-center gap-3 px-4 py-2 rounded-lg border-1.5 border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold" style={{border:'1.5px solid #FDE68A'}}>
-              <RefreshCw className="w-4 h-4 animate-spin"/>
-              General AI Insight — {globalFixProgress.done}/{globalFixProgress.total}
-              <button onClick={stopGlobalFix} className="underline hover:no-underline">Stop</button>
+        </div>
+
+        {stats.incomplete > 0 && (
+          <button className="ad-row" onClick={() => downloadIncompleteCSV(drugs.filter(isIncomplete), showToast)}>
+            <Download/>
+            <span>Download Incomplete ({stats.incomplete})</span>
+            <ChevronRight/>
+          </button>
+        )}
+
+        {/* Stats */}
+        <div className="ad-stats">
+          {[
+            {label:'Total Drugs',  value:stats.total,      icon:Pill,        tone:'blue'},
+            {label:'Drug Classes', value:stats.classes,    icon:Database,    tone:'green',
+              onClick:()=>navigate('/admin/classes')},
+            {label:'Controlled',   value:stats.controlled, icon:ShieldCheck, tone:'purple'},
+            {label:'Incomplete',   value:stats.incomplete, icon:AlertCircle, tone:'orange',
+              onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());},
+              active:filterIncompleteOnly},
+          ].map(s=>(
+            <div key={s.label} onClick={s.onClick} role={s.onClick?'button':undefined} tabIndex={s.onClick?0:undefined}
+              onKeyDown={s.onClick?(e=>{if(e.key==='Enter')s.onClick();}):undefined}
+              className={`ad-stat ad-stat-${s.tone}${s.onClick?' is-link':''}${s.active?' is-active':''}`}>
+              <span className="ad-stat-icon"><s.icon/></span>
+              <div>
+                <p className="ad-stat-label">{s.label}</p>
+                <p className="ad-stat-value">{loading?'—':Number(s.value).toLocaleString('en-US')}</p>
+                {s.onClick && <p className="ad-stat-hint">Tap to view →</p>}
+              </div>
             </div>
+          ))}
+        </div>
+
+        {/* General AI Insight */}
+        <div className="ad-banner">
+          <Sparkles className="ad-banner-icon"/>
+          <div className="ad-banner-text">
+            <b>General AI Insight</b>
+            <span>
+              {globalFixRunning
+                ? `Fixing incomplete drugs… ${globalFixProgress.done}/${globalFixProgress.total}`
+                : 'Keep your database up to date for better clinical reference.'}
+            </span>
+          </div>
+          {globalFixRunning ? (
+            <button className="ad-pill" onClick={stopGlobalFix}>Stop</button>
           ) : (
             <button
+              className="ad-pill"
+              disabled={loading}
               onClick={()=>{
                 const incomplete = drugs.filter(isIncomplete);
                 if (incomplete.length === 0) { showToast('Nothing to fix — every drug is already complete.'); return; }
                 startGlobalFix(incomplete, provider.endpoint);
                 showToast(`General AI Insight started — fixing ${incomplete.length} drugs silently in the background. Feel free to navigate away.`, 'info');
               }}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
-              style={{background:'linear-gradient(135deg,#F59E0B,#B45309)'}}
             >
-              <Sparkles className="w-4 h-4"/> General AI Insight{stats.incomplete>0?` (${stats.incomplete})`:''}
+              Run Insight{stats.incomplete>0?` (${stats.incomplete})`:''} →
             </button>
           )}
+        </div>
+
+        {/* Clinical Info Sweep */}
+        <div className="ad-banner ad-banner-teal">
+          <BookOpen className="ad-banner-icon"/>
+          <div className="ad-banner-text">
+            <b>Clinical Info Sweep</b>
+            <span>
+              {clinicalSweepRunning
+                ? `Generating condition info… ${clinicalSweepIndex}/${clinicalSweepTotal}`
+                : 'Generate clinical info for every condition that doesn’t have it yet.'}
+            </span>
+          </div>
           {clinicalSweepRunning ? (
-            <div className="flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-semibold" style={{border:'1.5px solid #BAE6FD', background:'#F0F9FF', color:'#0369A1'}}>
-              <RefreshCw className="w-4 h-4 animate-spin"/>
-              Clinical Info Sweep — {clinicalSweepIndex}/{clinicalSweepTotal}
-              <button onClick={stopClinicalInfoSweep} className="underline hover:no-underline">Stop</button>
-            </div>
+            <button className="ad-pill" onClick={stopClinicalInfoSweep}>Stop</button>
           ) : (
             <button
+              className="ad-pill"
+              disabled={loading}
+              title="Generate the Introduction/Types/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/Management panel for every condition in every system that doesn't have one yet"
               onClick={()=>{
                 if (clinicalSweepEligibleCount === 0) { showToast('Nothing to do — every condition in every system already has clinical info.'); return; }
                 startClinicalInfoSweep(provider.endpoint);
                 showToast(`Clinical Info Sweep started — generating info for ${clinicalSweepEligibleCount} conditions across every system, in the background. Feel free to navigate away.`, 'info');
               }}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
-              style={{background:'linear-gradient(135deg,#0EA5E9,#0369A1)'}}
-              title="Generate the Introduction/Types/Etiology/Pathophysiology/Clinical Manifestation/Diagnosis/Management panel for every condition in every system that doesn't have one yet"
             >
-              <BookOpen className="w-4 h-4"/> Clinical Info Sweep{clinicalSweepEligibleCount>0?` (${clinicalSweepEligibleCount})`:''}
-            </button>
-          )}
-          {clinicalSweepEligibleCount > 0 && (
-            <button
-              onClick={() => downloadClinicalSweepCSV(eligibleClinicalConditions, showToast)}
-              className="flex items-center gap-2 px-4 py-2 border border-drug-border rounded-lg text-sm font-semibold text-drug-muted hover:bg-gray-50 transition-colors"
-              title="Download the conditions missing clinical info as a CSV — fill it in and re-upload from the Clinical Info CSV tab"
-            >
-              <Download className="w-4 h-4"/> Download Clinical Sweep ({clinicalSweepEligibleCount})
+              Run Sweep{clinicalSweepEligibleCount>0?` (${clinicalSweepEligibleCount})`:''} →
             </button>
           )}
         </div>
-      </div>
+        {clinicalSweepEligibleCount > 0 && (
+          <button
+            className="ad-row"
+            onClick={() => downloadClinicalSweepCSV(eligibleClinicalConditions, showToast)}
+            title="Download the conditions missing clinical info as a CSV — fill it in and re-upload from the Clinical Info CSV tab"
+          >
+            <Download/>
+            <span>Download Clinical Sweep ({clinicalSweepEligibleCount})</span>
+            <ChevronRight/>
+          </button>
+        )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        {[
-          {label:'Total Drugs',  value:stats.total,      icon:Database,      bg:'bg-primary-50',color:'text-drug-text',  ic:'text-primary-600'},
-          {label:'Drug Classes', value:stats.classes,    icon:Filter,        bg:'bg-blue-50',  color:'text-blue-700',   ic:'text-blue-600',
-            onClick:()=>navigate('/admin/classes'), hint:'text-blue-600', hoverBorder:'hover:border-blue-300' },
-          {label:'Controlled',   value:stats.controlled, icon:AlertTriangle, bg:'bg-red-50',   color:'text-red-700',    ic:'text-red-600'   },
-          {label:'Incomplete',   value:stats.incomplete, icon:Sparkles,      bg:'bg-amber-50', color:'text-amber-700',  ic:'text-amber-500',
-            onClick:()=>{setActiveTab('drugs');setFilterIncompleteOnly(true);setShowFilters(true);setSelectedIds(new Set());}, hint:'text-amber-600', hoverBorder:'hover:border-amber-300' },
-        ].map(s=>(
-          <div key={s.label} onClick={s.onClick} role={s.onClick?'button':undefined} tabIndex={s.onClick?0:undefined}
-            onKeyDown={s.onClick?(e=>{if(e.key==='Enter')s.onClick();}):undefined}
-            className={`bg-white border rounded-xl p-5 transition-all ${
-              s.onClick
-                ? `cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${filterIncompleteOnly && s.label==='Incomplete' ? 'border-amber-400 ring-2 ring-amber-200' : `border-drug-border ${s.hoverBorder || 'hover:border-amber-300'}`}`
-                : 'border-drug-border'
-            }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-drug-muted">{s.label}</p>
-                <p className={`text-2xl font-bold ${s.color}`}>{loading?'—':s.value}</p>
-                {s.onClick && <p className={`text-[11px] font-semibold mt-0.5 ${s.hint || 'text-amber-600'}`}>Tap to view →</p>}
-              </div>
-              <div className={`p-2.5 ${s.bg} rounded-lg`}><s.icon className={`w-5 h-5 ${s.ic}`}/></div>
-            </div>
-          </div>
-        ))}
+        {/* Quick actions */}
+        <div className="ad-section-head"><Zap/><h2>Quick Actions</h2></div>
+        <div className="ad-quick">
+          <button
+            className="ad-quick-tile"
+            onClick={()=>{
+              setActiveTab('drugs');
+              setTimeout(()=>{
+                const el = document.getElementById('admin-drug-search');
+                if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.focus({preventScroll:true}); }
+              }, 80);
+            }}
+          >
+            <Search/><span>Search Drugs</span>
+          </button>
+          <Link to="/admin/bulk-images" className="ad-quick-tile"><ImageIcon/><span>Bulk Images</span></Link>
+          <Link to="/admin/review" className="ad-quick-tile"><ClipboardCheck/><span>Review</span></Link>
+          <button
+            className="ad-quick-tile"
+            onClick={()=>{
+              setActiveTab('settings');
+              setTimeout(()=>document.getElementById('admin-tabs')?.scrollIntoView({behavior:'smooth', block:'start'}), 80);
+            }}
+          >
+            <SettingsIcon/><span>Settings</span>
+          </button>
+        </div>
       </div>
+      <div className="mb-6"/>
 
       {/* Tabs */}
       <div
+        id="admin-tabs"
         className="flex gap-2 mb-6 border-b border-drug-border overflow-x-auto"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
       >
@@ -1227,7 +1288,7 @@ export default function AdminPage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-                <input type="text" value={searchQuery} onChange={e=>{setSearchQuery(e.target.value);setSelectedIds(new Set());}}
+                <input id="admin-drug-search" type="text" value={searchQuery} onChange={e=>{setSearchQuery(e.target.value);setSelectedIds(new Set());}}
                   placeholder="Search name, class, subclass, indication..."
                   className="w-full pl-10 pr-4 py-2.5 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 text-sm"/>
               </div>

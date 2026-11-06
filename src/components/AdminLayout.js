@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon, Sun, Moon, ClipboardCheck, Sparkles } from 'lucide-react';
+import { Shield, Upload, LayoutDashboard, Download, X, RefreshCw, LogOut, Users, Image as ImageIcon, Sun, Moon, ClipboardCheck, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -129,11 +129,14 @@ export default function AdminLayout({ children }) {
 
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0 min-w-0">
-              <div style={{ background: 'linear-gradient(145deg,#3b92ff,#1259d8)', borderRadius: 32, boxShadow: '0 6px 12px -4px rgba(17,85,216,.45)' }} className="w-8 h-8 flex items-center justify-center shrink-0">
-                <Pill className="w-4 h-4 text-white" />
+              <div style={{ background: 'rgba(255,255,255,.16)', borderRadius: 32 }} className="w-9 h-9 flex items-center justify-center shrink-0">
+                <Shield className="w-5 h-5 text-white" />
               </div>
-              <span className="mi-admin-brand text-base font-bold hidden xs:inline sm:inline">MedIndex</span>
-              <span style={{ background: 'rgba(23,105,224,0.12)', color: '#1769e0', fontSize: 10, padding: '2px 8px', borderRadius: 32 }} className="font-bold shrink-0">
+              <span className="mi-admin-brand text-base font-bold hidden xs:inline sm:inline leading-tight">
+                MedIndex
+                <span className="mi-admin-brand-sub">Drug Database</span>
+              </span>
+              <span className="mi-admin-badge font-bold shrink-0">
                 Admin
               </span>
             </div>
