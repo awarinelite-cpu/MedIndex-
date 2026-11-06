@@ -2671,7 +2671,13 @@ export const SYSTEM_CONDITIONS = {
       id: 'malaria',
       label: 'Malaria & Tropical Diseases',
       icon: '🌍',
-      keywords: ['malaria', 'antimalarial', 'plasmodium', 'tropical', 'leishmaniasis', 'trypanosomiasis'],
+      // The drug-name / species keywords make the dedicated antimalarials
+      // (artemether-lumefantrine, artesunate, quinine…) rank as this
+      // condition's main drugs even when their Indications text says
+      // "falciparum infection" rather than the word "malaria".
+      keywords: ['malaria', 'antimalarial', 'plasmodium', 'tropical', 'leishmaniasis', 'trypanosomiasis',
+        'falciparum', 'vivax', 'artemisinin', 'artemether', 'artesunate', 'lumefantrine', 'amodiaquine',
+        'chloroquine', 'primaquine', 'quinine', 'mefloquine', 'proguanil', 'sulfadoxine'],
     },
     {
       id: 'parasites',

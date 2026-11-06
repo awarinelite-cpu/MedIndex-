@@ -16,7 +16,7 @@ import { saveConditionClinicalInfo, removeConditionClinicalInfo } from '../hooks
 import { doc, updateDoc, serverTimestamp, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
-import { getDrugTherapyRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
+import { classifyDrugsByRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
@@ -610,21 +610,37 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   // was grouped. See drugRoleClassification.js for how a drug lands in one
   // bucket vs another.
   const roleBuckets = useMemo(() => {
-    const buckets = { main: [], adjunct: [], combination: [] };
-    for (const drug of filtered) {
-      buckets[getDrugTherapyRole(drug, condition)].push(drug);
-    }
-    return buckets;
-  }, [filtered, condition]);
+    // Classify the condition's FULL drug list, then keep only what passes the
+    // current class/name filter — so typing in the filter box never changes
+    // which drugs count as incidental vs dedicated.
+    const all = classifyDrugsByRole(drugs, condition);
+    const visible = new Set(filtered);
+    return {
+      main:        all.main.filter(d => visible.has(d)),
+      adjunct:     all.adjunct.filter(d => visible.has(d)),
+      combination: all.combination.filter(d => visible.has(d)),
+      strengthByDrug: all.strengthByDrug,
+    };
+  }, [drugs, filtered, condition]);
 
-  const byClassWithin = (list) => {
+  // Groups a bucket's drugs by class. In the Main bucket the groups with the
+  // strongest drugs (the condition's dedicated drugs, e.g. antimalarials
+  // under Malaria) come first; everywhere else groups are alphabetical.
+  const byClassWithin = (list, roleKey) => {
     const map = new Map();
     for (const drug of list) {
       const key = drug.drug_class || 'Other';
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(drug);
     }
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const best = (drugsInGroup) => Math.max(0, ...drugsInGroup.map(d => roleBuckets.strengthByDrug.get(d) || 0));
+    return [...map.entries()].sort((a, b) => {
+      if (roleKey === 'main') {
+        const diff = best(b[1]) - best(a[1]);
+        if (diff !== 0) return diff;
+      }
+      return a[0].localeCompare(b[0]);
+    });
   };
 
   const isEmpty = filtered.length === 0;
@@ -839,7 +855,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                     </span>
                   </div>
 
-                  {byClassWithin(roleDrugs).map(([className, classDrugs], ci) => {
+                  {byClassWithin(roleDrugs, roleKey).map(([className, classDrugs], ci) => {
                     const classKey = `${roleKey}::${className}`;
                     const isClassOpen = expandedClasses.has(classKey);
                     const isClassSelected = classMergeMode && selectedClassesForMerge && selectedClassesForMerge.has(className);
