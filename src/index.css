@@ -752,7 +752,7 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .mi-greet-hello { font-size: 17px; }
 .mi-greet h1 { font-size: 20px; }
 .mi-search-field { height: 46px; border-radius: 23px; }
-.mi-search-field input { font-size: 13.5px; }
+.mi-search-field input { font-size: 12.5px; padding-left: 8px; }
 .mi-search button.mi-search-go { flex-basis: 44px; width: 44px; height: 38px; border-radius: 19px; margin-right: 4px; }
 
 .mi-banner { margin-top: 14px; padding: 18px 16px 30px; min-height: 168px; border-radius: 20px; }
