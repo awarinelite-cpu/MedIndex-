@@ -811,3 +811,6 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
   .mi-recent-name { font-size: 16px; }
   .mi-recent-sub { font-size: 13px; }
 }
+
+.mi-home { padding-bottom: 100px; }
+.mi-recent-tag { flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; color: var(--mi-blue); background: rgba(23, 105, 224, .1); }

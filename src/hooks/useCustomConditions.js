@@ -161,7 +161,7 @@ export async function addCustomConditions(systemId, newConditions) {
   const reviewTag = isAdmin
     ? {}
     : { needs_review: true, contributed_by_email: user.email || 'unknown', contributed_by_uid: user.uid };
-  newConditions = newConditions.map(c => ({ ...c, ...reviewTag }));
+  newConditions = newConditions.map(c => ({ ...c, ...reviewTag, added_at: Date.now() }));
 
   const ref = doc(db, ...DOC_REF_PATH);
 
@@ -339,7 +339,7 @@ export async function renameCondition(systemId, conditionId, newLabel) {
     if (isCustom) {
       update.systems = {
         ...systems,
-        [systemId]: existingForSystem.map(c => c.id === conditionId ? { ...c, label: trimmed } : c),
+        [systemId]: existingForSystem.map(c => c.id === conditionId ? { ...c, label: trimmed, edited_at: Date.now() } : c),
       };
     } else {
       update.overrides = {

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
+import { recordRecentCondition } from '../hooks/useRecentlyViewed';
 import { useAiProvider } from '../context/AiProviderContext';
 import { useAiInsight } from '../context/AiInsightContext';
 import { getSystemById, ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -598,7 +599,7 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
 export default function SystemPage() {
   const { systemId }  = useParams();
   const navigate      = useNavigate();
-  const { isAdmin }   = useAuth();
+  const { isAdmin, user } = useAuth();
   const { provider }  = useAiProvider();
   const { enqueueAutoFillCondition } = useAiInsight();
   const { drugs: ALL_DRUGS, loading, invalidateCache } = useDrugs();
@@ -723,10 +724,11 @@ export default function SystemPage() {
   useEffect(() => {
     if (openConditionId) {
       sessionStorage.setItem(`system_open_condition_${systemId}`, openConditionId);
+      recordRecentCondition(systemId, openConditionId, user?.uid);
     } else {
       sessionStorage.removeItem(`system_open_condition_${systemId}`);
     }
-  }, [openConditionId, systemId]);
+  }, [openConditionId, systemId, user?.uid]);
 
   // ── Merge duplicate drug classes ────────────────────────────────────────
   // Same idea as condition merging above, but for drug-class labels (e.g.

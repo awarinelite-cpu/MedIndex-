@@ -2,11 +2,13 @@ import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search, Pill, ChevronRight, Syringe, Stethoscope as StethoIcon,
-  PersonStanding, FilePlus2, Calculator, Bookmark,
+  PersonStanding, FilePlus2, Calculator,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
-import { useRecentlyViewed } from '../hooks/useRecentlyViewed';
+import { useRecentActivity } from '../hooks/useRecentlyViewed';
+import { useCustomConditions } from '../hooks/useCustomConditions';
+import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { drugMatchesSystem } from '../utils/systemMatch';
@@ -19,14 +21,23 @@ import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 const TOPICS = [
   { to: '/conditions',      title: 'Conditions',          sub: 'Diseases & Disorders',   Icon: StethoIcon,     grad: ['#2b86ff', '#0a54d6'] },
   { to: '/browse',          title: 'Medicines',           sub: 'Drugs & Pharmacology',   Icon: Pill,           grad: ['#22c9ae', '#0a8f86'] },
-  { to: '/systems',         title: 'Anatomy',             sub: 'Human Anatomy',          Icon: PersonStanding, grad: ['#7a55ea', '#4527b8'] },
+  { to: '/systems',         title: 'Browse by System',    sub: 'Browse by anatomical system of the body', Icon: PersonStanding, grad: ['#7a55ea', '#4527b8'] },
   { to: '/procedures',      title: 'Procedures',          sub: 'Clinical Procedures',    Icon: Syringe,        grad: ['#3fd685', '#12a05e'] },
-  { to: '/essential-drugs', title: 'Clinical Guidelines', sub: 'Evidence-Based Care',    Icon: FilePlus2,      grad: ['#22c4ad', '#0d8f88'] },
+  { to: '/essential-drugs', title: 'Essential Drugs',     sub: 'Essential Drugs in Nigeria',  Icon: FilePlus2,      grad: ['#22c4ad', '#0d8f88'] },
   { to: '/calculators',     title: 'Calculators',         sub: 'Medical Calculators',    Icon: Calculator,     grad: ['#7357ec', '#3f2cc0'] },
 ];
 
 // Organ artwork for the recently-viewed rows (falls back to the drug photo,
 // then to a coloured icon tile for systems without artwork).
+// Firestore timestamps arrive as Timestamp objects live, or {seconds} once cached.
+const toMs = (v) => {
+  if (!v) return 0;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  if (typeof v === 'number') return v;
+  return Date.parse(v) || 0;
+};
+
 const PUBLIC = process.env.PUBLIC_URL || '';
 const ORGAN_THUMBS = {
   respiratory: `${PUBLIC}/img/organ-lungs.webp`,
@@ -89,7 +100,8 @@ function RxBadge({ status }) {
 export default function HomePage() {
   const { user } = useAuth();
   const { drugs: ALL_DRUGS } = useDrugs();
-  const recentIds = useRecentlyViewed(user?.uid);
+  const recent = useRecentActivity(user?.uid);
+  const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
   const [showAllRecent, setShowAllRecent] = useState(false);
 
   // Hero carousel: auto-advances every 6s unless the person prefers reduced
@@ -102,11 +114,50 @@ export default function HomePage() {
   }, [slide]);
   const current = SLIDES[slide];
 
-  // Recently opened drugs, newest first — ids that no longer exist are skipped.
+  // Recently viewed feed: drugs and conditions the person opened, plus drugs
+  // and conditions recently added or edited. Newest first, one row per item.
   const RECENT = useMemo(() => {
+    const items = new Map();
+    const push = (it) => {
+      const prev = items.get(it.key);
+      if (!prev || it.t > prev.t) items.set(it.key, it);
+    };
+
     const byId = new Map(ALL_DRUGS.map(d => [d.id, d]));
-    return recentIds.map(id => byId.get(id)).filter(Boolean);
-  }, [ALL_DRUGS, recentIds]);
+    recent.drugIds.forEach((id, i) => {
+      const drug = byId.get(id);
+      if (drug) push({ key: `drug:${id}`, kind: 'drug', drug, t: recent.times[id] || (1000 - i), tag: 'Viewed' });
+    });
+    ALL_DRUGS
+      .map(drug => ({ drug, t: toMs(drug.last_updated) }))
+      .filter(x => x.t > 0)
+      .sort((a, b) => b.t - a.t)
+      .slice(0, 5)
+      .forEach(({ drug, t }) => push({ key: `drug:${drug.id}`, kind: 'drug', drug, t, tag: 'Updated' }));
+
+    const systemNames = new Map(ANATOMICAL_SYSTEMS.map(sys => [sys.id, sys.name]));
+    const lookup = (systemId, id) => {
+      if ((hiddenConditionIdsBySystem?.[systemId] || []).includes(id)) return null;
+      const found = [...(SYSTEM_CONDITIONS[systemId] || []), ...(customConditionsBySystem?.[systemId] || [])].find(c => c.id === id);
+      if (!found) return null;
+      return labelOverridesBySystem?.[systemId]?.[id] || found.label;
+    };
+    const condRow = (systemId, id, t, tag) => {
+      const label = lookup(systemId, id);
+      if (!label) return;
+      push({ key: `cond:${systemId}:${id}`, kind: 'condition', systemId, id, label, t, tag,
+        systemName: (systemNames.get(systemId) || systemId).split(' & ')[0] });
+    };
+    recent.conditions.forEach(c => condRow(c.s, c.id, c.t || 1, 'Viewed'));
+    Object.entries(customConditionsBySystem || {}).forEach(([systemId, list]) => {
+      (list || []).forEach(c => {
+        const t = Math.max(c.added_at || 0, c.edited_at || 0);
+        if (t > 0) condRow(systemId, c.id, t, (c.edited_at || 0) > (c.added_at || 0) ? 'Edited' : 'Added');
+      });
+    });
+
+    return [...items.values()].sort((a, b) => b.t - a.t).slice(0, 10);
+  }, [ALL_DRUGS, recent, customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem]);
   const recentShown = showAllRecent ? RECENT : RECENT.slice(0, 3);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -325,11 +376,33 @@ export default function HomePage() {
         </div>
         {recentShown.length > 0 ? (
           <div className="mi-recent">
-            {recentShown.map(drug => {
+            {recentShown.map(item => {
+              if (item.kind === 'condition') {
+                const art = ORGAN_THUMBS[item.systemId];
+                return (
+                  <Link
+                    key={item.key}
+                    to={`/system/${item.systemId}`}
+                    className="mi-recent-row"
+                    onClick={() => { try { sessionStorage.setItem(`system_open_condition_${item.systemId}`, item.id); } catch { /* optional */ } }}
+                  >
+                    <span className="mi-recent-thumb" style={{ background: '#e3eeff', color: '#1769e0' }}>
+                      {art ? <img src={art} alt="" loading="lazy" /> : <StethoIcon size={22} strokeWidth={2.2} />}
+                    </span>
+                    <span className="mi-recent-main">
+                      <span className="mi-recent-name">{item.label}</span>
+                      <span className="mi-recent-sub">Condition &middot; {item.systemName}</span>
+                    </span>
+                    <span className="mi-recent-tag">{item.tag}</span>
+                    <ChevronRight size={20} strokeWidth={2.4} className="mi-recent-chev" />
+                  </Link>
+                );
+              }
+              const drug = item.drug;
               const info = describeDrug(drug);
               const RowIcon = info.systemId === 'infectious' ? Syringe : Pill;
               return (
-                <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-recent-row">
+                <Link key={item.key} to={`/drug/${drug.id}`} className="mi-recent-row">
                   <span className="mi-recent-thumb" style={{ background: info.bg, color: info.fg }}>
                     {(ORGAN_THUMBS[info.systemId] || drug.image_url)
                       ? <img src={ORGAN_THUMBS[info.systemId] || drug.image_url} alt="" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
@@ -339,6 +412,7 @@ export default function HomePage() {
                     <span className="mi-recent-name">{drug.generic_name}</span>
                     <span className="mi-recent-sub">{getDisplayDrugClass(drug)}</span>
                   </span>
+                  <span className="mi-recent-tag">{item.tag}</span>
                   <ChevronRight size={20} strokeWidth={2.4} className="mi-recent-chev" />
                 </Link>
               );
@@ -346,19 +420,9 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="mi-recent-empty">
-            Drugs you open will show up here for quick access.
+            Drugs and conditions you open, add or edit will show up here.
           </div>
         )}
-
-        {/* Saved references */}
-        <section className="mi-saved">
-          <span className="mi-saved-ico"><Bookmark size={34} strokeWidth={0} fill="currentColor" /></span>
-          <span className="mi-saved-text">
-            <b>Saved References</b>
-            <span>Access your saved topics</span>
-          </span>
-          <Link to="/lists" className="mi-saved-cta">View Saved <ChevronRight size={18} strokeWidth={2.6} /></Link>
-        </section>
 
       </div>
     </div>
