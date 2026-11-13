@@ -13,7 +13,7 @@ import { useDrugs } from '../hooks/useDrugs';
 import { shareListPdf } from '../utils/exportListPdf';
 import {
   Pill, Trash2, ChevronLeft,
-  Check, X, StickyNote, BookOpen, Share2, Loader2,
+  Check, X, StickyNote, BookOpen, Share2, Loader2, Pencil,
 } from 'lucide-react';
 
 function ShareListButton({ list, allDrugs }) {
@@ -56,6 +56,9 @@ export default function DrugListDetailPage() {
   const [editingNote, setEditingNote] = useState(null); // drugId being edited
   const [noteText,    setNoteText]    = useState('');
   const [saving,      setSaving]      = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleText,    setTitleText]    = useState('');
+  const [savingTitle,  setSavingTitle]  = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.uid || !listId) return;
@@ -80,6 +83,23 @@ export default function DrugListDetailPage() {
       });
       setList(prev => ({ ...prev, drugs: updated }));
     } catch (e) { console.error('Remove drug error:', e); }
+  };
+
+  /* Rename list */
+  const saveTitle = async () => {
+    const newTitle = titleText.trim();
+    if (!newTitle || !user?.uid) return;
+    if (newTitle === list.title) { setEditingTitle(false); return; }
+    setSavingTitle(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid, 'lists', listId), {
+        title: newTitle,
+        last_updated: serverTimestamp(),
+      });
+      setList(prev => ({ ...prev, title: newTitle }));
+      setEditingTitle(false);
+    } catch (e) { console.error('Rename list error:', e); }
+    setSavingTitle(false);
   };
 
   /* Save note */
@@ -131,8 +151,48 @@ export default function DrugListDetailPage() {
         <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
           <BookOpen className="w-5 h-5 text-primary-600" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-drug-text">{list.title}</h1>
+        <div className="min-w-0 flex-1">
+          {editingTitle ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={titleText}
+                onChange={e => setTitleText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') saveTitle();
+                  if (e.key === 'Escape') setEditingTitle(false);
+                }}
+                maxLength={60}
+                className="min-w-0 flex-1 text-xl font-bold text-drug-text border border-primary-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400"
+              />
+              <button
+                onClick={saveTitle}
+                disabled={savingTitle || !titleText.trim()}
+                title="Save name"
+                className="p-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 flex-shrink-0"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setEditingTitle(false)}
+                title="Cancel"
+                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-2xl font-bold text-drug-text truncate">{list.title}</h1>
+              <button
+                onClick={() => { setTitleText(list.title || ''); setEditingTitle(true); }}
+                title="Rename list"
+                className="p-1 rounded-md text-drug-muted hover:text-primary-600 hover:bg-primary-50 transition-colors flex-shrink-0"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <p className="text-sm text-drug-muted">
             {drugs.length} drug{drugs.length !== 1 ? 's' : ''}
             {list.createdAt?.toDate && (
