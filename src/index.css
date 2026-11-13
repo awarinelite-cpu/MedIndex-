@@ -1146,3 +1146,15 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .fv-empty-icon { display: inline-grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: #fde3e7; color: #ff5a6e; }
 .fv-empty h2 { margin-top: 14px; font-size: 20px; font-weight: 800; color: var(--mi-ink); }
 .fv-empty p { margin-top: 6px; font-size: 15px; }
+
+/* Condition profile: single page, About card opens to show everything */
+.cp-card.cp-about { display: block; }
+.cp-screen button.cp-about-head { width: 100%; display: flex; align-items: flex-start; gap: 8px; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
+.cp-about-main { flex: 1 1 auto; min-width: 0; display: block; }
+.cp-about-text.is-open { display: block; }
+.cp-about-chev { flex: 0 0 auto; align-self: center; color: var(--cp-blue); }
+.dark .cp-about-chev { color: #6fa8ff; }
+.cp-detail { margin-top: 14px; border-top: 1px solid var(--cp-line); }
+.cp-detail-section { padding-top: 14px; }
+.cp-detail-section h3 { font-size: 17px; font-weight: 800; color: var(--cp-ink); }
+.cp-detail-section .cp-prose { margin-top: 6px; }

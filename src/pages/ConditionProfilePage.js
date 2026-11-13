@@ -199,26 +199,27 @@ function MedicationsCard({ buckets }) {
   );
 }
 
-function TextCard({ title, body }) {
-  if (!body) return null;
-  return (
-    <section className="cp-card">
-      <h2 className="cp-card-title">{title}</h2>
-      <div className="cp-prose">{renderAiText(body)}</div>
-    </section>
-  );
-}
-
-const MORE_SECTIONS = [
+// Everything known about a condition, in reading order. Shown inside the
+// About card when it is opened.
+const DETAIL_SECTIONS = [
   ['types', 'Types'],
   ['organRelated', 'Organ System Involved'],
   ['etiology', 'Etiology'],
   ['pathology', 'Pathophysiology'],
   ['clinicalManifestation', 'Clinical Manifestation'],
   ['diagnosis', 'Diagnosis and Investigation'],
+  ['management', 'Medical Management'],
+  ['surgicalManagement', 'Surgical Management'],
   ['nursingDiagnosis', 'Nursing Diagnosis'],
   ['nursingConsideration', 'Nursing Consideration'],
 ];
+
+function isApplicable(key, body) {
+  if (!body) return false;
+  if (key === 'types') return !hasNoDistinctTypes(body);
+  if (key === 'surgicalManagement') return !hasNoSurgicalManagement(body);
+  return true;
+}
 
 export default function ConditionProfilePage() {
   const { systemId, conditionId } = useParams();
@@ -227,8 +228,6 @@ export default function ConditionProfilePage() {
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem, loading: condLoading } = useCustomConditions();
   const { clinicalInfoByCondition } = useConditionClinicalInfo();
 
-  const [tab, setTab] = useState('overview');
-  const [moreOpen, setMoreOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState('');
@@ -279,13 +278,8 @@ export default function ConditionProfilePage() {
 
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/conditions'));
 
-  const tabs = [
-    ['overview', 'Overview'],
-    ['management', 'Clinical Management'],
-    ['medications', 'Treatment Medications'],
-  ];
-  const moreActive = MORE_SECTIONS.some(([k]) => k === tab);
   const summary = firstSentence(info?.introduction);
+  const detailSections = DETAIL_SECTIONS.filter(([key]) => isApplicable(key, info?.[key]));
 
   let content;
   if (!entry && condLoading) {
@@ -297,45 +291,33 @@ export default function ConditionProfilePage() {
         <p className="cp-empty">This condition may have been renamed or removed. <Link to="/conditions" className="cp-link">Browse all conditions</Link></p>
       </section>
     );
-  } else if (tab === 'overview') {
+  } else {
     content = (
       <>
         <section className="cp-card cp-about">
-          <div className="cp-about-main">
-            <h2 className="cp-card-title"><span className="cp-card-icon"><Info size={30} strokeWidth={2.2} /></span>About this Condition</h2>
-            {info?.introduction
-              ? <div className={`cp-about-text ${aboutOpen ? 'is-open' : ''}`}>{renderAiText(info.introduction)}</div>
-              : <p className="cp-about-text is-open">Clinical details have not been added for this condition yet.</p>}
-          </div>
-          {info?.introduction && (
-            <button type="button" className="cp-about-toggle" onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen} aria-label={aboutOpen ? 'Show less' : 'Read more'}>
-              {aboutOpen ? <ChevronUp size={22} strokeWidth={2.6} /> : <ChevronRight size={22} strokeWidth={2.6} />}
-            </button>
+          <button type="button" className="cp-about-head" onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen}>
+            <span className="cp-about-main">
+              <span className="cp-card-title"><span className="cp-card-icon"><Info size={30} strokeWidth={2.2} /></span>About this Condition</span>
+              {info?.introduction
+                ? <span className={`cp-about-text ${aboutOpen ? 'is-open' : ''}`}>{renderAiText(info.introduction)}</span>
+                : <span className="cp-about-text is-open">Clinical details have not been added for this condition yet.</span>}
+            </span>
+            {info?.introduction && (aboutOpen ? <ChevronUp size={22} strokeWidth={2.6} className="cp-about-chev" /> : <ChevronRight size={22} strokeWidth={2.6} className="cp-about-chev" />)}
+          </button>
+          {aboutOpen && detailSections.length > 0 && (
+            <div className="cp-detail">
+              {detailSections.map(([key, label]) => (
+                <div key={key} className="cp-detail-section">
+                  <h3>{label}</h3>
+                  <div className="cp-prose">{renderAiText(info[key])}</div>
+                </div>
+              ))}
+            </div>
           )}
         </section>
         <MedicationsCard buckets={buckets} />
       </>
     );
-  } else if (tab === 'management') {
-    const noSurgical = hasNoSurgicalManagement(info?.surgicalManagement);
-    content = info?.management || !noSurgical ? (
-      <>
-        <TextCard title="Medical Management" body={info?.management} />
-        {!noSurgical && <TextCard title="Surgical Management" body={info?.surgicalManagement} />}
-      </>
-    ) : (
-      <section className="cp-card"><p className="cp-empty">Clinical management has not been added for this condition yet.</p></section>
-    );
-  } else if (tab === 'medications') {
-    content = <MedicationsCard buckets={buckets} />;
-  } else {
-    const [key, label] = MORE_SECTIONS.find(([k]) => k === tab) || [];
-    const body = key ? info?.[key] : '';
-    content = key === 'types' && hasNoDistinctTypes(body)
-      ? <section className="cp-card"><p className="cp-empty">This condition has no clinically distinct types.</p></section>
-      : body
-        ? <TextCard title={label} body={body} />
-        : <section className="cp-card"><p className="cp-empty">{label} has not been added for this condition yet.</p></section>;
   }
 
   const bottomTabs = [
@@ -375,23 +357,6 @@ export default function ConditionProfilePage() {
         {summary && <p className="cp-summary">{summary}</p>}
         {shareError && <p className="cp-error" role="alert">{shareError}</p>}
 
-        <nav className="cp-tabs" aria-label="Condition sections">
-          {tabs.map(([key, label]) => (
-            <button key={key} type="button" className={`cp-tab ${tab === key ? 'is-active' : ''}`} aria-current={tab === key ? 'page' : undefined} onClick={() => { setTab(key); setMoreOpen(false); }}>
-              {label}
-            </button>
-          ))}
-          <button type="button" className={`cp-tab ${moreActive || moreOpen ? 'is-active' : ''}`} aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
-            More {moreOpen ? <ChevronUp size={22} strokeWidth={2.4} /> : <ChevronDown size={22} strokeWidth={2.4} />}
-          </button>
-        </nav>
-        {moreOpen && (
-          <div className="cp-more-menu" role="menu">
-            {MORE_SECTIONS.map(([key, label]) => (
-              <button key={key} type="button" role="menuitem" className={tab === key ? 'is-active' : ''} onClick={() => { setTab(key); setMoreOpen(false); }}>{label}</button>
-            ))}
-          </div>
-        )}
         </div>
 
         <div className="cp-content">{content}</div>
