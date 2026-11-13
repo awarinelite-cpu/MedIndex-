@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ImageIcon, ClipboardPaste, Loader2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ImageIcon, ClipboardList, Info, Loader2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { uploadClipboardImageToImgChest } from '../utils/generateDrugImage';
 import { addConditionImageUrl, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
@@ -179,31 +179,31 @@ export default function ConditionImagesPanel({ condition, images }) {
 
   return (
     <div
-      className="px-5 py-3 border-b border-drug-border focus:outline-none focus:ring-2 focus:ring-primary-200"
+      className="px-4 pt-4 pb-3 focus:outline-none"
       tabIndex={isAdmin ? 0 : undefined}
       onPaste={isAdmin ? handlePasteEvent : undefined}
     >
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-drug-text">
-          <ImageIcon className="w-4 h-4 text-violet-500 flex-shrink-0" />
-          {list.length > 0
-            ? `Images${list.length > 1 ? ` (${list.length})` : ''}`
-            : `No image yet for ${condition.label}`}
-        </div>
-        {isAdmin && (
-          <button
-            onClick={handlePasteButton}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-60 px-3 py-1.5 rounded-lg"
-          >
-            {uploading
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
-              : <><ClipboardPaste className="w-3.5 h-3.5" /> {list.length > 0 ? 'Paste Another' : 'Paste from Clipboard'}</>}
-          </button>
-        )}
+      <div className="flex items-center gap-2.5 rounded-xl bg-[#EEEAFE] px-3 py-2.5 text-[15px] font-semibold text-[#0A1F5C] mb-3">
+        <ImageIcon className="w-5 h-5 text-violet-600 flex-shrink-0" />
+        {list.length > 0
+          ? `Images${list.length > 1 ? ` (${list.length})` : ''}`
+          : `No image yet for ${condition.label}`}
       </div>
 
-      {list.length > 0 && <ConditionImageGallery images={list} altBase={condition.label} />}
+      {isAdmin && (
+        <button
+          onClick={handlePasteButton}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 text-[15px] font-bold text-white disabled:opacity-60 px-5 py-2.5 rounded-xl shadow-md"
+          style={{ background: 'linear-gradient(135deg, #7C4DFF, #5B2FE0)' }}
+        >
+          {uploading
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+            : <><ClipboardList className="w-5 h-5" /> {list.length > 0 ? 'Paste Another' : 'Paste from Clipboard'}</>}
+        </button>
+      )}
+
+      {list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
 
       {isAdmin && list.length > 0 && (
         <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
@@ -220,8 +220,9 @@ export default function ConditionImagesPanel({ condition, images }) {
       )}
 
       {isAdmin && (
-        <p className="text-[11px] text-drug-muted mt-2">
-          Copy an image, then press the button above — or click here and press Ctrl+V (long-press → Paste on a phone).
+        <p className="text-[13px] italic text-slate-500 mt-3 flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>Copy an image, then press the button above — or click here and press Ctrl+V (long-press → Paste on a phone).</span>
         </p>
       )}
       {error && <div className="text-xs text-red-600 mt-2">⚠ {error}</div>}

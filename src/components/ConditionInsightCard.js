@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Zap } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -327,8 +327,9 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
       return (
         <div className="mb-6 space-y-3">
           {!isExact && (
-            <p className="px-1 text-xs text-drug-muted">
-              🔎 Closest existing match for "{searchQuery}"
+            <p className="px-1 text-[15px] text-slate-700 flex items-center gap-2">
+              <Zap className="w-5 h-5 flex-shrink-0 text-blue-600" fill="currentColor" />
+              Closest existing match for “{searchQuery}”
             </p>
           )}
           <ConditionSection

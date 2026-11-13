@@ -2,8 +2,9 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ListChecks, ShieldAlert,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid,
 } from 'lucide-react';
+import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
@@ -426,18 +427,19 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
   const noSurgical = hasNoSurgicalManagement(localInfo.surgicalManagement);
 
   return (
-    <div className="border-b border-drug-border">
+    <div className="px-4 py-1">
       <button
         onClick={() => setExpanded(o => !o)}
-        className="w-full flex items-center justify-between gap-3 px-5 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-[#CFC8F7] shadow-sm transition-colors"
+        style={{ background: 'linear-gradient(90deg, #F1EEFF, #E6EEFF)' }}
       >
-        <div className="flex items-center gap-2 min-w-0 text-sm font-semibold text-drug-text">
-          <BookOpen className="w-4 h-4 text-violet-500 flex-shrink-0" />
-          Clinical Info: {condition.label}
+        <div className="flex items-center gap-3 min-w-0 text-[17px] font-bold text-[#0A1F5C]">
+          <BookOpen className="w-6 h-6 text-violet-600 flex-shrink-0" />
+          <span className="truncate">Clinical Info: {condition.label}</span>
         </div>
         {expanded
-          ? <ChevronUp className="w-4 h-4 text-drug-muted flex-shrink-0" />
-          : <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" />}
+          ? <ChevronUp className="w-5 h-5 text-[#0A1F5C] flex-shrink-0" />
+          : <ChevronDown className="w-5 h-5 text-[#0A1F5C] flex-shrink-0" />}
       </button>
 
       {expanded && (
@@ -766,6 +768,19 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   // list being expanded. Toggled from a small Sparkles button in the
   // header itself so it never requires opening the drug list first.
   const [aiInsightClasses, setAiInsightClasses] = useState(() => new Set());
+
+  // Bookmark (Favourites) for this condition, same record the Condition page uses.
+  const { isFav: isFavourite, toggle: toggleFavourite } = useFavourites();
+  const favKey = systemId ? conditionFavKey(systemId, condition.id) : condition.id;
+  const conditionSaved = isFavourite('condition', favKey);
+  const toggleConditionSaved = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    toggleFavourite({
+      type: 'condition', refId: favKey, systemId: systemId || null, conditionId: condition.id,
+      name: condition.label, subtitle: systemName || '',
+    });
+  };
+  const tileImage = Array.isArray(images) && images[0] ? (images[0].url || images[0]) : null;
   const toggleClassAiInsight = (key, e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     setAiInsightClasses(prev => {
@@ -776,7 +791,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   };
 
   return (
-    <div className={`bg-white border rounded-2xl overflow-hidden ${isEmpty ? 'border-dashed border-drug-border' : 'border-drug-border shadow-sm'}`}>
+    <div className={`bg-white/95 border rounded-3xl overflow-hidden ${isEmpty ? 'border-dashed border-blue-200' : 'border-white shadow-[0_10px_30px_rgba(40,90,200,0.12)]'}`}>
       {/* Header */}
       <div
         role="button"
@@ -796,11 +811,11 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             onToggle();
           }
         }}
-        className={`w-full flex items-center justify-between px-5 py-4 transition-colors cursor-pointer ${
+        className={`w-full flex items-start justify-between px-4 py-4 transition-colors cursor-pointer ${
           mergeMode && isSelectedForMerge ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'
         }`}
       >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {mergeMode && (
             <input
               type="checkbox"
@@ -810,7 +825,12 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               className="w-4 h-4 flex-shrink-0 accent-amber-600"
             />
           )}
-          <span className="text-xl">{condition.icon}</span>
+          <div className="w-16 h-16 rounded-full bg-[#DCE9FF] flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {tileImage
+              ? <img src={tileImage} alt="" className="w-full h-full object-cover" />
+              : <span className="text-3xl">{condition.icon}</span>}
+          </div>
+          <span className="self-stretch w-px bg-slate-200 flex-shrink-0" />
           <div className="text-left min-w-0 flex-1">
             {isEditingLabel ? (
               <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
@@ -846,13 +866,13 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                 </button>
               </div>
             ) : (
-              <div className="font-bold text-drug-text truncate">{condition.label}</div>
+              <div className="text-[19px] leading-tight font-extrabold text-[#0A1F5C]">{condition.label}</div>
             )}
             {renameFieldError && (
               <div className="text-xs text-red-600 mt-0.5">{renameFieldError}</div>
             )}
             {!isEditingLabel && systemName && (
-              <div className="text-[11px] text-drug-muted/80 mt-0.5 truncate">
+              <div className="text-[16px] font-bold text-blue-600 mt-0.5 truncate">
                 {systemId ? (
                   <Link
                     to={`/system/${systemId}`}
@@ -866,18 +886,21 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               </div>
             )}
             {!isEditingLabel && (
-              <div className="text-xs text-drug-muted mt-0.5">
-                {isEmpty
-                  ? 'No drugs saved yet — tap to generate with AI'
-                  : `${filtered.length} drug${filtered.length !== 1 ? 's' : ''} · ${byClass.length} class${byClass.length !== 1 ? 'es' : ''}`}
-              </div>
+              isEmpty ? (
+                <div className="text-xs text-drug-muted mt-0.5">No drugs saved yet — tap to generate with AI</div>
+              ) : (
+                <div className="mt-1.5 inline-flex items-center gap-2 rounded-full bg-[#DCE9FF] px-3 py-1.5 text-[14px] font-semibold text-[#0A1F5C]">
+                  <Pill className="w-4 h-4 text-blue-600" />
+                  {filtered.length} drug{filtered.length !== 1 ? 's' : ''} • {byClass.length} class{byClass.length !== 1 ? 'es' : ''}
+                </div>
+              )
             )}
             {shareError && (
               <div className="text-[11px] text-red-600 mt-0.5">{shareError}</div>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center flex-wrap justify-end gap-1.5 flex-shrink-0 max-w-[132px]">
           {!mergeMode && !classMergeMode && !isEditingLabel && (
             <span
               role="button"
@@ -885,10 +908,24 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               aria-label={`Share ${condition.label}`}
               onClick={handleShareCondition}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleShareCondition(e); }}
-              className={`p-1.5 rounded-lg hover:bg-primary-50 ${sharingCondition ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff] ${sharingCondition ? 'opacity-50 pointer-events-none' : ''}`}
               title="Share this condition's clinical info and drug list as a PDF"
             >
-              <Share2 className={`w-4 h-4 text-primary-600 ${sharingCondition ? 'animate-pulse' : ''}`} />
+              <Share2 className={`w-[18px] h-[18px] text-blue-600 ${sharingCondition ? 'animate-pulse' : ''}`} />
+            </span>
+          )}
+          {!mergeMode && !classMergeMode && !isEditingLabel && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={conditionSaved ? 'Remove from saved' : 'Save condition'}
+              aria-pressed={conditionSaved}
+              onClick={toggleConditionSaved}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleConditionSaved(e); }}
+              className="w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff]"
+              title={conditionSaved ? 'Remove from favourites' : 'Save to favourites'}
+            >
+              <Bookmark className="w-[18px] h-[18px] text-blue-600" fill={conditionSaved ? 'currentColor' : 'none'} />
             </span>
           )}
           {!mergeMode && !classMergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
@@ -898,10 +935,10 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               aria-label={`Edit ${condition.label}`}
               onClick={startEditingLabel}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') startEditingLabel(e); }}
-              className={`p-1.5 rounded-lg hover:bg-primary-50 ${isRenaming ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff] ${isRenaming ? 'opacity-50 pointer-events-none' : ''}`}
               title="Edit condition name"
             >
-              <Pencil className="w-4 h-4 text-primary-600" />
+              <Pencil className="w-4 h-4 text-blue-600" />
             </span>
           )}
           {!mergeMode && !classMergeMode && isAdmin && onDeleteCondition && condition.id !== '_other' && !isEditingLabel && (
@@ -911,15 +948,15 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               aria-label={`Delete ${condition.label}`}
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (!isDeleting) onDeleteCondition(condition); }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); if (!isDeleting) onDeleteCondition(condition); } }}
-              className={`p-1.5 rounded-lg hover:bg-red-50 ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
+              className={`w-9 h-9 rounded-full bg-[#FFE4EA] flex items-center justify-center hover:bg-[#ffd3dc] ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}
               title="Delete condition"
             >
               <Trash2 className="w-4 h-4 text-red-500" />
             </span>
           )}
           {!mergeMode && !isEditingLabel && (open
-            ? <ChevronUp className="w-5 h-5 text-drug-muted flex-shrink-0" />
-            : <ChevronDown className="w-5 h-5 text-drug-muted flex-shrink-0" />)}
+            ? <ChevronUp className="w-6 h-6 text-blue-600 flex-shrink-0" />
+            : <ChevronDown className="w-6 h-6 text-blue-600 flex-shrink-0" />)}
           {classMergeMode && (
             <span className="text-[10px] font-bold uppercase tracking-wide text-amber-600 px-1.5 py-0.5 bg-amber-50 rounded">Class merge</span>
           )}
@@ -927,26 +964,27 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       </div>
 
       {open && !mergeMode && (
-        <div className="border-t border-drug-border">
+        <div>
           <ConditionImagesPanel condition={condition} images={images} />
           <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
 
           {isAdmin && !isEmpty && (
-            <div className="px-5 py-2.5 border-b border-drug-border flex items-center gap-3 flex-wrap">
+            <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
               <button
                 onClick={handleResort}
                 disabled={resorting}
                 title="Move each drug to Main or Adjunct for this condition based on its class and indications"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-2 text-[15px] font-bold text-blue-700 bg-white/80 hover:bg-white border border-blue-200 shadow-sm px-4 py-2 rounded-full disabled:opacity-50"
               >
-                <ListChecks className={`w-3.5 h-3.5 ${resorting ? 'animate-pulse' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${resorting ? 'animate-spin' : ''}`} />
                 {resorting ? 'Re-sorting…' : 'Re-sort drugs'}
               </button>
               <button
                 onClick={() => setClassicView(v => !v)}
                 title="Switch between the category view and the class view (per-class admin tools)"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-drug-muted bg-gray-50 hover:bg-gray-100 border border-drug-border px-3 py-1.5 rounded-lg"
+                className="inline-flex items-center gap-2 text-[15px] font-bold text-[#0A1F5C] bg-white/80 hover:bg-white border border-blue-200 shadow-sm px-4 py-2 rounded-full"
               >
+                <LayoutGrid className="w-4 h-4 text-blue-600" />
                 {classicView ? 'Category view' : 'Class view (admin tools)'}
               </button>
               {resortMsg && <span className="text-xs text-drug-muted">{resortMsg}</span>}

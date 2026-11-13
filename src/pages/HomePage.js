@@ -220,8 +220,16 @@ export default function HomePage() {
 
         {/* Greeting */}
         <section className="mi-greet">
-          <span className="mi-greet-hello"><span aria-hidden="true">👋</span> {greeting()}</span>
+          <span className="mi-greet-hello"><span aria-hidden="true">☀️</span> {greeting()}</span>
           <h1>Welcome to MedIndex!</h1>
+          <svg className="mi-greet-art" viewBox="0 0 150 90" width="150" height="90" aria-hidden="true">
+            <rect x="28" y="10" width="22" height="64" rx="5" fill="#BBD4FB" />
+            <rect x="7" y="31" width="64" height="22" rx="5" fill="#BBD4FB" />
+            <path d="M92 8 C80 8 80 40 94 46 C108 52 122 46 122 30 V8" fill="none" stroke="#0F2A55" strokeWidth="4" strokeLinecap="round" />
+            <path d="M108 50 C108 70 128 74 136 62" fill="none" stroke="#0F2A55" strokeWidth="4" strokeLinecap="round" />
+            <circle cx="138" cy="58" r="8" fill="#DDE6F2" stroke="#0F2A55" strokeWidth="3" />
+            <circle cx="92" cy="8" r="3.5" fill="#0F2A55" /><circle cx="122" cy="8" r="3.5" fill="#0F2A55" />
+          </svg>
         </section>
 
         {/* Search */}

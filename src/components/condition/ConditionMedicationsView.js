@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Pill } from 'lucide-react';
 import { getDisplayDrugClass } from '../../utils/drugCategory';
 import { TREATMENT_CATEGORY_ORDER, getTreatmentCategory } from '../../utils/drugRoleClassification';
 import ConditionCategoryGroup from './ConditionCategoryGroup';
@@ -48,12 +49,15 @@ export default function ConditionMedicationsView({ roleBuckets, allDrugs, render
 
   return (
     <div className="px-4 py-4 space-y-4">
-      <div>
-        <h3 className="text-sm font-extrabold text-drug-text">Medications used for this condition</h3>
-        <p className="text-xs text-drug-muted mt-0.5">
-          Organised by treatment category · {singleCount} medication{singleCount !== 1 ? 's' : ''}
-          {regimens.length > 0 ? ` · ${regimens.length} regimen${regimens.length !== 1 ? 's' : ''}` : ''}
-        </p>
+      <div className="flex items-start gap-3">
+        <Pill className="w-8 h-8 text-blue-600 flex-shrink-0 -rotate-45 mt-0.5" />
+        <div>
+          <h3 className="text-[19px] leading-tight font-extrabold text-[#0A1F5C]">Medications used for this condition</h3>
+          <p className="text-[15px] text-slate-600 mt-0.5">
+            Organised by treatment category • {singleCount} medication{singleCount !== 1 ? 's' : ''}
+            {regimens.length > 0 ? ` • ${regimens.length} regimen${regimens.length !== 1 ? 's' : ''}` : ''}
+          </p>
+        </div>
       </div>
 
       {groups.length > 0 && (
@@ -61,7 +65,8 @@ export default function ConditionMedicationsView({ roleBuckets, allDrugs, render
           {groups.map(([cat, items], gi) => (
             <ConditionCategoryGroup
               key={cat}
-              title={`${gi + 1}. ${cat}`}
+              index={gi + 1}
+              title={cat}
               count={items.length}
               open={groups.length === 1 || openCats.has(cat)}
               onToggle={() => toggle(cat)}
