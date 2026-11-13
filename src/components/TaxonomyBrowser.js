@@ -17,11 +17,11 @@ import AddToFavoritesHeart from './AddToFavoritesHeart';
 // itself (names/numbers stay exactly as filed).
 const CLASS_VISUALS = {
   'cns':                         { icon: Brain,         color: 'text-purple-500',  bg: 'bg-purple-100'  },
-  'musculoskeletal':             { icon: Bone,           color: 'text-stone-500',   bg: 'bg-stone-100'   },
+  'musculoskeletal':             { icon: Bone,           color: 'text-orange-500',  bg: 'bg-orange-100'  },
   'anaesthesia':                 { icon: Syringe,        color: 'text-sky-500',     bg: 'bg-sky-100'     },
   'gastrointestinal':            { icon: Soup,           color: 'text-green-600',   bg: 'bg-green-100'   },
-  'cardiovascular':              { icon: Heart,          color: 'text-red-500',     bg: 'bg-red-100'     },
-  'blood-nutrition':             { icon: Droplet,        color: 'text-rose-500',    bg: 'bg-rose-100'    },
+  'cardiovascular':              { icon: Heart,          color: 'text-pink-500',    bg: 'bg-pink-100'    },
+  'blood-nutrition':             { icon: Droplet,        color: 'text-red-500',     bg: 'bg-red-100'     },
   'respiratory':                 { icon: Wind,           color: 'text-blue-500',    bg: 'bg-blue-100'    },
   'antiallergics':                { icon: ShieldAlert,    color: 'text-amber-500',   bg: 'bg-amber-100'   },
   'anti-infective':              { icon: ShieldCheck,    color: 'text-teal-600',    bg: 'bg-teal-100'    },
@@ -134,25 +134,20 @@ function ClassCard({ classDef, subclassGroups, total, isOpen, onToggle, database
   );
 
   return (
-    <div className="bg-white border border-drug-border rounded-xl overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-gray-50"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          {(() => {
-            const { icon: ClassIcon, color, bg } = classVisual(classDef.id);
-            return (
-              <span className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${bg}`}>
-                <ClassIcon className={`w-5 h-5 ${color}`} />
-              </span>
-            );
-          })()}
-          <h3 className="font-bold truncate">{classDef.name}</h3>
-        </div>
-        <span className="flex items-center gap-3 flex-shrink-0">
-          <span className="text-sm text-drug-muted">{total} drug{total === 1 ? '' : 's'}</span>
-          {isOpen ? <ChevronDown className="w-5 h-5 text-drug-muted" /> : <ChevronRight className="w-5 h-5 text-drug-muted" />}
+    <div className={`tx-card ${isOpen ? 'is-open' : ''}`}>
+      <button onClick={onToggle} className="tx-row" aria-expanded={isOpen}>
+        {(() => {
+          const { icon: ClassIcon, color, bg } = classVisual(classDef.id);
+          return (
+            <span className={`tx-icon ${bg}`}>
+              <ClassIcon className={`w-6 h-6 ${color}`} />
+            </span>
+          );
+        })()}
+        <h3 className="tx-name">{classDef.name}</h3>
+        <span className="tx-count">{total} drug{total === 1 ? '' : 's'}</span>
+        <span className="tx-go">
+          {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
         </span>
       </button>
       {isOpen && (
@@ -235,7 +230,7 @@ export default function TaxonomyBrowser({ drugs, allDrugs }) {
   const [openClassId, setOpenClassId] = useState(null);
 
   return (
-    <div className="space-y-4">
+    <div className="tx-list">
       {visibleGroups.map(({ classDef, subclassGroups, total }) => (
         <ClassCard
           key={classDef.id}

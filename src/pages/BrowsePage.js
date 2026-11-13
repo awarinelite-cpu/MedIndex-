@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Pill, Sparkles, RefreshCw, CheckCircle } from 'lucide-react';
+import { Pill, Sparkles, RefreshCw, CheckCircle, Search, LayoutGrid, Activity, ChevronDown } from 'lucide-react';
+import { WaveBackdrop, PillsArt, CrossArt } from '../components/dashboard/HeroArt';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { fetchStrengthText, saveStrengthOnly, needsStrengthOnly } from '../utils/aiDrugSave';
@@ -222,49 +223,56 @@ export default function BrowsePage() {
   }, [ALL_DRUGS, filterClass]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Browse Medications</h1>
-          <p className="text-drug-muted mt-1">{loading ? 'Loading…' : `${filteredDrugs.length} of ${ALL_DRUGS.length} drugs`}</p>
-        </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 bx-page">
+      <div className="bx-hero">
+        <WaveBackdrop className="bx-waves" />
+        <CrossArt className="bx-cross" />
+        <PillsArt className="bx-pills" />
+        <h1>Browse Medications</h1>
+        <p className="bx-chip">
+          <Pill size={18} strokeWidth={2.4} style={{ transform: 'rotate(-45deg)' }} />
+          {loading ? 'Loading…' : `${filteredDrugs.length} of ${ALL_DRUGS.length} drugs`}
+        </p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-drug-border rounded-xl p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+      <div className="bx-filters">
+        <label className="bx-search">
+          <Search size={22} strokeWidth={2.2} />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search by drug name, class or subclass…"
-            className="flex-1 px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
+            aria-label="Search drugs"
           />
-          <select
-            value={filterClass}
-            onChange={e => setFilterClass(e.target.value)}
-            className="px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
-          >
-            <option value="">All Classes &amp; Subclasses</option>
-            <optgroup label="Drug Classes">
-              {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
-            </optgroup>
-            {ALL_SUBCLASSES.length > 0 && (
-              <optgroup label="Drug Subclasses">
-                {ALL_SUBCLASSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </label>
+        <div className="bx-selects">
+          <label className="bx-select">
+            <LayoutGrid size={20} strokeWidth={2.4} className="bx-select-icon" />
+            <select value={filterClass} onChange={e => setFilterClass(e.target.value)} aria-label="Filter by class">
+              <option value="">All Classes &amp; Subclasses</option>
+              <optgroup label="Drug Classes">
+                {ALL_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
               </optgroup>
-            )}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-drug-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300"
-          >
-            <option value="">All Status</option>
-            <option value="OTC">OTC</option>
-            <option value="Prescription">Prescription</option>
-            <option value="Controlled">Controlled</option>
-          </select>
+              {ALL_SUBCLASSES.length > 0 && (
+                <optgroup label="Drug Subclasses">
+                  {ALL_SUBCLASSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <ChevronDown size={18} strokeWidth={2.6} className="bx-select-caret" />
+          </label>
+          <label className="bx-select">
+            <Activity size={20} strokeWidth={2.4} className="bx-select-icon" />
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} aria-label="Filter by status">
+              <option value="">All Status</option>
+              <option value="OTC">OTC</option>
+              <option value="Prescription">Prescription</option>
+              <option value="Controlled">Controlled</option>
+            </select>
+            <ChevronDown size={18} strokeWidth={2.6} className="bx-select-caret" />
+          </label>
         </div>
       </div>
 

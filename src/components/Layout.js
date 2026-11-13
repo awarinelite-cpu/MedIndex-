@@ -151,7 +151,7 @@ export default function Layout({ children }) {
       <IosInstallModal open={showIosInstructions} onClose={closeIosInstructions} />
 
       {/* ── Dashboard header (all pages, phones) ─────────────────────────── */}
-      <header className="mi-header md:hidden">
+      <header className={`mi-header md:hidden ${(path === '/browse' || path === '/conditions') ? 'mi-header--art' : ''}`}>
         <Link to="/" className="mi-brand" aria-label="MedIndex home">
           <LogoMark className="mi-brand-logo" />
           <span>
