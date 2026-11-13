@@ -12,9 +12,10 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import {
-  BookOpen, Plus, Trash2, ChevronRight,
-  Edit2, Check, X, Pill, ClipboardList,
+  BookMarked, Plus, Trash2, ChevronRight,
+  Edit2, Check, X, Pill, ClipboardList, Calendar,
 } from 'lucide-react';
+import { ListsBackdrop, LISTS_NAVY, LISTS_BLUE } from '../components/ListsUi';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function useUserLists(uid) {
@@ -126,22 +127,25 @@ export default function DrugListsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+    <div className="relative min-h-full">
+    <ListsBackdrop />
+    <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-4 pb-32">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <ClipboardList className="w-7 h-7 text-primary-600" />
-            <h1 className="text-2xl font-bold text-drug-text">My Drug Lists</h1>
+            <ClipboardList className="w-7 h-7 flex-shrink-0" style={{ color: LISTS_BLUE }} />
+            <h1 className="text-[28px] leading-tight font-extrabold" style={{ color: LISTS_NAVY }}>My Drug Lists</h1>
           </div>
-          <p className="text-drug-muted text-sm">
+          <p className="text-slate-500 text-sm">
             Create custom lists — ICU protocols, ward rounds, study sets, etc.
           </p>
         </div>
         <button
           onClick={() => setCreating(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2.5 text-white rounded-full font-bold text-sm shadow-md flex-shrink-0"
+          style={{ background: `linear-gradient(135deg, ${LISTS_BLUE}, #2F80ED)` }}
         >
           <Plus className="w-4 h-4" /> New List
         </button>
@@ -159,8 +163,8 @@ export default function DrugListsPage() {
 
       {/* Create form */}
       {creating && (
-        <div className="bg-primary-50 border border-primary-200 rounded-xl p-4 mb-6 flex items-center gap-3">
-          <BookOpen className="w-5 h-5 text-primary-600 flex-shrink-0" />
+        <div className="bg-white/80 border border-white shadow-sm rounded-[22px] p-4 mb-6 flex items-center gap-3">
+          <BookMarked className="w-5 h-5 flex-shrink-0" style={{ color: LISTS_BLUE }} />
           <input
             autoFocus
             type="text"
@@ -190,14 +194,14 @@ export default function DrugListsPage() {
       {loading && (
         <div className="space-y-3">
           {[1,2,3].map(i => (
-            <div key={i} className="animate-pulse bg-gray-100 rounded-xl h-20" />
+            <div key={i} className="animate-pulse bg-white/70 rounded-[22px] h-24" />
           ))}
         </div>
       )}
 
       {/* Empty */}
       {!loading && lists.length === 0 && !creating && (
-        <div className="text-center py-16 bg-white border border-drug-border rounded-xl">
+        <div className="text-center py-16 bg-white/80 border border-white shadow-sm rounded-[22px]">
           <ClipboardList className="w-14 h-14 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-drug-text mb-2">No lists yet</h3>
           <p className="text-drug-muted text-sm mb-6">
@@ -224,11 +228,11 @@ export default function DrugListsPage() {
               <div
                 key={list.id}
                 onClick={() => { if (!isRenaming) navigate(`/lists/${list.id}`); }}
-                className={`bg-white border border-drug-border rounded-xl p-4 flex items-center gap-4 hover:border-primary-300 hover:shadow-sm transition-all group ${isRenaming ? '' : 'cursor-pointer'}`}
+                className={`bg-white/95 border border-white rounded-[22px] shadow-[0_6px_20px_rgba(40,90,200,0.10)] px-3 py-3 flex items-center gap-3 hover:shadow-[0_8px_24px_rgba(40,90,200,0.16)] transition-all group ${isRenaming ? '' : 'cursor-pointer'}`}
               >
                 {/* Icon */}
-                <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="w-5 h-5 text-primary-600" />
+                <div className="w-14 h-14 rounded-2xl bg-[#DCE9FF] flex items-center justify-center flex-shrink-0">
+                  <BookMarked className="w-7 h-7" style={{ color: LISTS_BLUE }} />
                 </div>
 
                 {/* Title + rename */}
@@ -241,13 +245,16 @@ export default function DrugListsPage() {
                     />
                   ) : (
                     <>
-                      <div className="font-semibold text-drug-text truncate">{list.title}</div>
-                      <div className="text-xs text-drug-muted mt-0.5 flex items-center gap-1">
-                        <Pill className="w-3 h-3" />
-                        {drugCount} drug{drugCount !== 1 ? 's' : ''}
+                      <div className="text-[18px] leading-tight font-extrabold truncate" style={{ color: LISTS_NAVY }}>{list.title}</div>
+                      <div className="text-sm text-slate-500 mt-1 flex items-center flex-wrap gap-x-3 gap-y-0.5">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Pill className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} />
+                          {drugCount} drug{drugCount !== 1 ? 's' : ''}
+                        </span>
                         {list.createdAt?.toDate && (
-                          <span className="ml-2">
-                            · {list.createdAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          <span className="inline-flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} />
+                            {list.createdAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </span>
                         )}
                       </div>
@@ -259,12 +266,13 @@ export default function DrugListsPage() {
                 {!isRenaming && (
                   <div
                     onClick={e => e.stopPropagation()}
-                    className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <button
                       onClick={() => setRenamingId(list.id)}
                       title="Rename"
-                      className="p-2 rounded-lg hover:bg-gray-100 text-drug-muted hover:text-drug-text"
+                      className="w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff]"
+                      style={{ color: LISTS_BLUE }}
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
@@ -272,7 +280,7 @@ export default function DrugListsPage() {
                       onClick={() => handleDelete(list.id)}
                       disabled={isDeleting}
                       title="Delete"
-                      className="p-2 rounded-lg hover:bg-red-50 text-drug-muted hover:text-red-600"
+                      className="w-9 h-9 rounded-full bg-[#FFE4EA] flex items-center justify-center text-red-500 hover:bg-[#ffd3dc]"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -283,9 +291,11 @@ export default function DrugListsPage() {
                 {!isRenaming && (
                   <button
                     onClick={e => { e.stopPropagation(); navigate(`/lists/${list.id}`); }}
-                    className="p-2 rounded-lg hover:bg-primary-50 text-drug-muted hover:text-primary-600 transition-colors flex-shrink-0"
+                    className="p-1 flex-shrink-0"
+                    style={{ color: LISTS_BLUE }}
+                    aria-label={`Open ${list.title}`}
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-6 h-6" />
                   </button>
                 )}
               </div>
@@ -293,6 +303,7 @@ export default function DrugListsPage() {
           })}
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -12,9 +12,10 @@ import { useAuth } from '../context/AuthContext';
 import { useDrugs } from '../hooks/useDrugs';
 import { shareListPdf } from '../utils/exportListPdf';
 import {
-  Pill, Trash2, ChevronLeft,
-  Check, X, StickyNote, BookOpen, Share2, Loader2, Pencil,
+  Pill, Trash2, ArrowLeft, ChevronRight, Calendar,
+  Check, X, StickyNote, BookMarked, Share2, Loader2, Pencil,
 } from 'lucide-react';
+import { CapsuleBadge, ListsBackdrop, ShieldDecor, LISTS_NAVY, LISTS_BLUE } from '../components/ListsUi';
 
 function ShareListButton({ list, allDrugs }) {
   const [state, setState] = useState('idle'); // idle | working | error
@@ -36,7 +37,7 @@ function ShareListButton({ list, allDrugs }) {
       onClick={handleShare}
       disabled={state === 'working'}
       title="Share list as PDF"
-      className="p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0"
+      className="w-10 h-10 flex items-center justify-center rounded-full border border-white bg-white/80 shadow-sm text-[#1D5FD1] hover:bg-white transition-colors disabled:opacity-50 flex-shrink-0"
     >
       {state === 'working'
         ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -124,8 +125,9 @@ export default function DrugListDetailPage() {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/3" />
-          {[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl" />)}
+          <div className="h-10 bg-blue-100/70 rounded-full w-32" />
+          <div className="h-28 bg-white/70 rounded-3xl" />
+          {[1,2,3].map(i => <div key={i} className="h-24 bg-white/70 rounded-[22px]" />)}
         </div>
       </div>
     );
@@ -134,193 +136,233 @@ export default function DrugListDetailPage() {
   if (!list) return null;
 
   const drugs = list.drugs || [];
+  const createdLabel = list.createdAt?.toDate
+    ? list.createdAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+    <div className="relative min-h-full">
+      <ListsBackdrop />
+      <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-3 pb-32">
 
-      {/* Back */}
-      <div className="flex items-center justify-between mb-6">
-        <Link to="/lists" className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium">
-          <ChevronLeft className="w-4 h-4" /> My Lists
-        </Link>
-        <ShareListButton list={list} allDrugs={allDrugs} />
-      </div>
-
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
-          <BookOpen className="w-5 h-5 text-primary-600" />
-        </div>
-        <div className="min-w-0 flex-1">
-          {editingTitle ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                autoFocus
-                value={titleText}
-                onChange={e => setTitleText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') saveTitle();
-                  if (e.key === 'Escape') setEditingTitle(false);
-                }}
-                maxLength={60}
-                className="min-w-0 flex-1 text-xl font-bold text-drug-text border border-primary-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400"
-              />
-              <button
-                onClick={saveTitle}
-                disabled={savingTitle || !titleText.trim()}
-                title="Save name"
-                className="p-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 flex-shrink-0"
-              >
-                <Check className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setEditingTitle(false)}
-                title="Cancel"
-                className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 flex-shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <h1 className="text-2xl font-bold text-drug-text truncate">{list.title}</h1>
-              <button
-                onClick={() => { setTitleText(list.title || ''); setEditingTitle(true); }}
-                title="Rename list"
-                className="p-1 rounded-md text-drug-muted hover:text-primary-600 hover:bg-primary-50 transition-colors flex-shrink-0"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-          <p className="text-sm text-drug-muted">
-            {drugs.length} drug{drugs.length !== 1 ? 's' : ''}
-            {list.createdAt?.toDate && (
-              <span className="ml-2">
-                · Created {list.createdAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
-
-      <div className="h-px bg-drug-border my-6" />
-
-      {/* Empty */}
-      {drugs.length === 0 && (
-        <div className="text-center py-16 bg-white border border-drug-border rounded-xl">
-          <Pill className="w-14 h-14 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-drug-text mb-2">No drugs yet</h3>
-          <p className="text-drug-muted text-sm mb-6">
-            Open any drug page and tap <strong>"Add to List"</strong> to add it here.
-          </p>
+        {/* Back */}
+        <div className="flex items-center justify-between mb-3">
           <Link
-            to="/browse"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700"
+            to="/lists"
+            className="inline-flex items-center gap-2 pl-3 pr-4 py-2 rounded-full border border-white bg-white/70 shadow-sm font-bold text-[15px]"
+            style={{ color: LISTS_BLUE }}
           >
-            Browse Medications
+            <ArrowLeft className="w-5 h-5" /> My Lists
           </Link>
+          <ShareListButton list={list} allDrugs={allDrugs} />
         </div>
-      )}
 
-      {/* Drug cards */}
-      {drugs.length > 0 && (
-        <div className="space-y-3">
-          {drugs.map(drug => {
-            const isEditingThisNote = editingNote === drug.drugId;
-            return (
-              <div key={drug.drugId} className="bg-white border border-drug-border rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Pill className="w-4 h-4 text-primary-600" />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    {drug.drugId?.startsWith('ai_') ? (
-                      <span className="font-semibold text-drug-text inline-flex items-center gap-1.5">
-                        {drug.drugName}
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">AI</span>
-                      </span>
-                    ) : (
-                      <Link
-                        to={`/drug/${drug.drugId}`}
-                        className="font-semibold text-drug-text hover:text-primary-600 transition-colors"
-                      >
-                        {drug.drugName}
-                      </Link>
-                    )}
-                    {drug.drugClass && (
-                      <p className="text-xs text-primary-600 font-medium mt-0.5">{drug.drugClass}</p>
-                    )}
-                    {drug.addedAt?.toDate && (
-                      <p className="text-xs text-drug-muted mt-0.5">
-                        Added {drug.addedAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short' })}
-                      </p>
-                    )}
-
-                    {/* Note area */}
-                    {isEditingThisNote ? (
-                      <div className="mt-3">
-                        <textarea
-                          autoFocus
-                          value={noteText}
-                          onChange={e => setNoteText(e.target.value)}
-                          rows={3}
-                          placeholder="Add a note…"
-                          className="w-full border border-primary-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => saveNote(drug.drugId)}
-                            disabled={saving}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-50"
-                          >
-                            <Check className="w-3 h-3" /> {saving ? 'Saving…' : 'Save'}
-                          </button>
-                          <button
-                            onClick={() => setEditingNote(null)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-semibold hover:bg-gray-200"
-                          >
-                            <X className="w-3 h-3" /> Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : drug.notes ? (
-                      <div className="mt-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-sm text-amber-900 leading-relaxed">
-                        <div className="flex items-start gap-1.5">
-                          <StickyNote className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <span>{drug.notes}</span>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => {
-                        setEditingNote(drug.drugId);
-                        setNoteText(drug.notes || '');
-                      }}
-                      title="Add/edit note"
-                      className="p-2 rounded-lg hover:bg-amber-50 text-drug-muted hover:text-amber-600 transition-colors"
-                    >
-                      <StickyNote className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => removeDrug(drug.drugId)}
-                      title="Remove from list"
-                      className="p-2 rounded-lg hover:bg-red-50 text-drug-muted hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+        {/* Header card */}
+        <div className="relative overflow-hidden rounded-3xl border border-white bg-white/60 backdrop-blur shadow-[0_8px_28px_rgba(40,90,200,0.10)] px-4 py-4 mb-4">
+          <ShieldDecor className="absolute -right-1 top-1/2 -translate-y-1/2 opacity-90" />
+          <div className="relative flex items-center gap-4 pr-20">
+            <div className="w-[68px] h-[68px] rounded-2xl bg-[#DCE9FF] flex items-center justify-center flex-shrink-0">
+              <BookMarked className="w-8 h-8" style={{ color: LISTS_BLUE }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              {editingTitle ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={titleText}
+                    onChange={e => setTitleText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveTitle();
+                      if (e.key === 'Escape') setEditingTitle(false);
+                    }}
+                    maxLength={60}
+                    className="min-w-0 flex-1 text-xl font-extrabold border border-primary-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                    style={{ color: LISTS_NAVY }}
+                  />
+                  <button
+                    onClick={saveTitle}
+                    disabled={savingTitle || !titleText.trim()}
+                    title="Save name"
+                    className="p-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setEditingTitle(false)}
+                    title="Cancel"
+                    className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 flex-shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <h1 className="text-[28px] leading-tight font-extrabold truncate" style={{ color: LISTS_NAVY }}>{list.title}</h1>
+                  <button
+                    onClick={() => { setTitleText(list.title || ''); setEditingTitle(true); }}
+                    title="Rename list"
+                    className="p-1 rounded-md text-slate-400 hover:text-primary-600 hover:bg-white/70 transition-colors flex-shrink-0"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              <div className="mt-1 flex items-center flex-wrap gap-x-3 gap-y-1 text-[15px] font-semibold text-slate-600">
+                <span className="inline-flex items-center gap-1.5">
+                  <Pill className="w-4 h-4" style={{ color: LISTS_BLUE }} />
+                  {drugs.length} drug{drugs.length !== 1 ? 's' : ''}
+                </span>
+                {createdLabel && (
+                  <>
+                    <span className="h-4 w-px bg-slate-300" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4" style={{ color: LISTS_BLUE }} />
+                      Created {createdLabel}
+                    </span>
+                  </>
+                )}
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Empty */}
+        {drugs.length === 0 && (
+          <div className="text-center py-14 bg-white/80 border border-white rounded-[22px] shadow-sm">
+            <Pill className="w-14 h-14 text-blue-200 mx-auto mb-4" />
+            <h3 className="text-lg font-extrabold mb-2" style={{ color: LISTS_NAVY }}>No drugs yet</h3>
+            <p className="text-slate-500 text-sm mb-6 px-4">
+              Open any drug page and tap <strong>"Add to List"</strong> to add it here.
+            </p>
+            <Link
+              to="/browse"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-full font-bold text-sm"
+              style={{ background: LISTS_BLUE }}
+            >
+              Browse Medications
+            </Link>
+          </div>
+        )}
+
+        {/* Drug cards */}
+        {drugs.length > 0 && (
+          <div className="space-y-3">
+            {drugs.map((drug, idx) => {
+              const isEditingThisNote = editingNote === drug.drugId;
+              const isAi = drug.drugId?.startsWith('ai_');
+              const addedLabel = drug.addedAt?.toDate
+                ? drug.addedAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short' })
+                : null;
+              return (
+                <div
+                  key={drug.drugId}
+                  className="bg-white/95 border border-white rounded-[22px] shadow-[0_6px_20px_rgba(40,90,200,0.10)] px-3 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <CapsuleBadge index={idx} size={56} />
+
+                    <div className="flex-1 min-w-0">
+                      {isAi ? (
+                        <span className="text-[18px] leading-tight font-extrabold inline-flex items-center gap-1.5 flex-wrap" style={{ color: LISTS_NAVY }}>
+                          {drug.drugName}
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">AI</span>
+                        </span>
+                      ) : (
+                        <Link
+                          to={`/drug/${drug.drugId}`}
+                          className="block text-[18px] leading-tight font-extrabold"
+                          style={{ color: LISTS_NAVY }}
+                        >
+                          {drug.drugName}
+                        </Link>
+                      )}
+                      {drug.drugClass && (
+                        <p className="text-[15px] font-medium leading-snug mt-0.5" style={{ color: LISTS_BLUE }}>{drug.drugClass}</p>
+                      )}
+                      {addedLabel && (
+                        <p className="text-sm text-slate-500 mt-1 inline-flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} /> Added {addedLabel}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => {
+                          setEditingNote(drug.drugId);
+                          setNoteText(drug.notes || '');
+                        }}
+                        title="Add/edit note"
+                        className="w-10 h-10 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff] transition-colors"
+                        style={{ color: LISTS_BLUE }}
+                      >
+                        <StickyNote className="w-[18px] h-[18px]" />
+                      </button>
+                      <button
+                        onClick={() => removeDrug(drug.drugId)}
+                        title="Remove from list"
+                        className="w-10 h-10 rounded-full bg-[#FFE4EA] flex items-center justify-center text-red-500 hover:bg-[#ffd3dc] transition-colors"
+                      >
+                        <Trash2 className="w-[18px] h-[18px]" />
+                      </button>
+                      {!isAi && (
+                        <>
+                          <span className="h-9 w-px bg-slate-200 mx-0.5" />
+                          <Link
+                            to={`/drug/${drug.drugId}`}
+                            aria-label={`Open ${drug.drugName}`}
+                            className="p-1 -mr-1"
+                            style={{ color: LISTS_BLUE }}
+                          >
+                            <ChevronRight className="w-6 h-6" />
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Note area */}
+                  {isEditingThisNote ? (
+                    <div className="mt-3">
+                      <textarea
+                        autoFocus
+                        value={noteText}
+                        onChange={e => setNoteText(e.target.value)}
+                        rows={3}
+                        placeholder="Add a note…"
+                        className="w-full border border-primary-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => saveNote(drug.drugId)}
+                          disabled={saving}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-full text-xs font-semibold hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          <Check className="w-3 h-3" /> {saving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingNote(null)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full text-xs font-semibold hover:bg-gray-200"
+                        >
+                          <X className="w-3 h-3" /> Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : drug.notes ? (
+                    <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-sm text-amber-900 leading-relaxed">
+                      <div className="flex items-start gap-1.5">
+                        <StickyNote className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <span>{drug.notes}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
