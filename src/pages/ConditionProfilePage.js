@@ -5,7 +5,7 @@
 // for the condition grouped into expandable treatment categories. It reads the
 // same live data as the system page (tags, role buckets, clinical info), so
 // nothing new is stored or migrated.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
@@ -229,6 +229,18 @@ export default function ConditionProfilePage() {
   const { clinicalInfoByCondition } = useConditionClinicalInfo();
 
   const [aboutOpen, setAboutOpen] = useState(false);
+  const aboutRef = useRef(null);
+
+  // Tapping anywhere outside the About card closes it. Uses click, not
+  // pointerdown, so scrolling with a finger on the page does not close it.
+  useEffect(() => {
+    if (!aboutOpen) return undefined;
+    const onClick = (e) => {
+      if (aboutRef.current && !aboutRef.current.contains(e.target)) setAboutOpen(false);
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, [aboutOpen]);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState('');
   const { isFav, toggle: toggleFav } = useFavourites();
@@ -294,7 +306,7 @@ export default function ConditionProfilePage() {
   } else {
     content = (
       <>
-        <section className="cp-card cp-about">
+        <section className="cp-card cp-about" ref={aboutRef}>
           <button type="button" className="cp-about-head" onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen}>
             <span className="cp-about-main">
               <span className="cp-card-title"><span className="cp-card-icon"><Info size={30} strokeWidth={2.2} /></span>About this Condition</span>
