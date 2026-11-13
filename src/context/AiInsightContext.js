@@ -740,7 +740,6 @@ export function AiInsightProvider({ children }) {
     }}>
       {children}
       <GlobalAiInsightWidget />
-      <ConditionSaveWidget />
       <ClassSweepWidget />
       <ClinicalInfoSweepWidget />
       <PendingReviewWidget />
@@ -941,99 +940,6 @@ function GlobalAiInsightWidget() {
           <div style={{ marginTop: 12 }}>
             <button
               onClick={dismissSummary}
-              style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
-            >
-              Dismiss
-            </button>
-          </div>
-        </>
-      )}
-    </DraggableWidget>
-  );
-}
-
-// ── Floating widget for the condition "Save All" job — same background-
-// survives-navigation guarantee, stacked below the drug-completion widget ──
-function ConditionSaveWidget() {
-  const {
-    conditionRunning, conditionProgress, conditionCurrentName, conditionSummary, conditionLabel,
-    stopConditionSave, dismissConditionSummary,
-    classSweepRunning, classSweepSummary, clinicalSweepRunning, clinicalSweepSummary,
-  } = useContext(AiInsightContext);
-
-  if (!conditionRunning && !conditionSummary) return null;
-
-  const pct = conditionProgress.total ? Math.round((conditionProgress.done / conditionProgress.total) * 100) : 0;
-  const widgetsBelow = [classSweepRunning || classSweepSummary, clinicalSweepRunning || clinicalSweepSummary].filter(Boolean).length;
-  const stackedBelow = widgetsBelow > 0;
-
-  return (
-    <DraggableWidget id="condition-save" defaultBottom={stackedBelow ? 20 + widgetsBelow * 250 : 20} defaultRight={16} width={300}>
-      {conditionRunning ? (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#8B5CF6', flexShrink: 0, display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-              <span style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                Saving "{conditionLabel}"…
-              </span>
-            </div>
-            <span style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, flexShrink: 0 }}>{pct}%</span>
-          </div>
-
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
-            <div style={{ height: '100%', background: 'linear-gradient(90deg, #8B5CF6, #A78BFA)', borderRadius: 3, width: `${pct}%`, transition: 'width 0.5s ease' }} />
-          </div>
-
-          <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 8 }}>
-            {conditionProgress.done} / {conditionProgress.total} drugs
-          </div>
-
-          {conditionCurrentName && (
-            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              ⚡ {conditionCurrentName}
-            </div>
-          )}
-
-          <div style={{ fontSize: 11, color: '#475569', marginBottom: 10 }}>
-            Running in background — you can navigate freely
-          </div>
-
-          <button
-            onClick={stopConditionSave}
-            style={{ fontSize: 12, fontWeight: 600, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
-          >
-            ⏹ Stop
-          </button>
-        </>
-      ) : conditionSummary && (
-        <>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {conditionSummary.stopped ? '⏹ Stopped — ' : '✅ Done — '}"{conditionSummary.label}"
-          </div>
-          {conditionSummary.saved > 0 && (
-            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
-              ✓ {conditionSummary.saved} newly generated
-            </div>
-          )}
-          {conditionSummary.reused > 0 && (
-            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>
-              🔗 {conditionSummary.reused} existing drug{conditionSummary.reused !== 1 ? 's' : ''} linked
-            </div>
-          )}
-          {conditionSummary.flaggedForReview > 0 && (
-            <div style={{ fontSize: 12, color: '#FBBF24', marginBottom: 4 }}>
-              🚩 {conditionSummary.flaggedForReview} saved as unconfirmed — flagged for admin review
-            </div>
-          )}
-          {conditionSummary.failed > 0 && (
-            <div style={{ fontSize: 12, color: '#F87171', marginBottom: 4 }}>
-              ✗ {conditionSummary.failed} failed
-            </div>
-          )}
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={dismissConditionSummary}
               style={{ fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#CBD5E1', borderRadius: 32, padding: '6px 14px', cursor: 'pointer' }}
             >
               Dismiss
