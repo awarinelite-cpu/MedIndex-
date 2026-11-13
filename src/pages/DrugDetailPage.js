@@ -1553,6 +1553,9 @@ const tap = (onClick) => ({
   onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } },
 });
 
+// AI-generated fields sometimes end with a stray "---" divider; drop it from display.
+const cleanText = (t) => String(t || '').replace(/(^|\s|;|,)-{3,}(?=\s|;|,|$)/g, ' ').replace(/\s+([;,.])/g, '$1').replace(/[;,]\s*$/, '').trim();
+
 function firstLine(text) {
   return String(text || '').split(/\n|\|/).map(t => t.trim()).filter(Boolean)[0] || '';
 }
@@ -1614,7 +1617,7 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
       <Icon className="w-7 h-7 mt-0.5 flex-shrink-0" style={{ color }} />
       <span className="min-w-0 flex-1">
         <span className="block text-base sm:text-lg font-extrabold leading-tight" style={{ color: NAVY }}>{title}</span>
-        <span className="block text-[13px] sm:text-sm text-drug-text leading-snug line-clamp-2 mt-0.5">
+        <span className="line-clamp-2 text-[13px] sm:text-sm text-drug-text leading-snug mt-0.5">
           {preview || <span className="text-drug-muted">Tap to view</span>}
         </span>
       </span>
@@ -1634,28 +1637,53 @@ function PopulationTile({ emoji, label, onClick }) {
   );
 }
 
-// Bottom sheet that holds the full content behind any tapped row or tile.
+// Centered pop-up that holds the full content behind any tapped row or tile.
 function Sheet({ title, onClose, children }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
+      style={{ animation: 'miFade .18s ease-out' }}
+      onClick={onClose}
+    >
+      <style>{`@keyframes miFade{from{opacity:0}to{opacity:1}}@keyframes miPop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}`}</style>
       <div
-        className="w-full sm:max-w-lg max-h-[85dvh] overflow-y-auto bg-white rounded-t-[20px] sm:rounded-[20px] shadow-2xl"
+        className="w-full max-w-md max-h-[80dvh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-2xl ring-1 ring-black/5"
+        style={{ animation: 'miPop .22s ease-out' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label={title}
       >
-        <div className="sticky top-0 bg-white flex items-center justify-between px-4 py-3 border-b border-drug-border">
-          <h2 className="text-lg font-extrabold" style={{ color: NAVY }}>{title}</h2>
-          <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-full hover:bg-primary-50">
-            <X className="w-5 h-5 text-drug-muted" />
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 text-white flex-shrink-0"
+          style={{ background: `linear-gradient(135deg, ${NAVY}, #1D5FD1)` }}
+        >
+          <h2 className="text-lg font-extrabold tracking-tight">{title}</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4 space-y-4">{children}</div>
+        <div className="p-4 space-y-4 overflow-y-auto">{children}</div>
+        <div className="px-4 py-3 border-t border-drug-border bg-primary-50/50 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 rounded-full text-white font-bold text-sm"
+            style={{ background: NAVY }}
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1867,22 +1895,22 @@ export default function DrugDetailPage() {
         {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <div className="space-y-2.5">
-            <InfoRow icon={Info} color="#1D4ED8" title="Overview" preview={drug.overview} onClick={() => setSheet('overview')} />
+            <InfoRow icon={Info} color="#1D4ED8" title="Overview" preview={cleanText(drug.overview)} onClick={() => setSheet('overview')} />
             <InfoRow
               icon={PlusSquare} color="#1D4ED8" title="Strength"
-              preview={drug.strength ? `Available in ${drug.strength.split('\n').map(l => l.trim()).filter(Boolean).join('; ')}` : ''}
+              preview={drug.strength ? `Available in ${drug.strength.split('\n').map(l => cleanText(l)).filter(Boolean).join('; ')}` : ''}
               onClick={() => setSheet('strength')}
             />
             <InfoRow
               icon={ShieldCheck} color="#1D4ED8" title="What it's used for"
               preview={(() => {
                 const src = drug.indications || drug.primary_indications || '';
-                return splitCSVRespectingParens(String(src).replace(/\n|\|/g, ', ')).join(', ');
+                return splitCSVRespectingParens(cleanText(String(src).replace(/\n|\|/g, ', '))).map(t => t.replace(/\.$/, '')).filter(Boolean).join(', ');
               })()}
               onClick={() => setSheet('uses')}
             />
-            <InfoRow icon={FileText} color="#1D4ED8" title="Therapeutic Note" preview={drug.therapeutic_note} onClick={() => setSheet('note')} />
-            <InfoRow icon={Atom} color="#1D4ED8" title="Pharmacology" preview={drug.pharmacology || drug.mechanism} onClick={() => setSheet('pharm')} />
+            <InfoRow icon={FileText} color="#1D4ED8" title="Therapeutic Note" preview={cleanText(drug.therapeutic_note)} onClick={() => setSheet('note')} />
+            <InfoRow icon={Atom} color="#1D4ED8" title="Pharmacology" preview={cleanText(drug.pharmacology || drug.mechanism)} onClick={() => setSheet('pharm')} />
 
             <div className="bg-white border border-primary-100 rounded-[10px] px-3 py-2.5 shadow-sm">
               <div className="flex items-center gap-3 mb-2">
@@ -2168,14 +2196,14 @@ export default function DrugDetailPage() {
       )}
       {sheet === 'overview' && (
         <Sheet title="Overview" onClose={() => setSheet(null)}>
-          <p className="text-drug-text leading-relaxed">{drug.overview || <em className="text-drug-muted">No overview available.</em>}</p>
+          <p className="text-drug-text leading-relaxed">{cleanText(drug.overview) || <em className="text-drug-muted">No overview available.</em>}</p>
         </Sheet>
       )}
       {sheet === 'strength' && (
         <Sheet title="Strength" onClose={() => setSheet(null)}>
           {drug.strength ? (
             <div className="flex flex-wrap gap-2">
-              {drug.strength.split('\n').map(l => l.trim()).filter(Boolean).map((l, i) => (
+              {drug.strength.split('\n').map(l => cleanText(l)).filter(Boolean).map((l, i) => (
                 <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">{l}</span>
               ))}
             </div>
