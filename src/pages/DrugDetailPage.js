@@ -1541,6 +1541,8 @@ function ShareDrugButton({ drug, bar = false }) {
 
 /* ── Profile page layout helpers ─────────────────────────────────────────── */
 const NAVY = '#0B3A82';
+// Tab content reused inside pop-ups: tighter cards, no hover lift.
+const POPUP_TAB = 'space-y-3 [&_.section-card]:!p-4 [&_.section-card]:shadow-none';
 
 const shortRoute = (r) => ROUTE_META[r].label;
 
@@ -1797,6 +1799,215 @@ export default function DrugDetailPage() {
     swipeDeltaRef.current = { x: 0, y: 0 };
   };
 
+  const dosageContent = (
+    <>
+            {/* Route of Administration summary card */}
+            {detectedRoutes.length > 0 && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Routes of Administration</h2>
+                <div className="flex flex-wrap gap-3">
+                  {detectedRoutes.map(r => {
+                    const meta = ROUTE_META[r];
+                    return (
+                      <div
+                        key={r}
+                        style={{ background: meta.bg, border: `1.5px solid ${meta.color}30` }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg"
+                      >
+                        <div
+                          style={{ background: meta.color }}
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                        />
+                        <span style={{ color: meta.color }} className="text-sm font-bold">
+                          {meta.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Dosage details */}
+            <div className="section-card p-6">
+              <h2 className="text-lg font-bold mb-4">Adult Dose</h2>
+              <div className="text-xs text-drug-muted mb-4 flex items-center gap-1">
+                <span>Route abbreviations are highlighted:</span>
+                {['PO','IV','IM','SC'].map(r => (
+                  <span
+                    key={r}
+                    style={{ background: ROUTE_META[r].bg, color: ROUTE_META[r].color, padding: '1px 6px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
+              {drug.adult_dose
+                ? renderDosageWithRoutes(drug.adult_dose)
+                : <em className="text-drug-muted">No adult dosage information available.</em>}
+            </div>
+
+            {drug.child_dose && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Child Dose</h2>
+                {renderDosageWithRoutes(drug.child_dose)}
+              </div>
+            )}
+
+            {drug.renal_dose && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Renal Dose</h2>
+                {renderDosageWithRoutes(drug.renal_dose)}
+              </div>
+            )}
+
+            {drug.administration && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Administration</h2>
+                {renderList(drug.administration, '\n')}
+              </div>
+            )}
+
+            {drug.nstg_recommendations && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">NSTG Recommendations</h2>
+                {renderList(drug.nstg_recommendations, '\n')}
+              </div>
+            )}
+
+            <AiSectionFill drug={drug} tabId="dosage" onFilled={handleSectionFilled} />
+    </>
+  );
+
+  const safetyContent = (
+    <>
+            {/* Pregnancy & Lactation highlight */}
+            <div className="section-card p-5">
+              <h2 className="text-lg font-bold mb-3">Pregnancy &amp; Lactation</h2>
+              {drug.pregnancy_lactation ? (
+                <p className="text-sm text-drug-text leading-relaxed">{drug.pregnancy_lactation}</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Baby className="w-4 h-4 text-pink-600" />
+                      <span className="font-semibold text-pink-900 text-sm">Pregnancy</span>
+                    </div>
+                    <p className="text-sm text-pink-800 leading-relaxed">
+                      Refer to contraindications and consult current prescribing information.
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Heart className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-900 text-sm">Lactation</span>
+                    </div>
+                    <p className="text-sm text-blue-800 leading-relaxed">
+                      Consult current prescribing information for breastfeeding guidance.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {drug.contraindications && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3 text-red-700">Contra-indications</h2>
+                {renderList(drug.contraindications, '\n', true)}
+              </div>
+            )}
+
+            {drug.precautions && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3 text-red-700">Precautions</h2>
+                {renderList(drug.precautions, '\n', true)}
+              </div>
+            )}
+
+            {drug.adverse_effect && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Adverse Effect</h2>
+                {renderList(drug.adverse_effect, '\n')}
+              </div>
+            )}
+
+            {drug.advice_to_patients && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Advice to Patients</h2>
+                {renderList(drug.advice_to_patients, '\n')}
+              </div>
+            )}
+
+            {drug.pharmacovigilance && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Pharmacovigilance</h2>
+                <p className="text-drug-text leading-relaxed">{drug.pharmacovigilance}</p>
+              </div>
+            )}
+
+            <AiSectionFill drug={drug} tabId="safety" onFilled={handleSectionFilled} />
+    </>
+  );
+
+  const pharmacologyContent = (
+    <>
+            {drug.pharmacology && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-4">Pharmacology</h2>
+                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
+              </div>
+            )}
+            <div className="section-card p-6">
+              <h2 className="text-lg font-bold mb-4">Drug Class</h2>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`}
+                  className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 transition-colors"
+                >
+                  {getDisplayDrugClass(drug)}
+                </Link>
+                {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
+                  <Link
+                    to={`/browse?class=${encodeURIComponent(drug.drug_subclass)}`}
+                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    {drug.drug_subclass}
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {drug.product_description && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Product Description</h2>
+                <p className="text-drug-text leading-relaxed">{drug.product_description}</p>
+              </div>
+            )}
+
+            {(drug.storage_recommendations || drug.pack_size_price) && (
+              <div className="section-card p-6">
+                <h2 className="text-lg font-bold mb-3">Storage &amp; Pack Information</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {drug.storage_recommendations && (
+                    <div>
+                      <div className="text-sm font-semibold text-drug-muted mb-1">Storage Recommendations</div>
+                      <p className="text-drug-text text-sm leading-relaxed">{drug.storage_recommendations}</p>
+                    </div>
+                  )}
+                  {drug.pack_size_price && (
+                    <div>
+                      <div className="text-sm font-semibold text-drug-muted mb-1">Pack Size &amp; Price</div>
+                      <p className="text-drug-text text-sm leading-relaxed">{drug.pack_size_price}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <AiSectionFill drug={drug} tabId="pharmacology" onFilled={handleSectionFilled} />
+    </>
+  );
+
   return (
     <div className="max-w-3xl mx-auto px-2 sm:px-6 py-2 sm:py-6">
       {/* Top bar */}
@@ -1948,156 +2159,10 @@ export default function DrugDetailPage() {
         )}
 
         {/* ── DOSAGE ───────────────────────────────────────────────────── */}
-        {activeTab === 'dosage' && (
-          <>
-            {/* Route of Administration summary card */}
-            {detectedRoutes.length > 0 && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Routes of Administration</h2>
-                <div className="flex flex-wrap gap-3">
-                  {detectedRoutes.map(r => {
-                    const meta = ROUTE_META[r];
-                    return (
-                      <div
-                        key={r}
-                        style={{ background: meta.bg, border: `1.5px solid ${meta.color}30` }}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg"
-                      >
-                        <div
-                          style={{ background: meta.color }}
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                        />
-                        <span style={{ color: meta.color }} className="text-sm font-bold">
-                          {meta.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Dosage details */}
-            <div className="section-card p-6">
-              <h2 className="text-lg font-bold mb-4">Adult Dose</h2>
-              <div className="text-xs text-drug-muted mb-4 flex items-center gap-1">
-                <span>Route abbreviations are highlighted:</span>
-                {['PO','IV','IM','SC'].map(r => (
-                  <span
-                    key={r}
-                    style={{ background: ROUTE_META[r].bg, color: ROUTE_META[r].color, padding: '1px 6px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}
-                  >
-                    {r}
-                  </span>
-                ))}
-              </div>
-              {drug.adult_dose
-                ? renderDosageWithRoutes(drug.adult_dose)
-                : <em className="text-drug-muted">No adult dosage information available.</em>}
-            </div>
-
-            {drug.child_dose && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Child Dose</h2>
-                {renderDosageWithRoutes(drug.child_dose)}
-              </div>
-            )}
-
-            {drug.renal_dose && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Renal Dose</h2>
-                {renderDosageWithRoutes(drug.renal_dose)}
-              </div>
-            )}
-
-            {drug.administration && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Administration</h2>
-                {renderList(drug.administration, '\n')}
-              </div>
-            )}
-
-            {drug.nstg_recommendations && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">NSTG Recommendations</h2>
-                {renderList(drug.nstg_recommendations, '\n')}
-              </div>
-            )}
-
-            <AiSectionFill drug={drug} tabId="dosage" onFilled={handleSectionFilled} />
-          </>
-        )}
+        {activeTab === 'dosage' && dosageContent}
 
         {/* ── SAFETY ───────────────────────────────────────────────────── */}
-        {activeTab === 'safety' && (
-          <>
-            {/* Pregnancy & Lactation highlight */}
-            <div className="section-card p-5">
-              <h2 className="text-lg font-bold mb-3">Pregnancy &amp; Lactation</h2>
-              {drug.pregnancy_lactation ? (
-                <p className="text-sm text-drug-text leading-relaxed">{drug.pregnancy_lactation}</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Baby className="w-4 h-4 text-pink-600" />
-                      <span className="font-semibold text-pink-900 text-sm">Pregnancy</span>
-                    </div>
-                    <p className="text-sm text-pink-800 leading-relaxed">
-                      Refer to contraindications and consult current prescribing information.
-                    </p>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Heart className="w-4 h-4 text-blue-600" />
-                      <span className="font-semibold text-blue-900 text-sm">Lactation</span>
-                    </div>
-                    <p className="text-sm text-blue-800 leading-relaxed">
-                      Consult current prescribing information for breastfeeding guidance.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {drug.contraindications && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3 text-red-700">Contra-indications</h2>
-                {renderList(drug.contraindications, '\n', true)}
-              </div>
-            )}
-
-            {drug.precautions && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3 text-red-700">Precautions</h2>
-                {renderList(drug.precautions, '\n', true)}
-              </div>
-            )}
-
-            {drug.adverse_effect && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Adverse Effect</h2>
-                {renderList(drug.adverse_effect, '\n')}
-              </div>
-            )}
-
-            {drug.advice_to_patients && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Advice to Patients</h2>
-                {renderList(drug.advice_to_patients, '\n')}
-              </div>
-            )}
-
-            {drug.pharmacovigilance && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Pharmacovigilance</h2>
-                <p className="text-drug-text leading-relaxed">{drug.pharmacovigilance}</p>
-              </div>
-            )}
-
-            <AiSectionFill drug={drug} tabId="safety" onFilled={handleSectionFilled} />
-          </>
-        )}
+        {activeTab === 'safety' && safetyContent}
 
         {/* ── INTERACTIONS ─────────────────────────────────────────────── */}
         {activeTab === 'interactions' && (
@@ -2110,64 +2175,7 @@ export default function DrugDetailPage() {
         )}
 
         {/* ── PHARMACOLOGY ─────────────────────────────────────────────── */}
-        {activeTab === 'pharmacology' && (
-          <>
-            {drug.pharmacology && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-4">Pharmacology</h2>
-                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
-              </div>
-            )}
-            <div className="section-card p-6">
-              <h2 className="text-lg font-bold mb-4">Drug Class</h2>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`}
-                  className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 transition-colors"
-                >
-                  {getDisplayDrugClass(drug)}
-                </Link>
-                {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
-                  <Link
-                    to={`/browse?class=${encodeURIComponent(drug.drug_subclass)}`}
-                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium hover:bg-gray-200 transition-colors"
-                  >
-                    {drug.drug_subclass}
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {drug.product_description && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Product Description</h2>
-                <p className="text-drug-text leading-relaxed">{drug.product_description}</p>
-              </div>
-            )}
-
-            {(drug.storage_recommendations || drug.pack_size_price) && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Storage &amp; Pack Information</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {drug.storage_recommendations && (
-                    <div>
-                      <div className="text-sm font-semibold text-drug-muted mb-1">Storage Recommendations</div>
-                      <p className="text-drug-text text-sm leading-relaxed">{drug.storage_recommendations}</p>
-                    </div>
-                  )}
-                  {drug.pack_size_price && (
-                    <div>
-                      <div className="text-sm font-semibold text-drug-muted mb-1">Pack Size &amp; Price</div>
-                      <p className="text-drug-text text-sm leading-relaxed">{drug.pack_size_price}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <AiSectionFill drug={drug} tabId="pharmacology" onFilled={handleSectionFilled} />
-          </>
-        )}
+        {activeTab === 'pharmacology' && pharmacologyContent}
 
         {/* ── NURSING NOTES ────────────────────────────────────────────── */}
         {activeTab === 'nursing' && (
@@ -2217,7 +2225,7 @@ export default function DrugDetailPage() {
               </div>
             </SubSection>
           )}
-          <button type="button" onClick={() => { setSheet(null); goToTab('dosage'); }} className="text-sm font-semibold text-primary-700 hover:underline">Open Dosage tab →</button>
+          <div className={POPUP_TAB}>{dosageContent}</div>
         </Sheet>
       )}
       {sheet === 'uses' && (() => {
@@ -2243,30 +2251,27 @@ export default function DrugDetailPage() {
       )}
       {sheet === 'pharm' && (
         <Sheet title="Pharmacology" onClose={() => setSheet(null)}>
-          <p className="text-drug-text leading-relaxed">{drug.pharmacology || drug.mechanism || <em className="text-drug-muted">No data available</em>}</p>
+          {!drug.pharmacology && drug.mechanism && <p className="text-drug-text leading-relaxed">{drug.mechanism}</p>}
+          <div className={POPUP_TAB}>{pharmacologyContent}</div>
           {drug.nafdac_no && <SubSection title="NAFDAC No."><p className="text-drug-text">{drug.nafdac_no}</p></SubSection>}
-          <button type="button" onClick={() => { setSheet(null); goToTab('pharmacology'); }} className="text-sm font-semibold text-primary-700 hover:underline">Open Pharmacology tab →</button>
         </Sheet>
       )}
       {(sheet === 'pregnancy' || sheet === 'lactation') && (
         <Sheet title={sheet === 'pregnancy' ? 'Pregnancy' : 'Lactation'} onClose={() => setSheet(null)}>
-          <p className="text-drug-text leading-relaxed">
-            {drug.pregnancy_lactation || 'No pregnancy or lactation information recorded for this drug. Refer to contraindications and current prescribing information.'}
-          </p>
-          <button type="button" onClick={() => { setSheet(null); goToTab('safety'); }} className="text-sm font-semibold text-primary-700 hover:underline">Open Safety tab →</button>
+          <div className={POPUP_TAB}>{safetyContent}</div>
         </Sheet>
       )}
       {sheet === 'pediatric' && (
         <Sheet title="Pediatric" onClose={() => setSheet(null)}>
-          <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.child_dose || 'No paediatric dose recorded for this drug.'}</p>
-          <button type="button" onClick={() => { setSheet(null); goToTab('dosage'); }} className="text-sm font-semibold text-primary-700 hover:underline">Open Dosage tab →</button>
+          {drug.child_dose && <SubSection title="Paediatric Dose"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.child_dose}</p></SubSection>}
+          <div className={POPUP_TAB}>{dosageContent}</div>
         </Sheet>
       )}
       {sheet === 'geriatric' && (
         <Sheet title="Geriatric" onClose={() => setSheet(null)}>
-          <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.geriatric_use || drug.elderly_dose || 'No geriatric-specific information recorded for this drug.'}</p>
+          {(drug.geriatric_use || drug.elderly_dose) && <SubSection title="Geriatric Use"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.geriatric_use || drug.elderly_dose}</p></SubSection>}
           {drug.renal_dose && <SubSection title="Renal Dosing"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.renal_dose}</p></SubSection>}
-          <button type="button" onClick={() => { setSheet(null); goToTab('dosage'); }} className="text-sm font-semibold text-primary-700 hover:underline">Open Dosage tab →</button>
+          <div className={POPUP_TAB}>{dosageContent}</div>
         </Sheet>
       )}
 
