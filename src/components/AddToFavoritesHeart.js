@@ -5,6 +5,7 @@
 //   users/{uid}/lists/{listId}.drugs: [{ drugId, drugName, drugClass, notes, addedAt }]
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   collection, addDoc, getDocs, doc,
   updateDoc, serverTimestamp, orderBy, query, Timestamp,
@@ -66,7 +67,8 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
 
   // NOTE: serverTimestamp() can't be used inside an array field, so each
   // saved-drug entry uses a concrete Timestamp.now() instead.
-  const addToList = async (list) => {
+  const addToList = async (list, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     const already = (list.drugs || []).some(d => d.drugId === drugId);
     if (already) { setAddedIds(p => ({ ...p, [list.id]: true })); setSaved(true); return; }
     setError(null);
@@ -93,7 +95,8 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
     }
   };
 
-  const createFolderAndAdd = async () => {
+  const createFolderAndAdd = async (e) => {
+    if (e && e.preventDefault) { e.preventDefault(); e.stopPropagation(); }
     const title = newFolderName.trim() || 'New Folder';
     setLoading(true);
     setError(null);
@@ -145,7 +148,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
         </button>
       )}
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           onClick={close}
@@ -188,7 +191,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
                   placeholder="Folder name"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') createFolderAndAdd(); if (e.key === 'Escape') setCreatingFolder(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') createFolderAndAdd(e); if (e.key === 'Escape') setCreatingFolder(false); }}
                   className="flex-1 border border-primary-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
                 <button
@@ -201,7 +204,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
               </div>
             ) : (
               <button
-                onClick={() => setCreatingFolder(true)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCreatingFolder(true); }}
                 className="w-full flex items-center gap-2 px-4 py-3 border-b border-drug-border text-sm font-semibold text-primary-600 hover:bg-primary-50 transition-colors"
               >
                 <FolderPlus className="w-4 h-4" /> Create new folder
@@ -226,7 +229,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
                   return (
                     <button
                       key={list.id}
-                      onClick={() => addToList(list)}
+                      onClick={(e) => addToList(list, e)}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left transition-colors"
                     >
                       <div className="min-w-0">
@@ -242,7 +245,8 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
