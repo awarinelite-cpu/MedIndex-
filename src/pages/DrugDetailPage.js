@@ -6,7 +6,7 @@ import {
   Sparkles, RefreshCw, Save, ImageIcon, Volume2, Share2, Loader2,
   Upload, ClipboardPaste, Tag, ChevronRight, Trash2, ImagePlus,
   Activity, ChevronDown, ShieldCheck, Award, Target, CalendarCheck, Info,
-  BookOpen, Star, Users, Bookmark, PlusCircle, CheckCircle2,
+  BookOpen, Star, Users, PlusCircle, CheckCircle2,
 } from 'lucide-react';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
@@ -163,31 +163,6 @@ function splitCSVRespectingParens(value) {
 // appear verbatim in another drug's indications list.
 function coreConditionTerm(indication) {
   return indication.split(/—|\(/)[0].trim() || indication;
-}
-
-function renderCSV(value, opts = {}) {
-  if (!value) return <em className="text-drug-muted">No data available</em>;
-  const { linkTo } = opts;
-  const items = splitCSVRespectingParens(value);
-  return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item, i) =>
-        linkTo ? (
-          <Link
-            key={i}
-            to={linkTo(item)}
-            className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium hover:bg-primary-100 hover:underline transition-colors"
-          >
-            {item}
-          </Link>
-        ) : (
-          <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
-            {item}
-          </span>
-        )
-      )}
-    </div>
-  );
 }
 
 // Common abbreviations whose trailing period shouldn't be treated as a
@@ -1701,7 +1676,6 @@ export default function DrugDetailPage() {
     );
   }
 
-  const isControlled = drug.prescription_status === 'Controlled';
   const detectedRoutes = detectRoutes([drug.adult_dose, drug.child_dose, drug.renal_dose]);
 
   // ── Special Populations click handlers ───────────────────────────────────
