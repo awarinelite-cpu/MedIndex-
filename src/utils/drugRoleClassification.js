@@ -190,3 +190,46 @@ export function textMatchesKeywords(text, keywords) {
     .map(k => (k || '').trim().toLowerCase()).filter(k => k.length >= 3);
   return matchesAnyKeyword(String(text || '').toLowerCase(), kws);
 }
+
+
+// ── Treatment-category grouping (Condition Profile) ─────────────────────────
+// Maps a drug to a treatment category from its existing class / subclass /
+// generic name. Returns null when no category keyword matches — the caller
+// then falls back to the drug's own class, so conditions are never forced
+// into categories that don't fit them.
+export const TREATMENT_CATEGORY_ORDER = [
+  'Targeted therapies',
+  'Monoclonal antibodies',
+  'Immunotherapy',
+  'Chemotherapy',
+  'Hormonal therapies',
+  'Corticosteroids',
+  'Antibiotics',
+  'Antivirals',
+  'Antifungals',
+  'Antiparasitics',
+];
+
+const TREATMENT_CATEGORY_RULES = [
+  ['Monoclonal antibodies', /monoclonal|\bantibody\b|\bmab\b/i],
+  ['Immunotherapy',         /checkpoint|immunotherap|interferon|interleukin|car-?t\b/i],
+  ['Targeted therapies',    /kinase|\bbtk\b|bcl-?2|\bparp\b|proteasome|\bmtor\b|\bcdk\s?4|\begfr\b|\bher2\b|\bbraf\b|\balk\b|pi3k|\bhdac\b|\bflt3\b|\bidh\d?\b|targeted/i],
+  ['Chemotherapy',          /chemotherap|antineoplastic|alkylating|antimetabolite|nucleoside analog|purine analog|anthracycline|vinca|taxane|platinum|cytotoxic|topoisomerase/i],
+  ['Hormonal therapies',    /hormon|aromatase|anti-?androgen|anti-?estrogen|\bserm\b|\bgnrh\b|androgen|estrogen|progest/i],
+  ['Corticosteroids',       /corticosteroid|glucocorticoid/i],
+  ['Antibiotics',           /antibiotic|antibacterial|penicillin|cephalosporin|macrolide|fluoroquinolone|aminoglycoside|tetracycline|carbapenem/i],
+  ['Antivirals',            /antiviral|antiretroviral|nucleoside reverse|protease inhibitor|integrase/i],
+  ['Antifungals',           /antifungal|azole antifungal|echinocandin/i],
+  ['Antiparasitics',        /antimalarial|anthelmintic|antiparasitic|antiprotozoal/i],
+];
+
+export function getTreatmentCategory(drug) {
+  const name = String(drug?.generic_name || '').trim();
+  // Antibody names end in "-mab" (rituximab, obinutuzumab…).
+  if (/mab$/i.test(name.split(/\s+/)[0] || '')) return 'Monoclonal antibodies';
+  const text = `${drug?.drug_class || ''} ${drug?.drug_subclass || ''}`;
+  for (const [label, re] of TREATMENT_CATEGORY_RULES) {
+    if (re.test(text)) return label;
+  }
+  return null;
+}

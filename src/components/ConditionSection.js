@@ -22,6 +22,7 @@ import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 import AiClassFallback from './AiClassInsight';
 import ConditionImagesPanel from './ConditionImagesPanel';
+import ConditionMedicationsView from './condition/ConditionMedicationsView';
 
 export function RxBadge({ status }) {
   const cls =
@@ -502,6 +503,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   const [shareError, setShareError] = useState('');
   const [resorting, setResorting] = useState(false);
   const [resortMsg, setResortMsg] = useState('');
+  const [classicView, setClassicView] = useState(false); // admin: old class-grouped list (per-class tools)
 
   // Keep the draft in sync if the label changes from elsewhere (e.g. another
   // admin renames it while this one isn't actively editing).
@@ -940,6 +942,13 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                 <ListChecks className={`w-3.5 h-3.5 ${resorting ? 'animate-pulse' : ''}`} />
                 {resorting ? 'Re-sorting…' : 'Re-sort drugs'}
               </button>
+              <button
+                onClick={() => setClassicView(v => !v)}
+                title="Switch between the category view and the class view (per-class admin tools)"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-drug-muted bg-gray-50 hover:bg-gray-100 border border-drug-border px-3 py-1.5 rounded-lg"
+              >
+                {classicView ? 'Category view' : 'Class view (admin tools)'}
+              </button>
               {resortMsg && <span className="text-xs text-drug-muted">{resortMsg}</span>}
             </div>
           )}
@@ -989,6 +998,28 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             <p className="px-5 pt-4 text-sm text-drug-muted">
               No drugs matched this condition yet. Use AI below to find and save some.
             </p>
+          ) : !(classMergeMode || viewMode === 'grid' || classicView) ? (
+            <ConditionMedicationsView
+              roleBuckets={roleBuckets}
+              allDrugs={allDrugs}
+              adminNoteFor={isAdmin ? matchNote : null}
+              renderTrailing={(drug) => (
+                <>
+                  <AddToFavoritesHeart drug={drug} />
+                  <RxBadge status={drug.prescription_status} />
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => removeFromCondition(drug, e)}
+                      disabled={removingId === drug.id}
+                      title="Remove from this condition"
+                      className="p-1 rounded-md hover:bg-red-50 text-drug-muted hover:text-red-600 flex-shrink-0 disabled:opacity-40"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            />
           ) : (
             THERAPY_ROLE_ORDER.map((roleKey) => {
               const roleDrugs = roleBuckets[roleKey];
