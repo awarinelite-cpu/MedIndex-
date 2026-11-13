@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Compass, Bookmark } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Heart, Bookmark } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -96,10 +96,9 @@ export default function Layout({ children }) {
 
   // ── Bottom tab bar (mobile) ─────────────────────────────────────────────
   const path = location.pathname;
-  const exploring = path.startsWith('/browse') || path.startsWith('/system') || path === '/conditions';
   const bottomTabs = [
     { to: '/',       label: 'Home',    active: path === '/',                render: (on) => <HomeGlyph filled={on} /> },
-    { to: '/browse', label: 'Explore', active: exploring,                   render: () => <Compass strokeWidth={1.8} /> },
+    { to: '/favourites', label: 'Favourites', active: path === '/favourites', render: (on) => <Heart strokeWidth={1.8} fill={on ? 'currentColor' : 'none'} /> },
     { to: '/lists',  label: 'Saved',   active: path.startsWith('/lists'),   render: () => <Bookmark strokeWidth={1.8} /> },
     { to: '/more',   label: 'Profile', active: path === '/more',            render: () => <User strokeWidth={1.8} /> },
   ];

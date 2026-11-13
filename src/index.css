@@ -1130,3 +1130,19 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .mi-cond-row > svg { flex: 0 0 auto; color: var(--mi-ink); }
 .mi-cond-name { font-size: 15.5px; font-weight: 600; }
 .mi-cond-sys { padding: 5px 12px; font-size: 13px; }
+
+/* ---- Favourites page ---- */
+.fv-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.fv-row { display: flex; align-items: center; gap: 4px; padding-right: 8px; border: 1px solid var(--mi-line); border-radius: 22px; background: var(--mi-surface); box-shadow: 0 10px 22px -18px rgba(21, 101, 216, .5); }
+.fv-link { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 14px; color: var(--mi-ink); }
+.fv-thumb { flex: 0 0 auto; width: 52px; height: 40px; object-fit: contain; border-radius: 10px; }
+.fv-thumb-icon { display: grid; place-items: center; background: rgba(23, 105, 224, .1); color: var(--mi-blue); }
+.fv-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fv-name { font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.fv-sub { font-size: 13.5px; color: var(--mi-muted); overflow-wrap: anywhere; }
+.fv-go { flex: 0 0 auto; color: var(--mi-ink); }
+.mi-page button.fv-heart { flex: 0 0 auto; display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.fv-empty { margin-top: 36px; text-align: center; color: var(--mi-body); }
+.fv-empty-icon { display: inline-grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: #fde3e7; color: #ff5a6e; }
+.fv-empty h2 { margin-top: 14px; font-size: 20px; font-weight: 800; color: var(--mi-ink); }
+.fv-empty p { margin-top: 6px; font-size: 15px; }

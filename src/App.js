@@ -30,6 +30,7 @@ import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
 import AllConditionsPage from './pages/AllConditionsPage';
 import ConditionProfilePage from './pages/ConditionProfilePage';
+import FavouritesPage from './pages/FavouritesPage';
 import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
@@ -100,6 +101,11 @@ function App() {
         <Route path="/condition/:systemId/:conditionId" element={
           <ProtectedUserRoute>
             <ConditionProfilePage />
+          </ProtectedUserRoute>
+        } />
+        <Route path="/favourites" element={
+          <ProtectedUserRoute>
+            <Layout><FavouritesPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/conditions" element={

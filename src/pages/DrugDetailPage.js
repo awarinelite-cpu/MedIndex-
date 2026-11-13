@@ -11,6 +11,7 @@ import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { useDrugs } from '../hooks/useDrugs';
 import { recordRecentDrug } from '../hooks/useRecentlyViewed';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
+import FavouriteHeart from '../components/FavouriteHeart';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
@@ -2023,6 +2024,7 @@ export default function DrugDetailPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <ShareDrugButton drug={drug} bar />
+          <FavouriteHeart bar item={{ type: 'drug', refId: drug.id, name: drug.generic_name, subtitle: getDisplayDrugClass(drug) }} />
           <AddToListButton drug={drug} bar />
         </div>
       </div>

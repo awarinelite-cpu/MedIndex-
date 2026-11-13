@@ -14,6 +14,7 @@ import {
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { groupDrugsByCondition } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { classifyDrugsByRole, getTreatmentCategory, TREATMENT_CATEGORY_ORDER } from '../utils/drugRoleClassification';
@@ -25,7 +26,6 @@ import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const OTHER = 'Other relevant treatments';
 const REGIMENS = 'Combination Treatment Regimens';
-const SAVED_KEY = 'medindex_saved_conditions';
 
 // Antibody glyph (Y shape) since the icon set has no antibody icon.
 function AntibodyIcon({ size = 24, color = '#6D3FD1' }) {
@@ -232,9 +232,9 @@ export default function ConditionProfilePage() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState('');
-  const [saved, setSaved] = useState(() => {
-    try { return (JSON.parse(localStorage.getItem(SAVED_KEY) || '[]')).includes(conditionId); } catch { return false; }
-  });
+  const { isFav, toggle: toggleFav } = useFavourites();
+  const favKey = conditionFavKey(systemId, conditionId);
+  const saved = isFav('condition', favKey);
 
   const system = useMemo(() => ANATOMICAL_SYSTEMS.find(s => s.id === systemId) || null, [systemId]);
 
@@ -257,13 +257,11 @@ export default function ConditionProfilePage() {
   const systemName = (system?.name || systemId || '').split(' & ')[0];
 
   const toggleSaved = () => {
-    const next = !saved;
-    setSaved(next);
-    try {
-      const list = new Set(JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'));
-      if (next) list.add(conditionId); else list.delete(conditionId);
-      localStorage.setItem(SAVED_KEY, JSON.stringify([...list]));
-    } catch { /* storage unavailable: the heart still toggles for this visit */ }
+    if (!entry) return;
+    toggleFav({
+      type: 'condition', refId: favKey, systemId, conditionId,
+      name: entry.condition.label, subtitle: systemName,
+    });
   };
 
   const share = async () => {
@@ -343,7 +341,7 @@ export default function ConditionProfilePage() {
   const bottomTabs = [
     { to: '/', label: 'Home', icon: <Home size={30} strokeWidth={2} />, active: true },
     { to: '/browse', label: 'Search', icon: <Search size={30} strokeWidth={2} /> },
-    { to: '/lists', label: 'Favourites', icon: <Heart size={30} strokeWidth={2} /> },
+    { to: '/favourites', label: 'Favourites', icon: <Heart size={30} strokeWidth={2} /> },
     { to: '/more', label: 'Profile', icon: <User size={30} strokeWidth={2} /> },
   ];
 
@@ -353,7 +351,7 @@ export default function ConditionProfilePage() {
         <button type="button" className="cp-bar-back" onClick={goBack}><ChevronLeft size={30} strokeWidth={2.4} />Back</button>
         <Link to="/" className="cp-bar-brand" aria-label="MedIndex home"><Activity size={40} strokeWidth={2.2} />MedIndex</Link>
         <div className="cp-bar-actions">
-          <button type="button" className={`cp-bar-btn ${saved ? 'is-saved' : ''}`} onClick={toggleSaved} aria-pressed={saved} aria-label={saved ? 'Remove from favourites' : 'Save to favourites'}>
+          <button type="button" className={`cp-bar-btn ${saved ? 'is-saved' : ''}`} onClick={toggleSaved} disabled={!entry} aria-pressed={saved} aria-label={saved ? 'Remove from favourites' : 'Save to favourites'}>
             <Heart size={36} strokeWidth={2} fill={saved ? 'currentColor' : 'none'} />
           </button>
           <button type="button" className="cp-bar-btn" onClick={share} disabled={!entry || sharing} aria-label="Share condition">
