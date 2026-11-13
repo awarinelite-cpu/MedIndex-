@@ -1544,6 +1544,15 @@ const NAVY = '#0B3A82';
 
 const shortRoute = (r) => ROUTE_META[r].label;
 
+// Props that make a div behave like a button. Real <button>s get the app's global
+// fully-round style, so tappable cards use this to keep their rectangular shape.
+const tap = (onClick) => ({
+  role: 'button',
+  tabIndex: 0,
+  onClick,
+  onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } },
+});
+
 function firstLine(text) {
   return String(text || '').split(/\n|\|/).map(t => t.trim()).filter(Boolean)[0] || '';
 }
@@ -1571,11 +1580,10 @@ function DrugHeroImage({ drug, onOpen }) {
   const images = useMemo(() => getDrugImages(drug), [drug]);
   const img = images[0];
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
+      {...tap(onOpen)}
       aria-label={`Pictures of ${drug.generic_name}`}
-      className="relative w-[30%] max-w-[190px] aspect-square flex-shrink-0 rounded-[14px] overflow-hidden border border-primary-100 bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
+      className="cursor-pointer relative w-[30%] max-w-[190px] aspect-square flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
     >
       {img ? (
         <img src={img.url} alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`} className="w-full h-full object-cover" draggable={false} />
@@ -1592,17 +1600,16 @@ function DrugHeroImage({ drug, onOpen }) {
           ))}
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
 // One tappable summary row: icon, title, two-line preview. Tapping opens the full content.
 function InfoRow({ icon: Icon, color, title, preview, onClick }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-start gap-3 text-left bg-white border border-primary-100 rounded-[14px] px-3 py-2 shadow-sm hover:bg-primary-50/50 transition-colors"
+    <div
+      {...tap(onClick)}
+      className="cursor-pointer w-full flex items-start gap-3 text-left bg-white border border-primary-100 rounded-[10px] px-3 py-2 shadow-sm hover:bg-primary-50/50 transition-colors"
     >
       <Icon className="w-7 h-7 mt-0.5 flex-shrink-0" style={{ color }} />
       <span className="min-w-0 flex-1">
@@ -1611,20 +1618,19 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
           {preview || <span className="text-drug-muted">Tap to view</span>}
         </span>
       </span>
-    </button>
+    </div>
   );
 }
 
 function PopulationTile({ emoji, label, onClick }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-center justify-center gap-1 py-2 rounded-[12px] bg-primary-50 border border-primary-100 hover:bg-primary-100 transition-colors"
+    <div
+      {...tap(onClick)}
+      className="cursor-pointer flex flex-col items-center justify-center gap-1 py-2 rounded-[8px] bg-primary-50 border border-primary-100 hover:bg-primary-100 transition-colors"
     >
       <span className="text-2xl leading-none">{emoji}</span>
       <span className="text-[13px] sm:text-sm font-semibold text-drug-text">{label}</span>
-    </button>
+    </div>
   );
 }
 
@@ -1766,7 +1772,7 @@ export default function DrugDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-2 sm:px-6 py-2 sm:py-6">
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-[14px] text-white mb-3" style={{ background: NAVY }}>
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-[10px] text-white mb-3" style={{ background: NAVY }}>
         <button
           onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/browse'))}
           className="inline-flex items-center gap-1 text-sm font-semibold px-1 py-1.5 rounded-full hover:bg-white/10 transition-colors"
@@ -1878,7 +1884,7 @@ export default function DrugDetailPage() {
             <InfoRow icon={FileText} color="#1D4ED8" title="Therapeutic Note" preview={drug.therapeutic_note} onClick={() => setSheet('note')} />
             <InfoRow icon={Atom} color="#1D4ED8" title="Pharmacology" preview={drug.pharmacology || drug.mechanism} onClick={() => setSheet('pharm')} />
 
-            <div className="bg-white border border-primary-100 rounded-[14px] px-3 py-2.5 shadow-sm">
+            <div className="bg-white border border-primary-100 rounded-[10px] px-3 py-2.5 shadow-sm">
               <div className="flex items-center gap-3 mb-2">
                 <Users className="w-7 h-7" style={{ color: '#1D4ED8' }} />
                 <h2 className="text-base sm:text-lg font-extrabold" style={{ color: NAVY }}>Special Populations</h2>
@@ -1891,17 +1897,16 @@ export default function DrugDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-[14px] border border-primary-200 bg-primary-50/80 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setAiOpen(o => !o)}
+            <div className="rounded-[10px] border border-primary-200 bg-primary-50/80 overflow-hidden">
+              <div
+                {...tap(() => setAiOpen(o => !o))}
                 aria-expanded={aiOpen}
-                className="w-full flex items-center gap-3 px-3 py-3 text-left"
+                className="cursor-pointer w-full flex items-center gap-3 px-3 py-3 text-left"
               >
                 <Sparkles className="w-6 h-6 text-primary-600" />
                 <span className="flex-1 text-base sm:text-lg font-extrabold" style={{ color: NAVY }}>AI-assisted information</span>
                 <ChevronDown className={`w-5 h-5 text-primary-700 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
-              </button>
+              </div>
               {aiOpen && (
                 <div className="px-3 pb-3 space-y-3">
                   <AiSectionFill drug={drug} tabId="overview" onFilled={handleSectionFilled} />
