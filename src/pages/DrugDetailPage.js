@@ -5,7 +5,11 @@ import {
   FlaskConical, ChevronLeft, Stethoscope, ClipboardList, Check, X, Plus,
   Sparkles, RefreshCw, Save, ImageIcon, Volume2, Share2, Loader2,
   Upload, ClipboardPaste, Tag, ChevronRight, Trash2, ImagePlus,
+  Activity, ChevronDown, ShieldCheck, Award, Target, CalendarCheck, Info,
+  BookOpen, Star, Users, Bookmark, PlusCircle, CheckCircle2,
 } from 'lucide-react';
+import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
+import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { useDrugs } from '../hooks/useDrugs';
 import { recordRecentDrug } from '../hooks/useRecentlyViewed';
 import DrugInteractionChecker from '../components/DrugInteractionChecker';
@@ -1357,7 +1361,7 @@ function AiInsightsTab({ drug }) {
 }
 
 /* ── Add to List Button ──────────────────────────────────────────────────── */
-function AddToListButton({ drug }) {
+function AddToListButton({ drug, bar = false }) {
   const { user }           = useAuth();
   const [open, setOpen]    = useState(false);
   const [lists, setLists]  = useState([]);
@@ -1443,9 +1447,11 @@ function AddToListButton({ drug }) {
     <div className="relative">
       <button
         onClick={handleOpen}
-        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-700 font-semibold text-sm hover:bg-primary-100 transition-colors"
+        className={bar
+          ? 'flex items-center gap-1.5 px-4 py-2 rounded-full border border-white/70 text-white font-semibold text-sm hover:bg-white/10 transition-colors whitespace-nowrap'
+          : 'flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-700 font-semibold text-sm hover:bg-primary-100 transition-colors'}
       >
-        <ClipboardList className="w-4 h-4" /> Add to List
+        {bar ? <Plus className="w-4 h-4" /> : <ClipboardList className="w-4 h-4" />} Add to List
       </button>
 
       {open && (
@@ -1524,7 +1530,7 @@ function AddToListButton({ drug }) {
   );
 }
 
-function ShareDrugButton({ drug }) {
+function ShareDrugButton({ drug, bar = false }) {
   const [state, setState] = useState('idle'); // idle | working | error
 
   const handleShare = async () => {
@@ -1544,12 +1550,111 @@ function ShareDrugButton({ drug }) {
       onClick={handleShare}
       disabled={state === 'working'}
       title="Share as PDF"
-      className="p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0"
+      className={bar
+        ? 'p-2.5 rounded-full text-white hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0'
+        : 'p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0'}
     >
       {state === 'working'
         ? <Loader2 className="w-4 h-4 animate-spin" />
         : <Share2 className="w-4 h-4" />}
     </button>
+  );
+}
+
+
+/* ── Profile page layout helpers ─────────────────────────────────────────── */
+const NAVY = '#0B3A82';
+
+const shortRoute = (r) => ROUTE_META[r].label.replace(/\s*\(.*\)/, '');
+
+function firstLine(text) {
+  return String(text || '').split(/\n|\|/).map(t => t.trim()).filter(Boolean)[0] || '';
+}
+
+function DrugHeroImage({ drug }) {
+  const images = useMemo(() => getDrugImages(drug), [drug]);
+  const [i, setI] = useState(0);
+  useEffect(() => { setI(0); }, [drug.id]);
+  const img = images[i] || images[0];
+  return (
+    <div
+      className="relative w-32 h-32 sm:w-40 sm:h-40 flex-shrink-0 rounded-[14px] overflow-hidden border border-drug-border bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
+    >
+      {img ? (
+        <button
+          type="button"
+          onClick={() => images.length > 1 && setI((i + 1) % images.length)}
+          className="w-full h-full"
+          aria-label={images.length > 1 ? 'Next picture' : drug.generic_name}
+        >
+          <img src={img.url} alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`} className="w-full h-full object-contain" draggable={false} />
+        </button>
+      ) : (
+        <Pill className="w-10 h-10 text-primary-300" />
+      )}
+      {images.length > 0 && (
+        <span className="absolute left-2 bottom-2 inline-flex items-center gap-1 bg-black/60 text-white text-xs font-semibold px-2 py-1 rounded-full">
+          <ImageIcon className="w-3.5 h-3.5" /> {Math.min(i, images.length - 1) + 1}/{images.length}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CellsArt() {
+  return (
+    <svg className="absolute right-0 top-0 h-full w-40 pointer-events-none" viewBox="0 0 160 110" fill="none" aria-hidden="true">
+      <circle cx="120" cy="62" r="26" fill="#C4B5FD" opacity=".75" />
+      <circle cx="120" cy="62" r="13" fill="#7C3AED" opacity=".85" />
+      <circle cx="82" cy="48" r="16" fill="#DDD6FE" opacity=".8" />
+      <circle cx="82" cy="48" r="8" fill="#8B5CF6" opacity=".8" />
+      <circle cx="148" cy="18" r="13" fill="#FCA5A5" opacity=".8" />
+      <circle cx="152" cy="98" r="14" fill="#FCA5A5" opacity=".7" />
+      <circle cx="96" cy="100" r="10" fill="#FECACA" opacity=".8" />
+    </svg>
+  );
+}
+
+function HighlightCell({ icon: Icon, color, label, value }) {
+  return (
+    <div className="flex flex-col items-center text-center px-1.5 min-w-0">
+      <Icon className="w-6 h-6 mb-1.5" style={{ color }} />
+      <div className="text-sm font-bold text-drug-text">{label}</div>
+      <div className="text-xs text-drug-muted mt-0.5 break-words max-w-full">{value}</div>
+    </div>
+  );
+}
+
+function ProfileAccordion({ icon: Icon, tint, title, subtitle, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-white border border-drug-border rounded-[14px] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-4 px-4 py-3.5 text-left"
+      >
+        <span className="w-11 h-11 rounded-[12px] flex items-center justify-center flex-shrink-0" style={{ background: tint.bg }}>
+          <Icon className="w-6 h-6" style={{ color: tint.fg }} />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-base font-bold text-drug-text">{title}</span>
+          <span className="block text-sm text-drug-muted">{subtitle}</span>
+        </span>
+        <ChevronDown className={`w-5 h-5 text-primary-700 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 pb-4 pt-1 space-y-4 border-t border-drug-border">{children}</div>}
+    </div>
+  );
+}
+
+function SubSection({ title, danger, children }) {
+  return (
+    <div className="pt-3">
+      <h3 className={`text-sm font-bold mb-1.5 ${danger ? 'text-red-700' : 'text-drug-text'}`}>{title}</h3>
+      {children}
+    </div>
   );
 }
 
@@ -1653,107 +1758,113 @@ export default function DrugDetailPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Back link */}
-      <div className="flex items-center justify-between mb-6">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-[14px] text-white mb-4" style={{ background: NAVY }}>
         <button
           onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/browse'))}
-          className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-1 text-sm font-semibold px-1 py-1.5 rounded-full hover:bg-white/10 transition-colors"
         >
-          <ChevronLeft className="w-4 h-4" /> Back
+          <ChevronLeft className="w-5 h-5" /> Back
         </button>
-        <div className="flex items-center gap-2">
-          <ShareDrugButton drug={drug} />
-          <AddToListButton drug={drug} />
+        <div className="hidden sm:flex items-center gap-2 text-lg font-bold">
+          <Activity className="w-6 h-6" /> MedIndex
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ShareDrugButton drug={drug} bar />
+          <AddToListButton drug={drug} bar />
         </div>
       </div>
 
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill className="w-7 h-7 text-primary-600" />
-            <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-              drug.prescription_status === 'OTC'        ? 'bg-green-100 text-green-700' :
-              drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' :
-                                                           'bg-blue-100 text-blue-700'
-            }`}>
-              {drug.prescription_status}
-            </span>
-            {isControlled && (
-              <span className="text-sm font-bold px-3 py-1 rounded-full bg-red-50 text-red-700 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Controlled Substance
-              </span>
-            )}
-          </div>
-          <BrandsButton drug={drug} onFilled={handleSectionFilled} drugs={drugs} />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-drug-text">{drug.generic_name}</h1>
-        <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
-        <p className="text-lg text-primary-600 font-medium mt-1">
-          <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="hover:underline">
-            {getDisplayDrugClass(drug)}
-          </Link>
-          {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
-            <>
-              {' — '}
-              <Link to={`/browse?class=${encodeURIComponent(drug.drug_subclass)}`} className="hover:underline">
-                {drug.drug_subclass}
+      {/* Hero card */}
+      <div className="bg-white border border-drug-border rounded-[16px] p-4 mb-4">
+        <div className="flex gap-4">
+          <DrugHeroImage drug={drug} />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-4xl font-extrabold leading-tight break-words" style={{ color: NAVY }}>{drug.generic_name}</h1>
+            <p className="text-base sm:text-xl text-drug-muted font-semibold mt-0.5">
+              <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="hover:underline">
+                {getDisplayDrugClass(drug)}
               </Link>
-            </>
-          )}
-        </p>
-
-        {/* Route of Administration + Strength badges — shown on header */}
-        {(detectedRoutes.length > 0 || drug.strength) && (
-          <div className="flex flex-wrap gap-2 mt-3 items-center">
-            {detectedRoutes.length > 0 && (
-              <>
-                <span className="text-xs text-drug-muted font-semibold uppercase tracking-wide self-center">Routes:</span>
-                {detectedRoutes.map(r => {
-                  const meta = ROUTE_META[r];
-                  return (
-                    <span
-                      key={r}
-                      style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.color}30` }}
-                      className="text-xs font-bold px-3 py-1 rounded-full"
-                    >
-                      {meta.label}
-                    </span>
-                  );
-                })}
-              </>
-            )}
-            {drug.strength && drug.strength.split('\n').filter(Boolean).map((line, i) => (
-              <span
-                key={i}
-                style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #6D28D930' }}
-                className="text-xs font-bold px-3 py-1 rounded-full"
-                title="Strength / formulation"
-              >
-                {line.trim()}
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full border ${
+                drug.prescription_status === 'OTC'        ? 'bg-green-50 text-green-700 border-green-200' :
+                drug.prescription_status === 'Controlled' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                             'bg-green-50 text-green-700 border-green-200'
+              }`}>
+                <CheckCircle2 className="w-4 h-4" />
+                {drug.prescription_status === 'OTC' ? 'OTC Drug' : drug.prescription_status === 'Controlled' ? 'Controlled Drug' : 'Prescription Drug'}
               </span>
-            ))}
+              {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+                  <ShieldCheck className="w-4 h-4" /> {drug.drug_subclass}
+                </span>
+              )}
+              {/first[- ]line/i.test(`${drug.therapeutic_note || ''} ${drug.overview || ''}`) && (
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+                  <Award className="w-4 h-4" /> First-line Option
+                </span>
+              )}
+            </div>
           </div>
-        )}
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-drug-border">
+          <NamePronunciation drug={drug} onFilled={handleSectionFilled} />
+          <div className="flex items-center gap-2 mt-2 text-sm sm:text-base font-semibold text-drug-text">
+            <FlaskConical className="w-5 h-5 text-primary-700 flex-shrink-0" />
+            <span>Drug Class: {getDisplayDrugClass(drug)}</span>
+          </div>
+        </div>
 
         {drug.source && isAdmin && (
           <p className="text-xs text-drug-muted mt-2 uppercase tracking-wide">Source: {drug.source}</p>
         )}
       </div>
 
+      {/* Info strip */}
+      <div className="grid grid-cols-3 gap-0 bg-primary-50/60 border border-primary-100 rounded-[14px] mb-4 divide-x divide-primary-100">
+        <div className="flex items-start gap-2 p-3 min-w-0">
+          <Pill className="w-6 h-6 text-primary-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-xs sm:text-sm text-drug-muted font-medium leading-tight">Route of Administration</div>
+            <div className="text-sm sm:text-base font-bold text-drug-text break-words">
+              {detectedRoutes.length ? detectedRoutes.map(shortRoute).join(', ') : 'Not stated'}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-start gap-2 p-3 min-w-0">
+          <PlusCircle className="w-6 h-6 text-primary-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-xs sm:text-sm text-drug-muted font-medium leading-tight">Available Strength</div>
+            <div className="text-sm sm:text-base font-bold text-drug-text break-words">
+              {drug.strength ? drug.strength.split('\n').map(l => l.trim()).filter(Boolean).join(', ') : 'Not stated'}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-start gap-2 p-3 min-w-0">
+          <Tag className="w-6 h-6 text-primary-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="text-xs sm:text-sm text-drug-muted font-medium leading-tight">Brand Names</div>
+            <div className="text-sm sm:text-base font-bold text-drug-text break-words">
+              {(drug.brand_names || '').split(/[,\n;|]/).map(b => b.trim()).filter(Boolean).slice(0, 3).join(', ') || 'Not added'}
+            </div>
+            <div className="mt-1"><BrandsButton drug={drug} onFilled={handleSectionFilled} drugs={drugs} /></div>
+          </div>
+        </div>
+      </div>
+
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 overflow-x-auto pb-2">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
-              activeTab === tab.id
-                ? 'bg-primary-600 text-white shadow-md'
-                : 'bg-white text-drug-muted hover:bg-gray-50 border border-drug-border'
+            className={`px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${
+              activeTab === tab.id ? 'text-white shadow-md' : 'text-primary-900 hover:bg-primary-100'
             }`}
+            style={activeTab === tab.id ? { background: NAVY } : { background: '#E8F0FB' }}
           >
-            <tab.icon className="w-4 h-4" />
             {tab.label}
           </button>
         ))}
@@ -1771,107 +1882,119 @@ export default function DrugDetailPage() {
         {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <>
-            <DrugImageCard drug={drug} />
-
-            {drug.overview && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Overview</h2>
-                <p className="text-drug-text leading-relaxed">{drug.overview}</p>
+            {/* Overview */}
+            <div className="relative bg-white border border-drug-border rounded-[14px] p-4 overflow-hidden">
+              <CellsArt />
+              <div className="relative flex items-center gap-3 mb-2">
+                <span className="w-9 h-9 rounded-[10px] bg-primary-50 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-primary-600" />
+                </span>
+                <h2 className="text-xl font-extrabold text-drug-text">Overview</h2>
               </div>
-            )}
-
-            {drug.strength && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Strength</h2>
-                {renderCSV(drug.strength)}
-              </div>
-            )}
-
-            <div className="section-card p-6">
-              <h2 className="text-lg font-bold mb-3">What it's used for</h2>
-              {drug.indications
-                ? renderIndicationsList(drug.indications, {
-                    linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
-                  })
-                : <em className="text-drug-muted">No data available</em>}
+              <p className="relative text-drug-text leading-relaxed pr-24 sm:pr-40">
+                {drug.overview || <em className="text-drug-muted">No overview available.</em>}
+              </p>
             </div>
 
-            {drug.off_label_use && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Off-Label Therapeutic Use</h2>
-                <p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p>
+            {/* Key Highlights */}
+            <div className="rounded-[14px] border overflow-hidden" style={{ background: '#ECFDF3', borderColor: '#BBF7D0' }}>
+              <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: '#BBF7D0' }}>
+                <Star className="w-6 h-6 text-green-600" fill="currentColor" />
+                <h2 className="text-lg font-extrabold text-drug-text">Key Highlights</h2>
               </div>
-            )}
-
-            {drug.therapeutic_note && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Therapeutic Note</h2>
-                <p className="text-drug-text leading-relaxed">{drug.therapeutic_note}</p>
-              </div>
-            )}
-
-            {drug.pharmacology && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">Pharmacology</h2>
-                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
-              </div>
-            )}
-
-            {drug.nafdac_no && (
-              <div className="section-card p-6">
-                <h2 className="text-lg font-bold mb-3">NAFDAC No.</h2>
-                <p className="text-drug-text leading-relaxed">{drug.nafdac_no}</p>
-              </div>
-            )}
-
-            {/* Special Populations — now fully clickable */}
-            <div className="section-card p-6">
-              <h2 className="text-lg font-bold mb-4">Special Populations</h2>
-              <p className="text-sm text-drug-muted mb-4">Tap a card to jump to the relevant tab.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-
-                {/* Pregnancy → Safety tab */}
-                <button
-                  onClick={() => goToTab('safety')}
-                  className="text-center p-4 bg-pink-50 rounded-xl hover:bg-pink-100 hover:shadow-md transition-all group border border-pink-100 hover:border-pink-300 cursor-pointer"
-                >
-                  <Baby className="w-6 h-6 text-pink-600 mx-auto mb-2 group-hover:scale-110 transition-transform" />
-                  <div className="text-sm font-semibold text-pink-900">Pregnancy</div>
-                  <div className="text-xs text-pink-600 mt-1 font-medium">→ Safety tab</div>
-                </button>
-
-                {/* Lactation → Safety tab */}
-                <button
-                  onClick={() => goToTab('safety')}
-                  className="text-center p-4 bg-blue-50 rounded-xl hover:bg-blue-100 hover:shadow-md transition-all group border border-blue-100 hover:border-blue-300 cursor-pointer"
-                >
-                  <Heart className="w-6 h-6 text-blue-600 mx-auto mb-2 group-hover:scale-110 transition-transform" />
-                  <div className="text-sm font-semibold text-blue-900">Lactation</div>
-                  <div className="text-xs text-blue-600 mt-1 font-medium">→ Safety tab</div>
-                </button>
-
-                {/* Pediatric → Dosage tab */}
-                <button
-                  onClick={() => goToTab('dosage')}
-                  className="text-center p-4 bg-green-50 rounded-xl hover:bg-green-100 hover:shadow-md transition-all group border border-green-100 hover:border-green-300 cursor-pointer"
-                >
-                  <span className="text-2xl block mb-2 group-hover:scale-110 transition-transform">👶</span>
-                  <div className="text-sm font-semibold text-green-900">Pediatric</div>
-                  <div className="text-xs text-green-600 mt-1 font-medium">→ Dosage tab</div>
-                </button>
-
-                {/* Geriatric → Dosage tab */}
-                <button
-                  onClick={() => goToTab('dosage')}
-                  className="text-center p-4 bg-amber-50 rounded-xl hover:bg-amber-100 hover:shadow-md transition-all group border border-amber-100 hover:border-amber-300 cursor-pointer"
-                >
-                  <span className="text-2xl block mb-2 group-hover:scale-110 transition-transform">👴</span>
-                  <div className="text-sm font-semibold text-amber-900">Geriatric</div>
-                  <div className="text-xs text-amber-600 mt-1 font-medium">→ Dosage tab</div>
-                </button>
-
+              <div className="grid grid-cols-4 divide-x py-3" style={{ borderColor: '#BBF7D0' }}>
+                <HighlightCell
+                  icon={Target} color="#DC2626" label="Indication"
+                  value={(() => {
+                    const src = drug.indications || drug.primary_indications || '';
+                    const items = splitCSVRespectingParens(String(src).replace(/\n|\|/g, ', ')).map(coreConditionTerm).filter(Boolean);
+                    return items.slice(0, 2).join(', ') || 'See Clinical Information';
+                  })()}
+                />
+                <HighlightCell
+                  icon={ShieldCheck} color="#16A34A" label="Common Dose"
+                  value={(() => {
+                    const d = firstLine(drug.adult_dose || drug.dosage);
+                    return d && d.length <= 28 ? d : 'Varies by indication';
+                  })()}
+                />
+                <HighlightCell
+                  icon={Pill} color="#2563EB" label="Route"
+                  value={detectedRoutes.length ? detectedRoutes.map(shortRoute).join(', ') : 'Not stated'}
+                />
+                <HighlightCell
+                  icon={CalendarCheck} color="#2563EB" label="Monitoring"
+                  value={(() => {
+                    if (drug.monitoring) return firstLine(drug.monitoring).slice(0, 32);
+                    const m = String(drug.nursing_action || drug.nursing_considerations || '').match(/monitor(?:ing)?\s+(?:of\s+|for\s+)?([^.;\n,]{3,30})/i);
+                    return m ? m[1].trim() : 'See Nursing Notes';
+                  })()}
+                />
               </div>
             </div>
+
+            {/* Accordions */}
+            <ProfileAccordion icon={FlaskConical} tint={{ bg: '#EFF6FF', fg: '#1D4ED8' }} title="Pharmacology" subtitle="Mechanism of action and pharmacological properties">
+              {(drug.pharmacology || drug.mechanism)
+                ? <p className="text-drug-text leading-relaxed pt-3">{drug.pharmacology || drug.mechanism}</p>
+                : <em className="text-drug-muted block pt-3">No data available</em>}
+              {drug.therapeutic_note && <SubSection title="Therapeutic Note"><p className="text-drug-text leading-relaxed">{drug.therapeutic_note}</p></SubSection>}
+              {drug.nafdac_no && <SubSection title="NAFDAC No."><p className="text-drug-text leading-relaxed">{drug.nafdac_no}</p></SubSection>}
+            </ProfileAccordion>
+
+            <ProfileAccordion icon={PlusCircle} tint={{ bg: '#ECFDF5', fg: '#16A34A' }} title="Clinical Information" subtitle="Indications, contraindications, precautions and interactions">
+              <SubSection title="Indications">
+                {(drug.indications || drug.primary_indications)
+                  ? renderIndicationsList(drug.indications || drug.primary_indications, {
+                      linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
+                    })
+                  : <em className="text-drug-muted">No data available</em>}
+              </SubSection>
+              {drug.off_label_use && <SubSection title="Off-Label Use"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p></SubSection>}
+              <SubSection title="Contraindications" danger>{renderList(drug.contraindications, '\n', true)}</SubSection>
+              {drug.precautions && <SubSection title="Precautions" danger>{renderList(drug.precautions, '\n', true)}</SubSection>}
+              <button type="button" onClick={() => goToTab('interactions')} className="text-sm font-semibold text-primary-700 hover:underline">
+                View interactions →
+              </button>
+            </ProfileAccordion>
+
+            <ProfileAccordion icon={Stethoscope} tint={{ bg: '#F3E8FF', fg: '#7E22CE' }} title="Nursing Considerations" subtitle="Key nursing responsibilities and monitoring">
+              <div className="pt-3">
+                {renderList(drug.nursing_action || drug.nursing_considerations, drug.nursing_action ? '\n' : ';')}
+              </div>
+            </ProfileAccordion>
+
+            <ProfileAccordion icon={AlertTriangle} tint={{ bg: '#FFF7ED', fg: '#F59E0B' }} title="Adverse Effects" subtitle="Common and serious side effects">
+              <div className="pt-3">
+                {renderList(drug.adverse_effect || drug.side_effects, drug.adverse_effect ? '\n' : ';')}
+              </div>
+            </ProfileAccordion>
+
+            <ProfileAccordion icon={Users} tint={{ bg: '#ECFEFF', fg: '#0E7490' }} title="Special Populations" subtitle="Use in pregnancy, lactation, paediatrics and geriatrics">
+              <SubSection title="Pregnancy and Lactation">
+                <p className="text-drug-text leading-relaxed">{drug.pregnancy_lactation || 'Refer to contraindications and consult current prescribing information.'}</p>
+              </SubSection>
+              {drug.child_dose && <SubSection title="Paediatric Dose"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.child_dose}</p></SubSection>}
+              {drug.renal_dose && <SubSection title="Renal Impairment"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.renal_dose}</p></SubSection>}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => goToTab('safety')} className="text-sm font-semibold text-primary-700 hover:underline">Safety tab →</button>
+                <button type="button" onClick={() => goToTab('dosage')} className="text-sm font-semibold text-primary-700 hover:underline">Dosage tab →</button>
+              </div>
+            </ProfileAccordion>
+
+            {/* Important note */}
+            <div className="flex items-start gap-3 rounded-[14px] border p-4" style={{ background: '#E6F0FE', borderColor: '#BFD6F8' }}>
+              <Info className="w-7 h-7 flex-shrink-0" style={{ color: NAVY }} />
+              <div>
+                <div className="text-lg font-extrabold" style={{ color: NAVY }}>Important Note</div>
+                <p className="text-sm sm:text-base text-drug-text">
+                  This information is for reference only and does not replace clinical judgement or current prescribing guidelines.
+                </p>
+              </div>
+            </div>
+
+            {/* Image tools stay available when a drug has no picture yet, or for admins */}
+            {(isAdmin || getDrugImages(drug).length === 0) && <DrugImageCard drug={drug} />}
 
             <AiSectionFill drug={drug} tabId="overview" onFilled={handleSectionFilled} />
           </>
@@ -2115,6 +2238,30 @@ export default function DrugDetailPage() {
         {/* ── AI INSIGHTS ──────────────────────────────────────────────── */}
         {activeTab === 'ai-insights' && <AiInsightsTab drug={drug} />}
 
+      </div>
+
+      {/* Bottom actions */}
+      <div className="grid grid-cols-2 gap-3 mt-6">
+        <AddToFavoritesHeart drug={drug} variant="button" />
+        {(() => {
+          let cond = null, sysId = null;
+          const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
+          for (const [sid, list] of Object.entries(SYSTEM_CONDITIONS)) {
+            const hit = list.find(c => tags.includes(c.id));
+            if (hit) { cond = hit; sysId = sid; break; }
+          }
+          return (
+            <Link
+              to={sysId ? `/system/${sysId}` : '/conditions'}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-white font-bold text-sm sm:text-base text-center"
+              style={{ background: NAVY }}
+            >
+              <BookOpen className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">View in Conditions{cond ? ` (${cond.label})` : ''}</span>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" />
+            </Link>
+          );
+        })()}
       </div>
 
       {/* Footer disclaimer — admin only */}

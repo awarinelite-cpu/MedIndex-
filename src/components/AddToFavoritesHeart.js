@@ -12,14 +12,14 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { slugifyDrugName } from '../utils/aiDrugSave';
-import { Heart, X, Plus, Check, FolderPlus } from 'lucide-react';
+import { Heart, X, Plus, Check, FolderPlus, Bookmark } from 'lucide-react';
 
 // Works for any drug shown anywhere in the app — including one only found
 // via an AI lookup that hasn't been saved to the database yet. A drug with
 // no real Firestore id gets a stable slug id instead (the same slug the
 // rest of the app uses if/when that drug is later saved for real), so a
 // favorite saved now still resolves correctly afterwards.
-export default function AddToFavoritesHeart({ drug, className = '' }) {
+export default function AddToFavoritesHeart({ drug, className = '', variant = 'icon' }) {
   const { user } = useAuth();
   const [open, setOpen]       = useState(false);
   const [lists, setLists]     = useState([]);
@@ -123,15 +123,27 @@ export default function AddToFavoritesHeart({ drug, className = '' }) {
 
   return (
     <>
-      <button
-        onClick={handleOpen}
-        title="Save to favorites"
-        className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${
-          saved ? 'text-red-500 hover:bg-red-50' : 'text-drug-muted hover:text-red-500 hover:bg-red-50'
-        } ${className}`}
-      >
-        <Heart className="w-4 h-4" fill={saved ? 'currentColor' : 'none'} />
-      </button>
+      {variant === 'button' ? (
+        <button
+          onClick={handleOpen}
+          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-full border-2 font-bold text-sm sm:text-base transition-colors bg-white ${
+            saved ? 'border-red-300 text-red-600' : 'border-primary-700 text-primary-800 hover:bg-primary-50'
+          } ${className}`}
+        >
+          <Bookmark className="w-5 h-5" fill={saved ? 'currentColor' : 'none'} />
+          {saved ? 'Saved to Favourites' : 'Save to Favourites'}
+        </button>
+      ) : (
+        <button
+          onClick={handleOpen}
+          title="Save to favorites"
+          className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${
+            saved ? 'text-red-500 hover:bg-red-50' : 'text-drug-muted hover:text-red-500 hover:bg-red-50'
+          } ${className}`}
+        >
+          <Heart className="w-4 h-4" fill={saved ? 'currentColor' : 'none'} />
+        </button>
+      )}
 
       {open && (
         <div
