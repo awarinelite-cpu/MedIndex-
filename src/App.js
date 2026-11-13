@@ -29,6 +29,7 @@ import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
 import AllConditionsPage from './pages/AllConditionsPage';
+import ConditionProfilePage from './pages/ConditionProfilePage';
 import AllSystemsPage from './pages/AllSystemsPage';
 import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
@@ -94,6 +95,11 @@ function App() {
         <Route path="/lists/:listId" element={
           <ProtectedUserRoute>
             <Layout><DrugListDetailPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/condition/:systemId/:conditionId" element={
+          <ProtectedUserRoute>
+            <ConditionProfilePage />
           </ProtectedUserRoute>
         } />
         <Route path="/conditions" element={

@@ -59,8 +59,7 @@ export default function AllConditionsPage() {
   }, [filtered]);
 
   const openCondition = (c) => {
-    try { sessionStorage.setItem(`system_open_condition_${c.systemId}`, c.id); } catch { /* storage unavailable: the system page still opens */ }
-    navigate(`/system/${c.systemId}`);
+    navigate(`/condition/${c.systemId}/${c.id}`);
   };
 
   return (
