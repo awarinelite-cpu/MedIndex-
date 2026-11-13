@@ -1308,11 +1308,6 @@ export default function AdminPage() {
                   <Sparkles className="w-4 h-4"/>AI Insight: fix {selectedIncomplete.length} selected
                 </button>
               )}
-              {!bulkFixRunning && !globalFixRunning && selectedIds.size===0 && incompleteInView.length>0 && (
-                <button onClick={()=>bulkFixWithAI(incompleteInView)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FDE68A',background:'#FFFBEB',color:'#B45309',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
-                  <Sparkles className="w-4 h-4"/>AI Insight: fix all {incompleteInView.length} incomplete
-                </button>
-              )}
               {incompleteInView.length>0 && (
                 <button onClick={()=>downloadIncompleteCSV(incompleteInView, showToast)} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #E2E8F0',background:'#fff',color:'#64748B',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
                   <Download className="w-4 h-4"/>Download {incompleteInView.length} incomplete (CSV)
@@ -1324,12 +1319,6 @@ export default function AdminPage() {
                   Fixing {bulkFixProgress.done} of {bulkFixProgress.total}…
                   <button onClick={stopBulkFix} style={{background:'none',border:'none',cursor:'pointer',color:'#B45309',textDecoration:'underline',fontWeight:700,fontSize:13}}>Stop</button>
                 </div>
-              )}
-              {!forceRegenRunning && !bulkFixRunning && !globalFixRunning && drugs.length>0 && (
-                <button onClick={()=>setConfirmForceRegen(true)} title="Overwrite every field on every drug with a fresh Gemini lookup (openFDA + RxNorm + always-on search) — including fields that already have content"
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,cursor:'pointer',whiteSpace:'nowrap'}}>
-                  <RefreshCw className="w-4 h-4"/>Force Regenerate All {drugs.length}
-                </button>
               )}
               {forceRegenRunning && (
                 <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderRadius: 32,border:'1.5px solid #FECACA',background:'#FEF2F2',color:'#DC2626',fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
