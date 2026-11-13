@@ -1573,13 +1573,20 @@ function strengthTokens(strength) {
   return line ? [line.length > 22 ? `${line.slice(0, 22)}…` : line] : [];
 }
 
-function findConditionLink(drug) {
+function findDrugConditions(drug) {
   const tags = Array.isArray(drug.condition_tags) ? drug.condition_tags : [];
-  for (const [sid, list] of Object.entries(SYSTEM_CONDITIONS)) {
-    const hit = list.find(c => tags.includes(c.id));
-    if (hit) return { to: `/system/${sid}`, label: hit.label };
+  const roles = drug.condition_roles || {};
+  const seen = new Set();
+  const out = [];
+  for (const list of Object.values(SYSTEM_CONDITIONS)) {
+    for (const c of list) {
+      if (tags.includes(c.id) && !seen.has(c.id)) {
+        seen.add(c.id);
+        out.push({ id: c.id, label: c.label, role: roles[c.id] || null });
+      }
+    }
   }
-  return { to: '/conditions', label: null };
+  return out;
 }
 
 function DrugHeroImage({ drug, onOpen }) {
@@ -1677,7 +1684,7 @@ function Sheet({ title, onClose, children }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4 space-y-4 overflow-y-auto">{children}</div>
+        <div className="p-4 space-y-4 overflow-y-auto min-h-0 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>{children}</div>
         <div className="px-4 py-3 border-t border-drug-border bg-primary-50/50 flex-shrink-0">
           <button
             onClick={onClose}
@@ -2231,7 +2238,7 @@ export default function DrugDetailPage() {
         </Sheet>
       )}
       {sheet === 'uses' && (() => {
-        const cond = findConditionLink(drug);
+        const conds = findDrugConditions(drug);
         return (
           <Sheet title="What it's used for" onClose={() => setSheet(null)}>
             {(drug.indications || drug.primary_indications)
@@ -2240,9 +2247,24 @@ export default function DrugDetailPage() {
                 })
               : <em className="text-drug-muted">No data available</em>}
             {drug.off_label_use && <SubSection title="Off-Label Use"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p></SubSection>}
-            <Link to={cond.to} className="inline-block text-sm font-semibold text-primary-700 hover:underline">
-              View in Conditions{cond.label ? ` (${cond.label})` : ''} →
-            </Link>
+            {conds.length > 0 && (
+              <SubSection title="Used in these conditions">
+                <ul className="space-y-2">
+                  {conds.map(c => (
+                    <li key={c.id} className="flex items-center justify-between gap-2 text-drug-text">
+                      <span className="font-medium">{c.label}</span>
+                      {c.role && (
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                          c.role === 'main' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {c.role === 'main' ? 'Main indicated' : 'Adjunct'}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </SubSection>
+            )}
           </Sheet>
         );
       })()}
