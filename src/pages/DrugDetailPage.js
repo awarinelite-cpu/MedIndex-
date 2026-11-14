@@ -21,10 +21,11 @@ import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectio
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import PasteZone from '../components/PasteZone';
 import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
+import useAutoPasteImages from '../hooks/useAutoPasteImages';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl, saveDrugImageUrls,
   findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
-  uploadClipboardImageToImgChest, getDrugImages, deleteDrugImage,
+  uploadClipboardImageToImgChest, getDrugImages, deleteDrugImage, normalizeImageUrl,
 } from '../utils/generateDrugImage';
 import {
   collection, getDocs, doc, updateDoc, addDoc,
@@ -687,6 +688,11 @@ function DrugImageCard({ drug }) {
   const [pasteNotice, setPasteNotice] = useState('');
   const [batchProgress, setBatchProgress] = useState(''); // e.g. "Uploading 2 of 5…"
   const [deleteState, setDeleteState] = useState('idle'); // idle | deleting | error
+  // Pictures just saved whose Firestore snapshot may not have reached `images`
+  // yet — merged into the next save so back-to-back auto-pastes never overwrite
+  // each other. Entries drop out as soon as the live list contains them.
+  const pendingSavedRef = useRef([]);
+  const autoPasteOnRef = useRef(false);
 
   const handleFindReal = async () => {
     setFindState('searching');
@@ -760,14 +766,19 @@ function DrugImageCard({ drug }) {
     }
     setBatchProgress('');
     try {
-      if (urls.length > 0) await saveDrugImageUrls({ docId, urls, existingImages: images });
+      if (urls.length > 0) {
+        const have = new Set(images.map(im => im.url));
+        pendingSavedRef.current = pendingSavedRef.current.filter(e => !have.has(e.url));
+        await saveDrugImageUrls({ docId, urls, existingImages: [...images, ...pendingSavedRef.current] });
+        pendingSavedRef.current.push(...urls.map(u => ({ url: normalizeImageUrl((u || '').trim()), is_real: false })));
+      }
       // Live listener will push the new pictures in automatically.
       if (failed > 0) {
         setError(`${urls.length} of ${items.length} pictures added. ${failed} failed: ${lastErr}`);
         setBusy(urls.length > 0 ? 'idle' : 'error');
       } else {
         setBusy('idle');
-        setShowUrlField(false);
+        if (!autoPasteOnRef.current) setShowUrlField(false);
       }
     } catch (err) {
       setError(err.message || 'Failed to save the pictures.');
@@ -800,6 +811,17 @@ function DrugImageCard({ drug }) {
 
   const uploadClipboardBlobs = (blobs) =>
     uploadManyAndSave(blobs, (blob) => uploadClipboardImageToImgChest({ blob }), setPasteState);
+
+  // Auto-paste: pictures copied elsewhere are uploaded and saved as soon as the
+  // app sees them on the clipboard — no Paste button.
+  const autoPaste = useAutoPasteImages({
+    busy: pasteState === 'uploading' || uploadState === 'uploading',
+    onImages: async (blobs) => {
+      await uploadClipboardBlobs(blobs);
+      setPasteNotice(`Auto-added ${blobs.length} copied picture${blobs.length > 1 ? 's' : ''}. Keep copying — the next one will be added automatically.`);
+    },
+  });
+  autoPasteOnRef.current = autoPaste.enabled;
 
   const handleDeleteImage = async (index) => {
     if (!window.confirm('Remove this picture?')) return;
@@ -843,6 +865,29 @@ function DrugImageCard({ drug }) {
 
   const addPhotoControls = (
     <div className="mt-4 flex flex-col gap-2 max-w-md mx-auto">
+      <div className={`rounded-xl border-2 px-3 py-2.5 ${autoPaste.enabled ? 'border-emerald-400 bg-emerald-50' : 'border-violet-200 bg-violet-50/50'}`}>
+        <button
+          onClick={autoPaste.enabled ? autoPaste.disable : autoPaste.enable}
+          className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${
+            autoPaste.enabled ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-violet-600 text-white hover:bg-violet-700'
+          }`}
+        >
+          {autoPaste.enabled
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Auto-paste is ON — tap to stop</>
+            : <><ClipboardPaste className="w-4 h-4" /> Turn on Auto-paste</>}
+        </button>
+        <p className="text-xs text-drug-muted mt-2 text-center">
+          {autoPaste.enabled
+            ? (pasteState === 'uploading' && batchProgress ? batchProgress : 'Copy a picture in the browser, then come back here — it uploads and saves by itself.')
+            : 'Copy pictures from a website one after another; each one is uploaded and saved to this drug automatically.'}
+        </p>
+        {autoPaste.status === 'denied' && (
+          <p className="text-xs text-red-600 mt-1 text-center">Clipboard access was blocked. Allow it for this app in your browser/app settings, then turn Auto-paste on again.</p>
+        )}
+        {autoPaste.status === 'unsupported' && (
+          <p className="text-xs text-red-600 mt-1 text-center">This browser can’t read the clipboard automatically. Use Paste from Clipboard below instead.</p>
+        )}
+      </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <input
           type="url"
@@ -990,7 +1035,7 @@ function DrugImageCard({ drug }) {
           )
         )}
 
-        {isAdmin && showUrlField && addPhotoControls}
+        {isAdmin && (showUrlField || autoPaste.enabled) && addPhotoControls}
         {error && <p className="text-xs text-red-600 mt-2 text-center">{error}</p>}
       </div>
     );
