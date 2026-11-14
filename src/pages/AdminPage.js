@@ -8,7 +8,7 @@ import {
 import { db } from '../firebase';
 import {
   Upload, Database, Trash2, Edit,
-  Search, AlertTriangle, CheckSquare, Square,
+  Search, SearchX, AlertTriangle, CheckSquare, Square,
   X, Save, Filter, ChevronDown, RefreshCw,
   Sparkles, ChevronRight, Zap, PlayCircle, Download, BookOpen,
   FileText, Stethoscope, Settings as SettingsIcon,
@@ -1220,6 +1220,7 @@ export default function AdminPage() {
           </button>
           <Link to="/admin/bulk-images" className="ad-quick-tile"><ImageIcon/><span>Bulk Images</span></Link>
           <Link to="/admin/review" className="ad-quick-tile"><ClipboardCheck/><span>Review</span></Link>
+          <Link to="/admin/missing-searches" className="ad-quick-tile"><SearchX/><span>Missing</span></Link>
           <button
             className="ad-quick-tile"
             onClick={()=>{

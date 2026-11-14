@@ -10,7 +10,8 @@ import { db } from '../firebase';
 // Debounce so we log once per pause-in-typing, not on every keystroke.
 let pendingTimer = null;
 
-export function logSearch({ user, query, resultCount }) {
+// type: 'drug' | 'condition' | 'general' — which search box the query came from.
+export function logSearch({ user, query, resultCount, type = 'drug' }) {
   if (!user || !query || !query.trim()) return;
 
   clearTimeout(pendingTimer);
@@ -20,6 +21,7 @@ export function logSearch({ user, query, resultCount }) {
       userEmail:   user.email || '',
       userName:    user.displayName || '',
       query:       query.trim(),
+      type,
       resultCount: typeof resultCount === 'number' ? resultCount : null,
       createdAt:   serverTimestamp(),
     }).catch(() => {

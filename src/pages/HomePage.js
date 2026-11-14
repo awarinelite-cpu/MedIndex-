@@ -17,6 +17,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
+import { logSearch } from '../utils/logSearch';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
 
 // ── Explore medical topics: six shortcut cards ────────────────────────────
@@ -194,6 +195,11 @@ export default function HomePage() {
     if (!deferredQuery.trim()) return [];
     return searchDrugs(ALL_DRUGS, deferredQuery);
   }, [ALL_DRUGS, deferredQuery]);
+
+  // Log Home searches so the admin 'Missing searches' page can list ones with no match.
+  useEffect(() => {
+    if (deferredQuery.trim()) logSearch({ user, query: deferredQuery, type: 'general', resultCount: allMatchingDrugs.length });
+  }, [user, deferredQuery, allMatchingDrugs.length]);
 
   // Whether the search text is an exact drug name — if so, the instant
   // dropdown above already covers it and the AI "not in our database yet"

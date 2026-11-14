@@ -205,9 +205,9 @@ export default function BrowsePage() {
   // so it only fires once typing pauses, not on every keystroke).
   useEffect(() => {
     if (searchQuery.trim()) {
-      logSearch({ user, query: searchQuery, resultCount: filteredDrugs.length });
+      logSearch({ user, query: searchQuery, type: 'drug', resultCount: (filterClass || filterStatus) ? null : filteredDrugs.length });
     }
-  }, [user, searchQuery, filteredDrugs.length]);
+  }, [user, searchQuery, filterClass, filterStatus, filteredDrugs.length]);
 
   // Full roster of drugs in the currently filtered class, independent of any
   // search/status narrowing — used so the AI class-expansion knows about

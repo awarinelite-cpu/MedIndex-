@@ -4,7 +4,7 @@
 // minus any an admin hid, with admin renames applied, plus custom/AI-approved
 // ones). Tapping a condition opens its system page with that condition's
 // card already expanded, the same state SystemPage restores on Back.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ChevronRight, Search, X } from 'lucide-react';
 import { WaveBackdrop, CrossArt } from '../components/dashboard/HeroArt';
@@ -12,6 +12,8 @@ import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import { useAuth } from '../context/AuthContext';
+import { logSearch } from '../utils/logSearch';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
 
 const VIEWS = [['all', 'All conditions'], ['system', 'Body system'], ['az', 'A-Z']];
@@ -20,6 +22,7 @@ export default function AllConditionsPage() {
   const navigate = useNavigate();
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
   const { imagesByCondition } = useConditionClinicalInfo();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [view, setView] = useState('all');
 
@@ -52,6 +55,11 @@ export default function AllConditionsPage() {
     const q = query.trim().toLowerCase();
     return q ? all.filter(c => c.label.toLowerCase().includes(q) || c.systemName.toLowerCase().includes(q)) : all;
   }, [all, query]);
+
+  // Log condition searches (admin 'Missing searches' page uses the zero-result ones).
+  useEffect(() => {
+    if (query.trim()) logSearch({ user, query, type: 'condition', resultCount: filtered.length });
+  }, [user, query, filtered.length]);
 
   // Group under A-Z letter headings (anything non-alphabetic goes under #),
   // or under body-system headings in the Body system view.

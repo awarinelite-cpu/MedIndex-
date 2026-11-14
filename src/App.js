@@ -21,6 +21,7 @@ import DrugListDetailPage from './pages/DrugListDetailPage';
 import AdminPage from './pages/AdminPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminReviewPage from './pages/AdminReviewPage';
+import AdminMissingSearchesPage from './pages/AdminMissingSearchesPage';
 import AdminAiInstructPage from './pages/AdminAiInstructPage';
 import AllClassesPage from './pages/AllClassesPage';
 import UploadPage from './pages/UploadPage';
@@ -184,6 +185,11 @@ function App() {
         <Route path="/admin/review" element={
           <ProtectedAdminRoute>
             <AdminLayout><AdminReviewPage /></AdminLayout>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/missing-searches" element={
+          <ProtectedAdminRoute>
+            <AdminLayout><AdminMissingSearchesPage /></AdminLayout>
           </ProtectedAdminRoute>
         } />
         <Route path="/admin/ai-assistant" element={

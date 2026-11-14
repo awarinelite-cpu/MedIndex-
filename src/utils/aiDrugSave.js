@@ -994,3 +994,28 @@ export async function addMedicationsToCondition({ names, conditionId, existingDr
   }
   return results;
 }
+
+
+// Creates a name-only drug (no AI) for the admin to fill in later. Returns its id.
+// If a drug with that id already exists it is left untouched.
+export async function createPlaceholderDrug(name, extraTags = []) {
+  const contributor = await getContributorInfo();
+  const id = slugifyDrugName(name);
+  const ref = doc(db, 'drugs', id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await setDoc(ref, {
+      generic_name:        name,
+      drug_class:          'Unknown',
+      prescription_status: 'Prescription',
+      source:              'Manual (searched, not found)',
+      status:              'Active',
+      info_pending:        true,
+      condition_tags:      extraTags,
+      created_at:          serverTimestamp(),
+      last_updated:        serverTimestamp(),
+      ...buildReviewMeta(contributor, 'new'),
+    });
+  }
+  return id;
+}
