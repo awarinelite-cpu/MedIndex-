@@ -7,6 +7,8 @@ import {
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useRecentActivity } from '../hooks/useRecentlyViewed';
+import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import { normalizeImageUrl } from '../utils/generateDrugImage';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';
@@ -97,8 +99,18 @@ function RxBadge({ status }) {
 }
 
 
+// Condition picture for a Recently viewed row: the condition's own picture
+// always wins; organ artwork / stethoscope only when it has none (or it fails to load).
+function ConditionThumb({ url, art }) {
+  const [failed, setFailed] = useState(false);
+  const src = !failed && url ? normalizeImageUrl(url) : art;
+  if (src) return <img src={src} alt="" loading="lazy" onError={() => { if (url && !failed) setFailed(true); }} />;
+  return <StethoIcon size={22} strokeWidth={2.2} />;
+}
+
 export default function HomePage() {
   const { user } = useAuth();
+  const { imagesByCondition } = useConditionClinicalInfo();
   const { drugs: ALL_DRUGS } = useDrugs();
   const recent = useRecentActivity(user?.uid);
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
@@ -395,7 +407,7 @@ export default function HomePage() {
                     onClick={() => { try { sessionStorage.setItem(`system_open_condition_${item.systemId}`, item.id); } catch { /* optional */ } }}
                   >
                     <span className="mi-recent-thumb" style={{ background: '#e3eeff', color: '#1769e0' }}>
-                      {art ? <img src={art} alt="" loading="lazy" /> : <StethoIcon size={22} strokeWidth={2.2} />}
+                      <ConditionThumb key={imagesByCondition?.[item.id]?.[0]?.url || 'none'} url={imagesByCondition?.[item.id]?.[0]?.url} art={art} />
                     </span>
                     <span className="mi-recent-main">
                       <span className="mi-recent-name">{item.label}</span>
