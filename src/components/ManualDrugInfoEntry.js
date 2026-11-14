@@ -164,8 +164,15 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
           {error && <p className="text-xs text-red-600">{error}</p>}
           {parsed && (
             <div className="rounded-lg bg-white border border-violet-200 p-2 text-xs space-y-1">
-              <p className="font-semibold text-violet-900">Ready to save {Object.keys(parsed.updates).length} field(s):</p>
-              <p className="text-drug-muted break-words">{Object.keys(parsed.updates).join(', ')}</p>
+              <p className="font-semibold text-violet-900">Preview — {Object.keys(parsed.updates).length} field(s) will be saved to {drug.generic_name}:</p>
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {Object.entries(parsed.updates).map(([k, v]) => (
+                  <div key={k} className="rounded-md border border-violet-100 bg-violet-50/50 p-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-violet-700">{k.replace(/_/g, ' ')}</p>
+                    <p className="text-sm text-drug-text whitespace-pre-line break-words">{v}</p>
+                  </div>
+                ))}
+              </div>
               {nameMismatch && <p className="text-amber-700">CSV generic_name “{parsed.csvName}” differs from this drug — it is ignored; data saves to {drug.generic_name}.</p>}
               {parsed.ignored.length > 0 && <p className="text-amber-700">Ignored unknown columns: {parsed.ignored.join(', ')}</p>}
             </div>
