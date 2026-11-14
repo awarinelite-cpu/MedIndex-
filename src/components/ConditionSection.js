@@ -791,7 +791,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   };
 
   return (
-    <div className={`bg-white/95 border rounded-3xl overflow-hidden ${isEmpty ? 'border-dashed border-blue-200' : 'border-white shadow-[0_10px_30px_rgba(40,90,200,0.12)]'}`}>
+    <div id={`cond-${condition.id}`} className={`scroll-mt-24 bg-white/95 border rounded-3xl overflow-hidden ${isEmpty ? 'border-dashed border-blue-200' : 'border-white shadow-[0_10px_30px_rgba(40,90,200,0.12)]'}`}>
       {/* Header */}
       <div
         role="button"

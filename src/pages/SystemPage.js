@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useNavigationType } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
@@ -814,8 +814,22 @@ export default function SystemPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [systemId]);
 
+  const navType = useNavigationType();
   useEffect(() => {
     if (loading) return;
+    // Arriving by a normal link (not Back) with a condition open: jump straight
+    // to that condition instead of restoring an old scroll position.
+    const openId = sessionStorage.getItem(`system_open_condition_${systemId}`);
+    if (openId && navType !== 'POP') {
+      let tries = 0;
+      const go = () => {
+        const el = document.getElementById(`cond-${openId}`);
+        if (el) { el.scrollIntoView({ block: 'start' }); return; }
+        if (++tries < 15) setTimeout(go, 100);
+      };
+      requestAnimationFrame(go);
+      return;
+    }
     const key = `system_scroll_${systemId}`;
     const saved = sessionStorage.getItem(key);
     if (!saved) return;

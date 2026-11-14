@@ -394,9 +394,8 @@ export default function HomePage() {
                 return (
                   <Link
                     key={item.key}
-                    to={`/system/${item.systemId}`}
+                    to={`/condition/${item.systemId}/${item.id}`}
                     className="mi-recent-row"
-                    onClick={() => { try { sessionStorage.setItem(`system_open_condition_${item.systemId}`, item.id); } catch { /* optional */ } }}
                   >
                     <span className="mi-recent-thumb" style={{ background: '#e3eeff', color: '#1769e0' }}>
                       <ConditionThumb key={imagesByCondition?.[item.id]?.[0]?.url || 'none'} url={imagesByCondition?.[item.id]?.[0]?.url} art={art} />
