@@ -11,6 +11,8 @@ import { WaveBackdrop, CrossArt } from '../components/dashboard/HeroArt';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { useCustomConditions } from '../hooks/useCustomConditions';
+import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
 
 // Pastel badge colours per body system, matching the design mockup.
 const BADGES = {
@@ -30,6 +32,7 @@ const VIEWS = [['all', 'All conditions'], ['system', 'Body system'], ['az', 'A-Z
 export default function AllConditionsPage() {
   const navigate = useNavigate();
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
+  const { imagesByCondition } = useConditionClinicalInfo();
   const [query, setQuery] = useState('');
   const [view, setView] = useState('all');
 
@@ -150,14 +153,22 @@ export default function AllConditionsPage() {
         groups.map(([heading, items]) => (
           <section key={heading} id={`cond-group-${heading}`} className="mi-cond-group">
             <h2>{heading}</h2>
-            <div className="mi-cond-list">
-              {items.map(c => (
-                <button type="button" key={`${c.systemId}:${c.id}`} className="mi-cond-row" onClick={() => openCondition(c)}>
-                  <span className="mi-cond-name">{c.label}</span>
-                  {view !== 'system' && <span className="mi-cond-sys" style={badgeStyle(c.systemId)}>{c.systemName}</span>}
-                  <ChevronRight size={20} strokeWidth={2.6} />
-                </button>
-              ))}
+            <div className="mi-recent mi-cond-cards">
+              {items.map(c => {
+                const url = imagesByCondition?.[c.id]?.[0]?.url;
+                return (
+                  <button type="button" key={`${c.systemId}:${c.id}`} className="mi-recent-row mi-cond-card" onClick={() => openCondition(c)}>
+                    <span className="mi-recent-thumb" style={{ background: '#e3eeff', color: '#1769e0' }}>
+                      <ConditionThumb key={url || 'none'} url={url} art={ORGAN_THUMBS[c.systemId]} />
+                    </span>
+                    <span className="mi-recent-main">
+                      <span className="mi-recent-name">{c.label}</span>
+                      <span className="mi-recent-sub">Condition &middot; {c.systemName}</span>
+                    </span>
+                    <ChevronRight size={20} strokeWidth={2.4} className="mi-recent-chev" />
+                  </button>
+                );
+              })}
             </div>
           </section>
         ))

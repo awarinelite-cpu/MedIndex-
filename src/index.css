@@ -1165,3 +1165,8 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .cp-detail-section { padding-top: 14px; }
 .cp-detail-section h3 { font-size: 17px; font-weight: 800; color: var(--cp-ink); }
 .cp-detail-section .cp-prose { margin-top: 6px; }
+
+/* Conditions list: each row looks like a Home "Recently viewed" row */
+.mi-cond-cards { margin-bottom: 4px; }
+button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: pointer; color: var(--mi-ink); background: var(--mi-surface); background-image: none; }
+.mi-cond-card .mi-recent-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

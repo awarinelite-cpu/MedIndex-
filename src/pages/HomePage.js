@@ -18,6 +18,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
+import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
 
 // ── Explore medical topics: six shortcut cards ────────────────────────────
 const TOPICS = [
@@ -29,6 +30,7 @@ const TOPICS = [
   { to: '/calculators',     title: 'Calculators',         sub: 'Medical Calculators',    Icon: Calculator,     grad: ['#7357ec', '#3f2cc0'] },
 ];
 
+const PUBLIC = process.env.PUBLIC_URL || '';
 // Organ artwork for the recently-viewed rows (falls back to the drug photo,
 // then to a coloured icon tile for systems without artwork).
 // Firestore timestamps arrive as Timestamp objects live, or {seconds} once cached.
@@ -40,12 +42,6 @@ const toMs = (v) => {
   return Date.parse(v) || 0;
 };
 
-const PUBLIC = process.env.PUBLIC_URL || '';
-const ORGAN_THUMBS = {
-  respiratory: `${PUBLIC}/img/organ-lungs.webp`,
-  cardiovascular: `${PUBLIC}/img/organ-heart.webp`,
-  renal: `${PUBLIC}/img/organ-kidneys.webp`,
-};
 
 // ── Hero carousel slides ───────────────────────────────────────────────────
 const SLIDES = [
@@ -98,15 +94,6 @@ function RxBadge({ status }) {
   );
 }
 
-
-// Condition picture for a Recently viewed row: the condition's own picture
-// always wins; organ artwork / stethoscope only when it has none (or it fails to load).
-function ConditionThumb({ url, art }) {
-  const [failed, setFailed] = useState(false);
-  const src = !failed && url ? normalizeImageUrl(url) : art;
-  if (src) return <img src={src} alt="" loading="lazy" onError={() => { if (url && !failed) setFailed(true); }} />;
-  return <StethoIcon size={22} strokeWidth={2.2} />;
-}
 
 export default function HomePage() {
   const { user } = useAuth();
