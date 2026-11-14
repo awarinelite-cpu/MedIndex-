@@ -101,7 +101,7 @@ export default function HomePage() {
   const { drugs: ALL_DRUGS } = useDrugs();
   const recent = useRecentActivity(user?.uid);
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
-  const [showAllRecent, setShowAllRecent] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(true); // expanded by default
 
   // Hero carousel: auto-advances every 6s unless the person prefers reduced
   // motion; tapping a dot jumps to that slide and restarts the timer.
@@ -131,7 +131,7 @@ export default function HomePage() {
       .map(drug => ({ drug, t: toMs(drug.last_updated) }))
       .filter(x => x.t > 0)
       .sort((a, b) => b.t - a.t)
-      .slice(0, 5)
+      .slice(0, 8)
       .forEach(({ drug, t }) => push({ key: `drug:${drug.id}`, kind: 'drug', drug, t, tag: 'Updated' }));
 
     const systemNames = new Map(ANATOMICAL_SYSTEMS.map(sys => [sys.id, sys.name]));
@@ -155,7 +155,7 @@ export default function HomePage() {
       });
     });
 
-    return [...items.values()].sort((a, b) => b.t - a.t).slice(0, 10);
+    return [...items.values()].sort((a, b) => b.t - a.t).slice(0, 16);
   }, [ALL_DRUGS, recent, customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem]);
   const recentShown = showAllRecent ? RECENT : RECENT.slice(0, 3);
 

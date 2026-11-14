@@ -4,7 +4,7 @@
 // so a shared phone doesn't mix up two people's history.
 import { useState, useEffect } from 'react';
 
-const MAX_RECENT = 10;
+const MAX_RECENT = 20;
 const drugKey = (uid) => `medindex_recent_drugs:${uid || 'anon'}`;
 const timeKey = (uid) => `medindex_recent_drug_times:${uid || 'anon'}`;
 const condKey = (uid) => `medindex_recent_conditions:${uid || 'anon'}`;
