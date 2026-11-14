@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  FlaskConical, Heart, Home, Info, Pill, Search, Share2, Target, User,
+  ExternalLink, FlaskConical, Heart, Home, Info, Pill, Search, Share2, Target, User,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
@@ -121,7 +121,20 @@ function RegimenRow({ regimen }) {
   );
 }
 
-function MedicationsCard({ buckets }) {
+// Opens a Google search for the medications used to treat this condition.
+function GoogleMedsButton({ name }) {
+  if (!name) return null;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(`${name} treatment medications list`)}`;
+  return (
+    <a className="cp-google-btn" href={url} target="_blank" rel="noopener noreferrer">
+      <Search size={18} strokeWidth={2.4} />
+      <span>Search medications on Google</span>
+      <ExternalLink size={16} strokeWidth={2.4} />
+    </a>
+  );
+}
+
+function MedicationsCard({ buckets, conditionName }) {
   const [openCats, setOpenCats] = useState(null); // null = first group open by default
 
   const { groups, regimens, comboNames } = useMemo(() => {
@@ -163,6 +176,7 @@ function MedicationsCard({ buckets }) {
       <section className="cp-card">
         <h2 className="cp-card-title"><span className="cp-card-icon"><Pill size={30} strokeWidth={2.4} /></span>Medications Used for this Condition</h2>
         <p className="cp-empty">No medications have been linked to this condition yet.</p>
+        <GoogleMedsButton name={conditionName} />
       </section>
     );
   }
@@ -191,6 +205,8 @@ function MedicationsCard({ buckets }) {
           </CategoryGroup>
         )}
       </div>
+
+      <GoogleMedsButton name={conditionName} />
 
       <div className="cp-note" role="note">
         <Info size={22} strokeWidth={2.2} />
@@ -328,7 +344,7 @@ export default function ConditionProfilePage() {
             </div>
           )}
         </section>
-        <MedicationsCard buckets={buckets} />
+        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} />
       </>
     );
   }
