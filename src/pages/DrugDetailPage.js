@@ -19,6 +19,8 @@ import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { needsStrengthOnly, fetchPronunciationText, savePronunciation, fetchBrandsText, saveBrandNames, saveTabAiInsight } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import { shareDrugPdf } from '../utils/exportDrugPdf';
+import PasteZone from '../components/PasteZone';
+import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
 import {
   generateDrugImage, saveDrugImage, saveDrugImageUrl, saveDrugImageUrls,
   findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
@@ -682,6 +684,7 @@ function DrugImageCard({ drug }) {
   const [fetchUrlInput, setFetchUrlInput] = useState('');
   const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
+  const [pasteNotice, setPasteNotice] = useState('');
   const [batchProgress, setBatchProgress] = useState(''); // e.g. "Uploading 2 of 5…"
   const [deleteState, setDeleteState] = useState('idle'); // idle | deleting | error
 
@@ -742,6 +745,7 @@ function DrugImageCard({ drug }) {
   const uploadManyAndSave = async (items, uploadOne, setBusy) => {
     setBusy('uploading');
     setError('');
+    setPasteNotice('');
     const urls = [];
     let failed = 0;
     let lastErr = '';
@@ -813,15 +817,7 @@ function DrugImageCard({ drug }) {
   // Ctrl+V / long-press-paste anywhere on the card, when it (or a child)
   // has focus — works when a picture is on the clipboard from "Copy Image".
   const handlePasteEvent = (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    const blobs = [];
-    for (const item of items) {
-      if (item.type?.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) blobs.push(blob);
-      }
-    }
+    const blobs = imagesFromPasteEvent(e);
     if (blobs.length > 0) {
       e.preventDefault();
       uploadClipboardBlobs(blobs);
@@ -833,18 +829,12 @@ function DrugImageCard({ drug }) {
   const handlePasteButton = async () => {
     setPasteState('uploading');
     setError('');
+    setPasteNotice('');
     try {
-      if (!navigator.clipboard?.read) {
-        throw new Error('Clipboard paste isn\u2019t supported in this browser. Try Upload Photo instead.');
-      }
-      const items = await navigator.clipboard.read();
-      const blobs = [];
-      for (const item of items) {
-        const imageType = item.types.find(t => t.startsWith('image/'));
-        if (imageType) blobs.push(await item.getType(imageType));
-      }
+      const blobs = await imagesFromClipboardApi();
       if (blobs.length === 0) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
       await uploadClipboardBlobs(blobs);
+      if (blobs.length === 1) setPasteNotice(ONE_PICTURE_NOTE);
     } catch (err) {
       setError(err.message || 'Failed to paste image from clipboard.');
       setPasteState('error');
@@ -910,6 +900,8 @@ function DrugImageCard({ drug }) {
           <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
         )}
       </button>
+      <PasteZone onImages={uploadClipboardBlobs} disabled={pasteState === 'uploading'} />
+      {pasteNotice && <p className="text-xs text-drug-muted">ℹ {pasteNotice}</p>}
       <div className="flex items-center gap-3">
         <div className="flex-1 h-px bg-drug-border" />
         <span className="text-xs text-drug-muted">or</span>

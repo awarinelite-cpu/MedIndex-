@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { ImageIcon, ClipboardList, Info, Loader2, Trash2, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { uploadClipboardImageToImgChest, uploadImageToImgChest } from '../utils/generateDrugImage';
+import PasteZone from './PasteZone';
+import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
 import { addConditionImageUrls, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
 
 /* ── Condition picture gallery (swipe to view more than one picture) ───── */
@@ -108,6 +110,7 @@ export default function ConditionImagesPanel({ condition, images }) {
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
+  const [notice, setNotice] = useState('');
 
   // Nothing to show a regular user, and nothing to do for them.
   if (!isAdmin && list.length === 0) return null;
@@ -117,6 +120,7 @@ export default function ConditionImagesPanel({ condition, images }) {
   const uploadMany = async (items, uploadOne) => {
     setPasteState('uploading');
     setError('');
+    setNotice('');
     const urls = [];
     let failed = 0;
     let lastErr = '';
@@ -158,15 +162,7 @@ export default function ConditionImagesPanel({ condition, images }) {
   // Ctrl+V / long-press paste while the panel (or a child) has focus.
   const handlePasteEvent = (e) => {
     if (!isAdmin) return;
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    const blobs = [];
-    for (const item of items) {
-      if (item.type?.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) blobs.push(blob);
-      }
-    }
+    const blobs = imagesFromPasteEvent(e);
     if (blobs.length > 0) {
       e.preventDefault();
       uploadBlobs(blobs);
@@ -178,18 +174,12 @@ export default function ConditionImagesPanel({ condition, images }) {
   const handlePasteButton = async () => {
     setPasteState('uploading');
     setError('');
+    setNotice('');
     try {
-      if (!navigator.clipboard?.read) {
-        throw new Error('Clipboard paste isn’t supported in this browser. Use Upload Photo(s) instead.');
-      }
-      const items = await navigator.clipboard.read();
-      const blobs = [];
-      for (const item of items) {
-        const imageType = item.types.find(t => t.startsWith('image/'));
-        if (imageType) blobs.push(await item.getType(imageType));
-      }
+      const blobs = await imagesFromClipboardApi();
       if (blobs.length === 0) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
       await uploadBlobs(blobs);
+      if (blobs.length === 1) setNotice(ONE_PICTURE_NOTE);
     } catch (e) {
       setError(e.message || 'Failed to paste image from clipboard.');
       setPasteState('error');
@@ -240,6 +230,12 @@ export default function ConditionImagesPanel({ condition, images }) {
         </div>
       )}
 
+      {isAdmin && (
+        <div className="mt-3">
+          <PasteZone onImages={uploadBlobs} disabled={uploading} />
+        </div>
+      )}
+
       {list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
 
       {isAdmin && list.length > 0 && (
@@ -262,6 +258,7 @@ export default function ConditionImagesPanel({ condition, images }) {
           <span>Copy image(s), then press Paste — or pick several photos with Upload Photo(s). You can also click here and press Ctrl+V (long-press → Paste on a phone).</span>
         </p>
       )}
+      {notice && <div className="text-xs text-slate-600 mt-2">ℹ {notice}</div>}
       {error && <div className="text-xs text-red-600 mt-2">⚠ {error}</div>}
     </div>
   );
