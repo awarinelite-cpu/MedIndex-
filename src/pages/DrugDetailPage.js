@@ -20,6 +20,7 @@ import { needsStrengthOnly, fetchPronunciationText, savePronunciation, fetchBran
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import PasteZone from '../components/PasteZone';
+import ManualDrugInfoEntry from '../components/ManualDrugInfoEntry';
 import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
 import useAutoPasteImages from '../hooks/useAutoPasteImages';
 import {
@@ -2217,6 +2218,8 @@ export default function DrugDetailPage() {
                 </div>
               )}
             </div>
+
+            {isAdmin && <ManualDrugInfoEntry drug={drug} onSaved={handleSectionFilled} />}
           </div>
         )}
 
