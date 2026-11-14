@@ -6,8 +6,7 @@
 // the last check is handed to `onImages` — no Paste button needed.
 //
 // Safeguards:
-//  • Opt-in only, and never persisted — it switches itself off when the screen
-//    is closed, so it can't upload pictures to the wrong drug later.
+//  • Opt-in; once on it stays on (remembered) until the user switches it off.
 //  • Whatever is already on the clipboard when you switch it on is ignored.
 //  • Each picture is recognised by a content fingerprint, so the same copied
 //    picture is never uploaded twice.
@@ -38,10 +37,21 @@ function classifyError(err) {
   return 'ignore';
 }
 
+// The on/off choice is remembered (until the user switches it off), and the
+// "already uploaded" fingerprints survive closing/reopening the Pictures screen.
+const FLAG_KEY = 'medindex_autopaste_on';
+const readFlag = () => {
+  try { return localStorage.getItem(FLAG_KEY) === '1' && !!navigator.clipboard?.read; } catch { return false; }
+};
+const writeFlag = (on) => {
+  try { if (on) localStorage.setItem(FLAG_KEY, '1'); else localStorage.removeItem(FLAG_KEY); } catch { /* ignore */ }
+};
+const seenGlobal = new Set();
+
 export default function useAutoPasteImages({ onImages, busy = false, intervalMs = 2000 }) {
-  const [enabled, setEnabled] = useState(false);
-  const [status, setStatus] = useState('off'); // off | watching | denied | unsupported
-  const seen = useRef(new Set());
+  const [enabled, setEnabled] = useState(readFlag);
+  const [status, setStatus] = useState(() => (readFlag() ? 'watching' : 'off')); // off | watching | denied | unsupported
+  const seen = useRef(seenGlobal);
   const inFlight = useRef(false);
   const onImagesRef = useRef(onImages);
   const busyRef = useRef(busy);
@@ -89,7 +99,8 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
       setStatus('unsupported');
       return;
     }
-    seen.current = new Set();
+    seen.current.clear();
+    writeFlag(true);
     // Switch on immediately so the button reflects the tap. The baseline read
     // (which may show a permission prompt) happens in the background; the
     // in-flight guard stops the poller from uploading old clipboard content.
@@ -97,12 +108,14 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
     setStatus('watching');
     const ok = await check({ markOnly: true, force: true });
     if (!ok) {
+      writeFlag(false);
       setEnabled(false);
       setStatus('denied');
     }
   }, [check]);
 
   const disable = useCallback(() => {
+    writeFlag(false);
     setEnabled(false);
     setStatus('off');
   }, []);
@@ -113,6 +126,7 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
     const run = async () => {
       const ok = await check();
       if (!ok) {
+        writeFlag(false);
         setEnabled(false);
         setStatus('denied');
       }
