@@ -1,13 +1,14 @@
 // src/components/PasteMedicationsPanel.js
 // Admin-only: paste a list of medications (e.g. copied from Google) onto a
 // condition. Each name is matched to an existing drug (just linked) or created
-// with full AI-generated drug information, then tagged to the condition.
+// saved as a name-only drug (no AI) to be filled in by hand later, then tagged
+// to the condition.
 import React, { useMemo, useState } from 'react';
-import { ClipboardPaste, Loader2, Check, AlertCircle } from 'lucide-react';
+import { ClipboardPaste, Check, AlertCircle } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { parseMedicationList, addMedicationsToCondition } from '../utils/aiDrugSave';
 
-const LABELS = { queued: 'Waiting', generating: 'Generating drug info...', linked: 'Linked (already in app)', added: 'Added with full info', failed: 'Failed' };
+const LABELS = { queued: 'Waiting', linked: 'Linked (already in app)', added: 'Added (fill in info later)', failed: 'Failed' };
 
 export default function PasteMedicationsPanel({ conditionId, conditionName }) {
   const { drugs } = useDrugs();
@@ -38,7 +39,7 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
   return (
     <div className="cp-paste">
       <h3 className="cp-paste-title"><ClipboardPaste size={18} strokeWidth={2.4} /> Paste medication list</h3>
-      <p className="cp-paste-hint">Copy the list from Google, paste it here (one drug per line), and save. Each drug gets its full information automatically.</p>
+      <p className="cp-paste-hint">Copy the list from Google, paste it here (one drug per line), and save. They are saved right away; you can add each drug's full information yourself afterwards.</p>
       <textarea className="cp-paste-box" rows={6} value={text} disabled={running}
         placeholder={`Paste medications for ${conditionName || 'this condition'}...`}
         onChange={e => setText(e.target.value)} />
@@ -56,7 +57,6 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
               <li key={n} className={st ? `is-${st}` : ''}>
                 <span>{n}</span>
                 <span className="cp-paste-st">
-                  {st === 'generating' && <Loader2 size={14} className="cp-spin" />}
                   {(st === 'linked' || st === 'added') && <Check size={14} />}
                   {st === 'failed' && <AlertCircle size={14} />}
                   {st ? (st === 'failed' && status[n].error ? status[n].error : LABELS[st]) : ''}

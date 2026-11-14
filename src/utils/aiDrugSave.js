@@ -944,10 +944,11 @@ export function parseMedicationList(text) {
 }
 
 // For each name: if the drug already exists in the database, just tag it with
-// this condition; otherwise generate its full drug information with AI, save
-// it, then tag it. Reports per-drug progress through onProgress(name, status).
-export async function addMedicationsToCondition({ names, conditionId, existingDrugs, onProgress, endpoint = '/api/drug-ai-details' }) {
-  await getContributorInfo(); // throws if not signed in
+// this condition; otherwise save a placeholder drug (name only, no AI) so the
+// admin can fill in the full information by hand later, then tag it. Reports
+// per-drug progress through onProgress(name, status).
+export async function addMedicationsToCondition({ names, conditionId, existingDrugs, onProgress }) {
+  const contributor = await getContributorInfo(); // throws if not signed in
   const byName = new Map();
   (existingDrugs || []).forEach(d => {
     if (d && !d._seed && d.generic_name) byName.set(normalizeDrugNameForMatch(d.generic_name), d);
@@ -956,30 +957,40 @@ export async function addMedicationsToCondition({ names, conditionId, existingDr
   for (const name of names) {
     try {
       const existing = byName.get(normalizeDrugNameForMatch(name));
-      let id;
-      let status;
-      if (existing) {
-        id = existing.id || slugifyDrugName(existing.generic_name);
-        status = 'linked';
-      } else {
-        onProgress?.(name, 'generating');
-        const text = await fetchAiDrugText({ genericName: name, endpoint });
-        const saved = await saveAiDrugToDatabase({ genericName: name, text, overwrite: true });
-        id = saved.id || slugifyDrugName(name);
-        status = 'added';
+      let id = existing ? (existing.id || slugifyDrugName(existing.generic_name)) : slugifyDrugName(name);
+      const ref = doc(db, 'drugs', id);
+      let status = 'linked';
+      if (!existing) {
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          await setDoc(ref, {
+            generic_name:        name,
+            drug_class:          'Unknown',
+            prescription_status: 'Prescription',
+            source:              'Manual (pasted list)',
+            status:              'Active',
+            info_pending:        true,
+            condition_tags:      [conditionId],
+            created_at:          serverTimestamp(),
+            last_updated:        serverTimestamp(),
+            ...buildReviewMeta(contributor, 'new'),
+          });
+          status = 'added';
+        }
       }
-      await updateDoc(doc(db, 'drugs', id), {
-        condition_tags: arrayUnion(conditionId),
-        condition_excluded: arrayRemove(conditionId),
-        last_updated: serverTimestamp(),
-      });
+      if (status === 'linked') {
+        await updateDoc(ref, {
+          condition_tags: arrayUnion(conditionId),
+          condition_excluded: arrayRemove(conditionId),
+          last_updated: serverTimestamp(),
+        });
+      }
       results.push({ name, status });
       onProgress?.(name, status);
     } catch (e) {
       results.push({ name, status: 'failed', error: e.message });
       onProgress?.(name, 'failed', e.message);
     }
-    await new Promise(r => setTimeout(r, 350));
   }
   return results;
 }
