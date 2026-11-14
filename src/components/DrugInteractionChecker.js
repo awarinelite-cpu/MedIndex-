@@ -4,6 +4,48 @@ import { useAiProvider } from '../context/AiProviderContext';
 import { fetchAiDrugText, saveAiDrugToDatabase, isDrugComplete, getMissingGroups, ensureDrugComplete } from '../utils/aiDrugSave';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
 import { apiUrl } from '../config/apiBase';
+import {
+  analyzePair, findLocalIncompatibles, findLocalCombinations,
+  mergePairResults, mergeLists,
+} from '../utils/localDrugInteractions';
+
+// Where a result came from — shown as a small badge so users can tell
+// database-backed findings from AI suggestions.
+const SOURCE_BADGE = {
+  database: { label: 'System data', color: '#1E40AF', bg: '#DBEAFE' },
+  both:     { label: 'System data + AI', color: '#065F46', bg: '#D1FAE5' },
+  ai:       { label: 'AI', color: '#4B5563', bg: '#E5E7EB' },
+};
+function SourceBadge({ source }) {
+  const b = SOURCE_BADGE[source];
+  if (!b) return null;
+  return (
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ color: b.color, background: b.bg }}>
+      {b.label}
+    </span>
+  );
+}
+
+// Quotes from the drug records that triggered a finding.
+function EvidenceList({ evidence }) {
+  if (!evidence || evidence.length === 0) return null;
+  return (
+    <div className="pt-3 border-t border-drug-border">
+      <p className="text-xs font-bold uppercase tracking-wide text-drug-muted mb-2">From the system's drug records</p>
+      <div className="space-y-2">
+        {evidence.map((e, i) => (
+          <div key={i} className="text-xs text-drug-text bg-gray-50 border border-drug-border rounded-lg px-3 py-2 leading-relaxed">
+            <span className="font-bold">{e.drug} · {e.section}</span>
+            {e.note && <span className="text-drug-muted"> — {e.note}</span>}
+            <p className="mt-0.5">“{e.text.length > 260 ? e.text.slice(0, 259) + '…' : e.text}”</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const nextTick = () => new Promise(r => setTimeout(r, 0));
 
 // ── Severity badge config ─────────────────────────────────────────────────────
 const SEVERITY = {
@@ -12,24 +54,6 @@ const SEVERITY = {
   contraindicated:{ label: 'Avoid Combination',    color: '#991B1B', bg: '#FEF2F2', border: '#FCA5A5', icon: AlertTriangle },
   unknown:       { label: 'Insufficient Data',     color: '#374151', bg: '#F9FAFB', border: '#D1D5DB', icon: AlertCircle },
 };
-
-// ── Build a local "Insufficient Data" result for a drug (or the primary
-// drug) that still lacks required clinical parameters after an auto-fill
-// attempt. Never sent to the AI for a safe/unsafe judgement — this is the
-// deterministic floor: no verdict without complete data, full stop.
-function insufficientDataResult(drugName, missingGroups, reason) {
-  const missingLabel = missingGroups.map(g => g.label).join(', ') || 'clinical data';
-  return {
-    drug: drugName,
-    severity: 'unknown',
-    mechanism: null,
-    effect: null,
-    recommendation:
-      reason ||
-      `Cannot be flagged safe or unsafe yet — this drug's record is still missing: ${missingLabel}. ` +
-      `A verdict requires all required clinical parameters to be on file first.`,
-  };
-}
 
 // ── API call via Vercel backend route (multi-provider) ────────────────────────
 async function checkInteractionsWithAI(primaryDrug, selectedDrugs, providerId = 'gemini') {
@@ -145,6 +169,7 @@ function DrugSearchInput({ allDrugs, excluded, onAdd }) {
       const text   = await fetchAiDrugText({ genericName: name, endpoint: provider.endpoint });
       const parsed = parseAiDrugDetail(text);
       onAdd({
+        ...parsed,
         id: `unsaved-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
         generic_name: name,
         drug_class: parsed.drug_class || '',
@@ -330,6 +355,7 @@ function InteractionResult({ result, onRemove }) {
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 flex-shrink-0" style={{ color: sev.color }} />
           <span className="font-bold text-sm" style={{ color: sev.color }}>{result.drug}</span>
+          <SourceBadge source={result.source} />
         </div>
         <div className="flex items-center gap-3">
           <span
@@ -363,6 +389,18 @@ function InteractionResult({ result, onRemove }) {
           <div className="pt-1 border-t" style={{ borderColor: sev.border }}>
             <span className="text-xs font-bold uppercase tracking-wide" style={{ color: sev.color, opacity: 0.7 }}>Recommendation</span>
             <p className="text-sm font-medium mt-0.5" style={{ color: sev.color }}>{result.recommendation}</p>
+          </div>
+        )}
+        {result.evidence && result.evidence.length > 0 && (
+          <div className="pt-2 border-t" style={{ borderColor: sev.border }}>
+            <span className="text-xs font-bold uppercase tracking-wide" style={{ color: sev.color, opacity: 0.7 }}>Found in</span>
+            <div className="mt-1 space-y-1.5">
+              {result.evidence.slice(0, 3).map((e, i) => (
+                <p key={i} className="text-xs leading-relaxed" style={{ color: sev.color }}>
+                  <strong>{e.drug} · {e.section}</strong>{e.note ? ` (${e.note})` : ''}: “{e.text.length > 200 ? e.text.slice(0, 199) + '…' : e.text}”
+                </p>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -430,8 +468,12 @@ function IncompatibilityModal({ result, onClose }) {
             </div>
           )}
 
+          <EvidenceList evidence={result.evidence} />
+
           <p className="text-xs text-drug-muted pt-2">
-            AI-generated — verify against current prescribing information before applying to patient care.
+            {result.source === 'database'
+              ? 'Based on the drug records stored in this system — verify against current prescribing information before applying to patient care.'
+              : 'Includes AI-generated content — verify against current prescribing information before applying to patient care.'}
           </p>
         </div>
       </div>
@@ -531,8 +573,12 @@ function CombinationModal({ result, onClose }) {
             </div>
           )}
 
+          <EvidenceList evidence={result.evidence} />
+
           <p className="text-xs text-drug-muted pt-2">
-            AI-generated — verify against current prescribing information and clinical guidelines before applying to patient care.
+            {result.source === 'database'
+              ? 'Based on the drug records stored in this system — verify against current prescribing information and clinical guidelines before applying to patient care.'
+              : 'Includes AI-generated content — verify against current prescribing information and clinical guidelines before applying to patient care.'}
           </p>
         </div>
       </div>
@@ -540,26 +586,76 @@ function CombinationModal({ result, onClose }) {
   );
 }
 
-// ── Button + list of the AI's own known incompatibilities for this drug ────────
-function IncompatibleDrugsPanel({ drug }) {
-  const { providerId, provider } = useAiProvider();
-  const [state, setState]     = useState('idle'); // idle | loading | done | error
-  const [list, setList]       = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [openResult, setOpenResult] = useState(null);
+// ── Shared list-panel logic: database first, AI on top ─────────────────────────
+// 1. The button instantly searches the drug records stored in the system
+//    (Contraindications, Precautions, Pharmacology, Adverse Effects, Nursing
+//    Action, Interactions) and shows what it finds.
+// 2. The AI is then asked for additional entries, which are merged in.
+// 3. If the AI fails, the database results stay on screen — never an empty
+//    error page when the system itself had an answer.
+function useListLookup({ localFn, aiFn, drug, allDrugs, providerId }) {
+  const [state, setState]       = useState('idle'); // idle | loading | done
+  const [list, setList]         = useState([]);
+  const [aiState, setAiState]   = useState('idle'); // idle | loading | done | error
+  const [aiError, setAiError]   = useState('');
+  const [localCount, setLocalCount] = useState(0);
 
-  const runLookup = async () => {
+  const run = async () => {
     setState('loading');
-    setErrorMsg('');
+    setAiState('idle');
+    setAiError('');
+    await nextTick();
+
+    let local = [];
+    try { local = localFn(drug, allDrugs); } catch (e) { console.error('Local lookup failed:', e); }
+    setLocalCount(local.length);
+    setList(local);
+    setState('done');
+
+    setAiState('loading');
     try {
-      const data = await fetchIncompatibleDrugsList(drug, providerId);
-      setList(data);
-      setState('done');
+      const ai = await aiFn(drug, providerId);
+      setList(mergeLists(local, ai));
+      setAiState('done');
     } catch (e) {
-      setErrorMsg(e.message || 'Failed to load incompatible drugs.');
-      setState('error');
+      setAiError(e.message || 'The AI could not be reached.');
+      setAiState('error');
     }
   };
+
+  return { state, list, aiState, aiError, localCount, run };
+}
+
+function AiStatusLine({ aiState, aiError, localCount, onRetry }) {
+  if (aiState === 'loading') {
+    return (
+      <div className="flex items-center gap-2 text-xs text-drug-muted mt-3">
+        <Loader className="w-3.5 h-3.5 animate-spin" /> Adding AI suggestions to the system results…
+      </div>
+    );
+  }
+  if (aiState === 'error') {
+    return (
+      <div className="mt-3 flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <span>
+          AI suggestions unavailable ({aiError})
+          {localCount > 0 ? ' — showing results from the system\'s own drug records.' : '.'}
+        </span>
+        <button onClick={onRetry} className="ml-auto text-xs font-bold underline flex-shrink-0">Retry</button>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── Button + list of known incompatibilities for this drug ─────────────────────
+function IncompatibleDrugsPanel({ drug, allDrugs }) {
+  const { providerId, provider } = useAiProvider();
+  const { state, list, aiState, aiError, localCount, run } = useListLookup({
+    localFn: findLocalIncompatibles, aiFn: fetchIncompatibleDrugsList, drug, allDrugs, providerId,
+  });
+  const [openResult, setOpenResult] = useState(null);
 
   return (
     <div className="section-card p-5">
@@ -581,11 +677,12 @@ function IncompatibleDrugsPanel({ drug }) {
       {state === 'idle' && (
         <>
           <p className="text-xs text-drug-muted mt-1 mb-4">
-            See the AI's list of medications that interact with <strong>{drug.generic_name}</strong> — no need to
-            add drugs one by one.
+            Searches the Contraindications, Precautions, Pharmacology, Adverse Effects and Nursing Action
+            stored for <strong>{drug.generic_name}</strong> and every other drug in the system, then adds AI
+            suggestions — no need to add drugs one by one.
           </p>
           <button
-            onClick={runLookup}
+            onClick={run}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 transition-colors"
           >
             <AlertTriangle className="w-4 h-4" /> Show Incompatible Drugs
@@ -595,55 +692,56 @@ function IncompatibleDrugsPanel({ drug }) {
 
       {state === 'loading' && (
         <div className="flex items-center gap-2 text-sm text-drug-muted mt-3">
-          <Loader className="w-4 h-4 animate-spin" /> Checking known interactions for {drug.generic_name}…
-        </div>
-      )}
-
-      {state === 'error' && (
-        <div className="mt-3 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>{errorMsg}</span>
-          <button onClick={runLookup} className="ml-auto text-xs font-bold underline flex-shrink-0">Retry</button>
+          <Loader className="w-4 h-4 animate-spin" /> Searching the drug records for {drug.generic_name}…
         </div>
       )}
 
       {state === 'done' && (
-        list.length === 0 ? (
-          <p className="text-sm text-drug-muted mt-3">
-            No significant known interactions were flagged for {drug.generic_name}.
-          </p>
-        ) : (
-          <div className="mt-3 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden">
-            {list.map((r, i) => {
-              const sev = SEVERITY[r.severity] || SEVERITY.unknown;
-              const Icon = sev.icon;
-              return (
-                <button
-                  key={i}
-                  onClick={() => setOpenResult(r)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: sev.color }} />
-                    <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
-                  </div>
-                  <span
-                    className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                    style={{ color: sev.color, background: sev.bg }}
+        <>
+          {list.length === 0 ? (
+            aiState === 'loading' ? null : (
+              <p className="text-sm text-drug-muted mt-3">
+                {aiState === 'error'
+                  ? `Nothing was found in the stored drug records for ${drug.generic_name}, and the AI could not be reached.`
+                  : `No significant interactions were flagged for ${drug.generic_name}.`}
+              </p>
+            )
+          ) : (
+            <div className="mt-3 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden">
+              {list.map((r, i) => {
+                const sev = SEVERITY[r.severity] || SEVERITY.unknown;
+                const Icon = sev.icon;
+                return (
+                  <button
+                    key={`${r.drug}-${i}`}
+                    onClick={() => setOpenResult(r)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
                   >
-                    {sev.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )
-      )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: sev.color }} />
+                      <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
+                      <SourceBadge source={r.source} />
+                    </div>
+                    <span
+                      className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ color: sev.color, background: sev.bg }}
+                    >
+                      {sev.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-      {state === 'done' && (
-        <p className="text-xs text-drug-muted mt-3">
-          ⚠ AI-generated — tap any drug for the full reason. Always verify against current prescribing information.
-        </p>
+          <AiStatusLine aiState={aiState} aiError={aiError} localCount={localCount} onRetry={run} />
+
+          {list.length > 0 && (
+            <p className="text-xs text-drug-muted mt-3">
+              Tap any entry for the full reason and the exact lines from the drug records. Always verify against current prescribing information.
+            </p>
+          )}
+        </>
       )}
 
       {openResult && (
@@ -653,28 +751,17 @@ function IncompatibleDrugsPanel({ drug }) {
   );
 }
 
-// ── Button + list of the AI's own known synergistic combination partners ───────
+// ── Button + list of combination-therapy partners ──────────────────────────────
 // The positive counterpart to IncompatibleDrugsPanel — combination therapy
 // used to IMPROVE effectiveness, rather than interactions to avoid.
-function CombinationTherapyPanel({ drug }) {
+// Database partners come from what the stored records themselves say about
+// being used together; any partner the interaction engine flags is left out.
+function CombinationTherapyPanel({ drug, allDrugs }) {
   const { providerId, provider } = useAiProvider();
-  const [state, setState]       = useState('idle'); // idle | loading | done | error
-  const [list, setList]         = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
+  const { state, list, aiState, aiError, localCount, run } = useListLookup({
+    localFn: findLocalCombinations, aiFn: fetchSynergyDrugsList, drug, allDrugs, providerId,
+  });
   const [openResult, setOpenResult] = useState(null);
-
-  const runLookup = async () => {
-    setState('loading');
-    setErrorMsg('');
-    try {
-      const data = await fetchSynergyDrugsList(drug, providerId);
-      setList(data);
-      setState('done');
-    } catch (e) {
-      setErrorMsg(e.message || 'Failed to load combination therapy options.');
-      setState('error');
-    }
-  };
 
   return (
     <div className="section-card p-5">
@@ -696,11 +783,12 @@ function CombinationTherapyPanel({ drug }) {
       {state === 'idle' && (
         <>
           <p className="text-xs text-drug-muted mt-1 mb-4">
-            See drugs commonly combined with <strong>{drug.generic_name}</strong> to improve effectiveness —
-            synergistic or complementary therapy, not interactions to avoid.
+            Finds drugs that the stored records for <strong>{drug.generic_name}</strong> and the other drugs in
+            the system describe as used together with it — synergistic or complementary therapy, not interactions
+            to avoid — then adds AI suggestions.
           </p>
           <button
-            onClick={runLookup}
+            onClick={run}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold text-sm hover:bg-emerald-700 transition-colors"
           >
             <Sparkles className="w-4 h-4" /> Show Combination Drugs
@@ -710,63 +798,57 @@ function CombinationTherapyPanel({ drug }) {
 
       {state === 'loading' && (
         <div className="flex items-center gap-2 text-sm text-drug-muted mt-3">
-          <Loader className="w-4 h-4 animate-spin" /> Finding combination therapy options for {drug.generic_name}…
-        </div>
-      )}
-
-      {state === 'error' && (
-        <div className="mt-3 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>{errorMsg}</span>
-          <button onClick={runLookup} className="ml-auto text-xs font-bold underline flex-shrink-0">Retry</button>
+          <Loader className="w-4 h-4 animate-spin" /> Searching the drug records for {drug.generic_name} combinations…
         </div>
       )}
 
       {state === 'done' && (
-        list.length === 0 ? (
-          <p className="text-sm text-drug-muted mt-3">
-            No well-established combination therapy partners were flagged for {drug.generic_name}.
-          </p>
-        ) : (
-          <div className="mt-3 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden">
-            {list.map((r, i) => (
-              <button
-                key={i}
-                onClick={() => setOpenResult(r)}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-                    <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
-                    {r.cautionNote && (
-                      <AlertTriangle
-                        className="w-3.5 h-3.5 flex-shrink-0"
-                        style={{ color: '#92400E' }}
-                        title="This combination has a known safety concern — see details"
-                      />
+        <>
+          {list.length === 0 ? (
+            aiState === 'loading' ? null : (
+              <p className="text-sm text-drug-muted mt-3">
+                {aiState === 'error'
+                  ? `No combination partners are documented in the stored drug records for ${drug.generic_name}, and the AI could not be reached.`
+                  : `No well-established combination therapy partners were found for ${drug.generic_name}.`}
+              </p>
+            )
+          ) : (
+            <div className="mt-3 divide-y divide-drug-border border border-drug-border rounded-xl overflow-hidden">
+              {list.map((r, i) => (
+                <button
+                  key={`${r.drug}-${i}`}
+                  onClick={() => setOpenResult(r)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                      <span className="text-sm font-semibold text-drug-text truncate">{r.drug}</span>
+                      <SourceBadge source={r.source} />
+                    </div>
+                    {r.indication && (
+                      <p className="text-xs text-drug-muted mt-0.5 ml-6 truncate">{r.indication}</p>
                     )}
                   </div>
-                  {r.indication && (
-                    <p className="text-xs text-drug-muted mt-0.5 ml-6 truncate">{r.indication}</p>
-                  )}
-                </div>
-                <span
-                  className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ color: '#065F46', background: '#ECFDF5' }}
-                >
-                  Details
-                </span>
-              </button>
-            ))}
-          </div>
-        )
-      )}
+                  <span
+                    className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                    style={{ color: '#065F46', background: '#ECFDF5' }}
+                  >
+                    Details
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
-      {state === 'done' && (
-        <p className="text-xs text-drug-muted mt-3">
-          ⚠ AI-generated — tap any drug for indication, clinical rationale, and dosing. Always verify against current prescribing information.
-        </p>
+          <AiStatusLine aiState={aiState} aiError={aiError} localCount={localCount} onRetry={run} />
+
+          {list.length > 0 && (
+            <p className="text-xs text-drug-muted mt-3">
+              Tap any drug for the indication, rationale and the exact lines from the drug records. Always verify against current prescribing information.
+            </p>
+          )}
+        </>
       )}
 
       {openResult && (
@@ -902,48 +984,38 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
     setStatus('loading');
     setErrorMsg('');
     setAiUnavailable(false);
-    try {
-      // Primary drug itself never resolved to complete — no pair involving
-      // it can get a real verdict. Every result is "Insufficient Data",
-      // deterministically, no AI call needed.
-      if (primaryStatus === 'incomplete') {
-        setResults(selected.map(d =>
-          insufficientDataResult(
-            d.generic_name,
-            primaryMissing,
-            `Cannot be flagged yet — ${livePrimaryDrug.generic_name}'s own clinical record is still missing: ` +
-            `${primaryMissing.map(g => g.label).join(', ')}. A verdict requires complete data on both sides of the pair.`
-          )
-        ));
-        setStatus('done');
-        return;
-      }
+    await nextTick();
 
-      // Split the selection: drugs with complete data go to the AI for a
-      // real verdict; anything still missing required parameters gets a
-      // deterministic "Insufficient Data" result instead — never a guess.
-      const ready      = selected.filter(d => d._unsaved || !d._incomplete);
-      const incomplete = selected.filter(d => !d._unsaved && d._incomplete);
+    // 1. Database verdicts — always computed, never depend on the AI.
+    //    Reads each drug's stored Contraindications, Precautions, Pharmacology,
+    //    Adverse Effects, Nursing Action (+ Interactions / Administration).
+    const localResults = selected.map(d => analyzePair(livePrimaryDrug, d));
 
-      let aiResults = [];
-      if (ready.length > 0) {
+    // 2. AI verdicts — only for drugs whose records are complete, as before;
+    //    a failure here no longer wipes out the database results.
+    let aiResults = [];
+    let aiFailed = false;
+    const ready = selected.filter(d => d._unsaved || !d._incomplete);
+    if (primaryStatus !== 'incomplete' && ready.length > 0) {
+      try {
         const outcome = await checkInteractionsWithAI(livePrimaryDrug, ready, providerId);
         aiResults = outcome.results;
-        // AI was unreachable for this check: verified classic
-        // contraindications (Ceftriaxone+calcium etc.) were still applied
-        // server-side without needing AI, and everything else came back
-        // honestly labeled "Insufficient Data" rather than silently
-        // dropped. Surface this so the banner below can explain it.
-        setAiUnavailable(outcome.aiUnavailable);
+        aiFailed = outcome.aiUnavailable;
+      } catch (e) {
+        aiFailed = true;
       }
-      const gapResults = incomplete.map(d => insufficientDataResult(d.generic_name, d._missingGroups));
-
-      setResults([...aiResults, ...gapResults]);
-      setStatus('done');
-    } catch (e) {
-      setErrorMsg(e.message || 'Failed to check interactions. Please try again.');
-      setStatus('error');
     }
+    setAiUnavailable(aiFailed);
+
+    // 3. Merge: evidence found in the system's own records is never
+    //    overridden downward by the AI.
+    const merged = selected.map((d, i) => {
+      const ai = aiResults.find(r => String(r.drug || '').toLowerCase() === String(d.generic_name || '').toLowerCase());
+      return mergePairResults(localResults[i], ai);
+    });
+
+    setResults(merged);
+    setStatus('done');
   };
 
   const summary = useMemo(() => {
@@ -972,8 +1044,9 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
             <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
             <p className="text-xs text-red-800">
               Could not complete <strong>{livePrimaryDrug.generic_name}</strong>'s clinical record — still missing:
-              {' '}{primaryMissing.map(g => g.label).join(', ')}. Compatibility checks will show "Insufficient Data"
-              until this is filled in, since a safe/unsafe verdict needs every required parameter on file.
+              {' '}{primaryMissing.map(g => g.label).join(', ')}. Conflicts found in the stored
+              records are still reported, but a pair with no conflict on file will show "Insufficient Data" rather than
+              "safe" until this record is filled in.
             </p>
           </div>
           <button
@@ -1013,10 +1086,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
       )}
 
       {/* ── AI's own list of known incompatible drugs — one button, no manual add ─── */}
-      <IncompatibleDrugsPanel drug={livePrimaryDrug} />
+      <IncompatibleDrugsPanel drug={livePrimaryDrug} allDrugs={otherDrugs} />
 
       {/* ── Positive counterpart: synergistic combination therapy ─── */}
-      <CombinationTherapyPanel drug={livePrimaryDrug} />
+      <CombinationTherapyPanel drug={livePrimaryDrug} allDrugs={otherDrugs} />
 
       {/* ── Interaction checker ─── */}
       <div className="section-card p-5" style={{ overflow: 'visible' }}>
@@ -1033,10 +1106,11 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
           </span>
         </div>
         <p className="text-xs text-drug-muted mb-4">
-          Add drugs you want to combine with <strong>{livePrimaryDrug.generic_name}</strong>. The AI will check each pair for safety.
-          Drugs already in the database get their clinical record auto-completed first if anything required is
-          missing — a verdict is never given on incomplete data. Drugs not already in the database are looked up
-          fresh for this check only — they're <strong>not saved</strong> unless you tap the Save button on the chip.
+          Add drugs you want to combine with <strong>{livePrimaryDrug.generic_name}</strong>. Each pair is checked first against the
+          information stored in the system — Contraindications, Precautions, Pharmacology, Adverse Effects and Nursing Action —
+          and the AI is then used to add to those findings. A drug whose stored record is too thin is never called safe.
+          Drugs not already in the database are looked up fresh for this check only — they're <strong>not saved</strong> unless
+          you tap the Save button on the chip.
         </p>
 
         {/* Search */}
@@ -1150,11 +1224,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
             <div className="section-card p-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200">
               <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800">
-                <strong>The AI service was unreachable for this check.</strong> Only the small set of universally
-                verified classic contraindications (e.g. Ceftriaxone + calcium-containing IV fluids) could be
-                checked — these don't need AI and are guaranteed correct regardless. Every other pair below is
-                honestly marked "Insufficient Data" rather than guessed. Try again shortly, or switch AI provider
-                using the dropdown above.
+                <strong>The AI service could not be reached for this check.</strong> The results below come from the
+                system's own drug records (Contraindications, Precautions, Pharmacology, Adverse Effects, Nursing Action).
+                Where those records are too thin to judge, the pair is marked "Insufficient Data" rather than guessed.
+                Try again shortly, or switch AI provider using the dropdown above.
               </p>
             </div>
           )}
@@ -1163,7 +1236,7 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="font-bold text-drug-text text-sm">Interaction Results for <span className="text-primary-700">{livePrimaryDrug.generic_name}</span></h3>
-                <p className="text-xs text-drug-muted mt-0.5">AI-generated — verify against current prescribing information</p>
+                <p className="text-xs text-drug-muted mt-0.5">Based on the system's drug records{results.some(r => r.source === 'ai' || r.source === 'both') ? ' and AI' : ''} — verify against current prescribing information</p>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 {summary.safe > 0 && (
@@ -1204,8 +1277,9 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
           }
 
           <p className="text-xs text-drug-muted px-1">
-            ⚠ AI-generated content is a reference aid only. Always confirm with current product monographs, 
-            a clinical pharmacist, or prescribing guidelines before applying to patient care.
+            ⚠ These results are a reference aid only. "No conflict found" means nothing was found in the stored records,
+            not that a combination is proven safe. Always confirm with current product monographs, a clinical pharmacist,
+            or prescribing guidelines before applying to patient care.
           </p>
         </div>
       )}
