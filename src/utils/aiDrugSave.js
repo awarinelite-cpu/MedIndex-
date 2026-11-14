@@ -1,4 +1,4 @@
-import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
@@ -857,7 +857,7 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
 // Same normalisation used by ConditionSection.js and AiInsightContext.js,
 // duplicated here rather than imported so this util doesn't depend on any
 // component — matches the pattern already established elsewhere in this app.
-function normalizeDrugNameForMatch(name) {
+export function normalizeDrugNameForMatch(name) {
   let n = (name || '').trim().toLowerCase();
   n = n.replace(/[\s/.+-]+/g, ' ').trim();
   n = n.replace(/\bco (\w)/g, 'co$1');
@@ -912,4 +912,74 @@ export async function silentSaveConditionItems({ items, conditionId, conditionKe
     }
     await new Promise(r => setTimeout(r, 350));
   }
+}
+
+
+// ── Paste a medication list (e.g. copied from Google) onto a condition ─────
+// Turns pasted text into clean drug names: one per line or comma/semicolon
+// separated; bullets, numbering, "(brand names)", doses and trailing
+// descriptions ("Ceftriaxone - a cephalosporin...") are stripped.
+export function parseMedicationList(text) {
+  const seen = new Set();
+  const names = [];
+  String(text || '')
+    .replace(/\r/g, '\n')
+    .split(/[\n;,\u2022\u00b7|]+/)
+    .forEach(raw => {
+      let n = raw
+        .replace(/^\s*(?:[-*\u2013\u2014>\u2192]+|\d+\s*[.)]|[a-z]\s*[.)])\s*/i, '')
+        .replace(/\([^)]*\)/g, ' ')
+        .split(/\s+[-\u2013\u2014:]\s+|:\s/)[0]
+        .replace(/\s+\d.*$/, '')
+        .replace(/[^\p{L}\p{N}\s/+'-]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (n.length < 3 || n.length > 60 || n.split(' ').length > 5) return;
+      const key = normalizeDrugNameForMatch(n);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      names.push(n.charAt(0).toUpperCase() + n.slice(1));
+    });
+  return names;
+}
+
+// For each name: if the drug already exists in the database, just tag it with
+// this condition; otherwise generate its full drug information with AI, save
+// it, then tag it. Reports per-drug progress through onProgress(name, status).
+export async function addMedicationsToCondition({ names, conditionId, existingDrugs, onProgress, endpoint = '/api/drug-ai-details' }) {
+  await getContributorInfo(); // throws if not signed in
+  const byName = new Map();
+  (existingDrugs || []).forEach(d => {
+    if (d && !d._seed && d.generic_name) byName.set(normalizeDrugNameForMatch(d.generic_name), d);
+  });
+  const results = [];
+  for (const name of names) {
+    try {
+      const existing = byName.get(normalizeDrugNameForMatch(name));
+      let id;
+      let status;
+      if (existing) {
+        id = existing.id || slugifyDrugName(existing.generic_name);
+        status = 'linked';
+      } else {
+        onProgress?.(name, 'generating');
+        const text = await fetchAiDrugText({ genericName: name, endpoint });
+        const saved = await saveAiDrugToDatabase({ genericName: name, text, overwrite: true });
+        id = saved.id || slugifyDrugName(name);
+        status = 'added';
+      }
+      await updateDoc(doc(db, 'drugs', id), {
+        condition_tags: arrayUnion(conditionId),
+        condition_excluded: arrayRemove(conditionId),
+        last_updated: serverTimestamp(),
+      });
+      results.push({ name, status });
+      onProgress?.(name, status);
+    } catch (e) {
+      results.push({ name, status: 'failed', error: e.message });
+      onProgress?.(name, 'failed', e.message);
+    }
+    await new Promise(r => setTimeout(r, 350));
+  }
+  return results;
 }

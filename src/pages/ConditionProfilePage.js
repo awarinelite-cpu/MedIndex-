@@ -15,6 +15,8 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionImagesPanel from '../components/ConditionImagesPanel';
+import PasteMedicationsPanel from '../components/PasteMedicationsPanel';
+import { useAuth } from '../context/AuthContext';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { groupDrugsByCondition } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -134,7 +136,9 @@ function GoogleMedsButton({ name }) {
   );
 }
 
-function MedicationsCard({ buckets, conditionName }) {
+function MedicationsCard({ buckets, conditionName, conditionId }) {
+  const { isAdmin } = useAuth();
+  const pastePanel = isAdmin ? <PasteMedicationsPanel conditionId={conditionId} conditionName={conditionName} /> : null;
   const [openCats, setOpenCats] = useState(null); // null = first group open by default
 
   const { groups, regimens, comboNames } = useMemo(() => {
@@ -177,6 +181,7 @@ function MedicationsCard({ buckets, conditionName }) {
         <h2 className="cp-card-title"><span className="cp-card-icon"><Pill size={30} strokeWidth={2.4} /></span>Medications Used for this Condition</h2>
         <p className="cp-empty">No medications have been linked to this condition yet.</p>
         <GoogleMedsButton name={conditionName} />
+        {pastePanel}
       </section>
     );
   }
@@ -207,6 +212,7 @@ function MedicationsCard({ buckets, conditionName }) {
       </div>
 
       <GoogleMedsButton name={conditionName} />
+      {pastePanel}
 
       <div className="cp-note" role="note">
         <Info size={22} strokeWidth={2.2} />
@@ -344,7 +350,7 @@ export default function ConditionProfilePage() {
             </div>
           )}
         </section>
-        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} />
+        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} />
       </>
     );
   }

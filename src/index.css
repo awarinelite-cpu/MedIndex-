@@ -1177,3 +1177,20 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
   border-radius: 999px; background: var(--cp-blue); color: #fff; font-size: 15px; font-weight: 600; text-decoration: none;
 }
 .cp-google-btn:active { opacity: .85; }
+
+/* Condition Profile: admin "Paste medication list" panel */
+.cp-paste { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--cp-line); }
+.cp-paste-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--cp-ink); }
+.cp-paste-hint { margin: 6px 0 10px; font-size: 13.5px; color: var(--cp-sub); }
+.cp-paste-box { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--cp-soft-2); border-radius: 14px; background: var(--cp-page); color: var(--cp-ink); font: inherit; font-size: 15px; resize: vertical; }
+.cp-paste-actions { display: flex; gap: 8px; margin-top: 10px; }
+.cp-paste-btn { flex: 1; padding: 11px 12px; border: 0; border-radius: 999px; background: var(--cp-blue); color: #fff; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+.cp-paste-btn.alt { background: var(--cp-soft); color: var(--cp-blue); }
+.cp-paste-btn:disabled { opacity: .5; cursor: default; }
+.cp-paste-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.cp-paste-list li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--cp-line); font-size: 14.5px; font-weight: 600; }
+.cp-paste-st { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 500; color: var(--cp-sub); text-align: right; }
+.cp-paste-list li.is-added .cp-paste-st, .cp-paste-list li.is-linked .cp-paste-st { color: #15803d; }
+.cp-paste-list li.is-failed .cp-paste-st, .cp-paste-err { color: #b91c1c; }
+.cp-spin { animation: cp-spin 1s linear infinite; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
