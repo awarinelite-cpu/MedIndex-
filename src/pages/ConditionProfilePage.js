@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  ExternalLink, FlaskConical, Heart, Home, Info, Pill, Search, Share2, Target, User,
+  ExternalLink, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
@@ -17,6 +17,7 @@ import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionImagesPanel from '../components/ConditionImagesPanel';
 import PasteMedicationsPanel from '../components/PasteMedicationsPanel';
 import { useAuth } from '../context/AuthContext';
+import { deleteReviewedDrug } from '../utils/aiDrugSave';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { groupDrugsByCondition } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -89,6 +90,27 @@ function CategoryGroup({ title, count, open, onToggle, children }) {
   );
 }
 
+// Admin-only small trash icon on a drug row: permanently deletes the drug.
+function DeleteDrugButton({ drug }) {
+  const { isAdmin } = useAuth();
+  const [busy, setBusy] = useState(false);
+  if (!isAdmin) return null;
+  const onClick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (busy) return;
+    if (drug._seed) { window.alert(`"${drug.generic_name}" is built-in sample data and cannot be deleted here.`); return; }
+    if (!window.confirm(`Delete "${drug.generic_name}" from the system?\n\nThis permanently removes the drug and its information, and it will disappear from every condition it is listed under.`)) return;
+    setBusy(true);
+    try { await deleteReviewedDrug({ id: drug.id }); }
+    catch (err) { window.alert(`Could not delete: ${err.message || err}`); setBusy(false); }
+  };
+  return (
+    <button type="button" className="cp-drug-del" onClick={onClick} disabled={busy} aria-label={`Delete ${drug.generic_name}`} title="Delete drug">
+      <Trash2 size={16} strokeWidth={2.2} />
+    </button>
+  );
+}
+
 function DrugRow({ drug, role, inCombination }) {
   const label = role === 'main' ? 'First-line option' : 'Alternative option';
   return (
@@ -102,6 +124,7 @@ function DrugRow({ drug, role, inCombination }) {
         {label}
         {role === 'main' && inCombination && <span className="cp-tag-extra">(in combinations)</span>}
       </span>
+      <DeleteDrugButton drug={drug} />
       <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />
     </Link>
   );
@@ -118,6 +141,7 @@ function RegimenRow({ regimen }) {
         {parts.length > 0 && <span className="cp-drug-sub">{parts.join(' + ')}</span>}
       </span>
       <span className="cp-tag is-alt">Regimen</span>
+      <DeleteDrugButton drug={regimen} />
       <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />
     </Link>
   );

@@ -1194,3 +1194,8 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .cp-paste-list li.is-failed .cp-paste-st, .cp-paste-err { color: #b91c1c; }
 .cp-spin { animation: cp-spin 1s linear infinite; }
 @keyframes cp-spin { to { transform: rotate(360deg); } }
+
+/* Condition Profile: small admin delete icon on each drug row */
+.cp-drug-del { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: #fdecec; color: #c62828; cursor: pointer; }
+.cp-drug-del:disabled { opacity: .5; }
+.dark .cp-drug-del { background: #3a1d1d; color: #ff8a80; }
