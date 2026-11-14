@@ -8,7 +8,6 @@ import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
 import { useRecentActivity } from '../hooks/useRecentlyViewed';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
-import { normalizeImageUrl } from '../utils/generateDrugImage';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { quickSearch, searchDrugs } from '../utils/searchDrugs';

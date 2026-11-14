@@ -14,19 +14,6 @@ import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
 
-// Pastel badge colours per body system, matching the design mockup.
-const BADGES = {
-  reproductive: ['#dfeaff', '#1b5fd1'], gastrointestinal: ['#d5f1ec', '#0b5d57'], renal: ['#e6defc', '#4b2fb0'],
-  dermatological: ['#d5f1ec', '#0b5d57'], neurological: ['#dfe5ff', '#2b3fb3'], infectious: ['#e0f3d2', '#2f6b14'],
-  endocrine: ['#e6defc', '#4b2fb0'], cardiovascular: ['#fde0e4', '#a3203a'], respiratory: ['#dcedff', '#1b5fd1'],
-  musculoskeletal: ['#fdebd3', '#8a4b0b'], psychiatric: ['#e9e0fb', '#5b2fb0'], hematological: ['#fde0e0', '#a32020'],
-  sensory: ['#d9f0f7', '#0b5f78'], nutritional: ['#f3f0cf', '#6b5a0b'], pain: ['#fce3f0', '#9c2468'], emergency: ['#fde4d6', '#a34012'],
-};
-const badgeStyle = (systemId) => {
-  const [bg, fg] = BADGES[systemId] || ['#dfeaff', '#1b5fd1'];
-  return { background: bg, color: fg };
-};
-
 const VIEWS = [['all', 'All conditions'], ['system', 'Body system'], ['az', 'A-Z']];
 
 export default function AllConditionsPage() {
