@@ -20,7 +20,7 @@ import { needsStrengthOnly, fetchPronunciationText, savePronunciation, fetchBran
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import {
-  generateDrugImage, saveDrugImage, saveDrugImageUrl,
+  generateDrugImage, saveDrugImage, saveDrugImageUrl, saveDrugImageUrls,
   findRealDrugImage, saveFoundDrugImage, uploadImageToImgChest, uploadImageUrlToImgChest,
   uploadClipboardImageToImgChest, getDrugImages, deleteDrugImage,
 } from '../utils/generateDrugImage';
@@ -682,6 +682,7 @@ function DrugImageCard({ drug }) {
   const [fetchUrlInput, setFetchUrlInput] = useState('');
   const [fetchUrlState, setFetchUrlState] = useState('idle'); // idle | fetching | error
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
+  const [batchProgress, setBatchProgress] = useState(''); // e.g. "Uploading 2 of 5…"
   const [deleteState, setDeleteState] = useState('idle'); // idle | deleting | error
 
   const handleFindReal = async () => {
@@ -736,22 +737,45 @@ function DrugImageCard({ drug }) {
     }
   };
 
-  const handlePhotoSelected = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file later
-    if (!file) return;
-    setUploadState('uploading');
+  // Uploads a batch one after another (gentler on the upload proxy), then saves
+  // every successful picture in a single write. Failed ones are reported.
+  const uploadManyAndSave = async (items, uploadOne, setBusy) => {
+    setBusy('uploading');
     setError('');
-    try {
-      const hostedUrl = await uploadImageToImgChest({ file });
-      await saveDrugImageUrl({ docId, url: hostedUrl, existingImages: images });
-      // Live listener will push the new image in automatically.
-      setUploadState('idle');
-      setShowUrlField(false);
-    } catch (err) {
-      setError(err.message || 'Failed to upload photo.');
-      setUploadState('error');
+    const urls = [];
+    let failed = 0;
+    let lastErr = '';
+    for (let i = 0; i < items.length; i++) {
+      setBatchProgress(items.length > 1 ? `Uploading ${i + 1} of ${items.length}…` : '');
+      try {
+        urls.push(await uploadOne(items[i]));
+      } catch (err) {
+        failed += 1;
+        lastErr = err.message || 'Upload failed.';
+      }
     }
+    setBatchProgress('');
+    try {
+      if (urls.length > 0) await saveDrugImageUrls({ docId, urls, existingImages: images });
+      // Live listener will push the new pictures in automatically.
+      if (failed > 0) {
+        setError(`${urls.length} of ${items.length} pictures added. ${failed} failed: ${lastErr}`);
+        setBusy(urls.length > 0 ? 'idle' : 'error');
+      } else {
+        setBusy('idle');
+        setShowUrlField(false);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to save the pictures.');
+      setBusy('error');
+    }
+  };
+
+  const handlePhotoSelected = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // allow re-selecting the same files later
+    if (files.length === 0) return;
+    await uploadManyAndSave(files, (file) => uploadImageToImgChest({ file }), setUploadState);
   };
 
   const handleFetchUrlUpload = async () => {
@@ -770,20 +794,8 @@ function DrugImageCard({ drug }) {
     }
   };
 
-  const uploadClipboardBlob = async (blob) => {
-    setPasteState('uploading');
-    setError('');
-    try {
-      const hostedUrl = await uploadClipboardImageToImgChest({ blob });
-      await saveDrugImageUrl({ docId, url: hostedUrl, existingImages: images });
-      // Live listener will push the new image in automatically.
-      setPasteState('idle');
-      setShowUrlField(false);
-    } catch (err) {
-      setError(err.message || 'Failed to paste image.');
-      setPasteState('error');
-    }
-  };
+  const uploadClipboardBlobs = (blobs) =>
+    uploadManyAndSave(blobs, (blob) => uploadClipboardImageToImgChest({ blob }), setPasteState);
 
   const handleDeleteImage = async (index) => {
     if (!window.confirm('Remove this picture?')) return;
@@ -803,13 +815,16 @@ function DrugImageCard({ drug }) {
   const handlePasteEvent = (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
+    const blobs = [];
     for (const item of items) {
       if (item.type?.startsWith('image/')) {
-        e.preventDefault();
         const blob = item.getAsFile();
-        if (blob) uploadClipboardBlob(blob);
-        return;
+        if (blob) blobs.push(blob);
       }
+    }
+    if (blobs.length > 0) {
+      e.preventDefault();
+      uploadClipboardBlobs(blobs);
     }
   };
 
@@ -823,13 +838,13 @@ function DrugImageCard({ drug }) {
         throw new Error('Clipboard paste isn\u2019t supported in this browser. Try Upload Photo instead.');
       }
       const items = await navigator.clipboard.read();
-      let blob = null;
+      const blobs = [];
       for (const item of items) {
         const imageType = item.types.find(t => t.startsWith('image/'));
-        if (imageType) { blob = await item.getType(imageType); break; }
+        if (imageType) blobs.push(await item.getType(imageType));
       }
-      if (!blob) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
-      await uploadClipboardBlob(blob);
+      if (blobs.length === 0) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
+      await uploadClipboardBlobs(blobs);
     } catch (err) {
       setError(err.message || 'Failed to paste image from clipboard.');
       setPasteState('error');
@@ -890,7 +905,7 @@ function DrugImageCard({ drug }) {
         className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 disabled:opacity-60"
       >
         {pasteState === 'uploading' ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+          <><Loader2 className="w-4 h-4 animate-spin" /> {batchProgress || 'Uploading…'}</>
         ) : (
           <><ClipboardPaste className="w-4 h-4" /> Paste from Clipboard</>
         )}
@@ -902,13 +917,14 @@ function DrugImageCard({ drug }) {
       </div>
       <label className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-primary-600 text-primary-600 rounded-lg font-semibold text-sm hover:bg-primary-50 cursor-pointer disabled:opacity-60">
         {uploadState === 'uploading' ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+          <><Loader2 className="w-4 h-4 animate-spin" /> {batchProgress || 'Uploading…'}</>
         ) : (
-          <><Upload className="w-4 h-4" /> Upload Photo</>
+          <><Upload className="w-4 h-4" /> Upload Photo(s)</>
         )}
         <input
           type="file"
           accept="image/*"
+          multiple
           onChange={handlePhotoSelected}
           disabled={uploadState === 'uploading'}
           className="hidden"

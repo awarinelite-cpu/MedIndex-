@@ -232,3 +232,16 @@ export async function saveDrugImageUrl({ docId, url, existingImages, slot }) {
 
   return trimmed;
 }
+
+// Appends several already-hosted image links in ONE write, so pasting or
+// uploading a batch never overwrites itself with a stale images array.
+export async function saveDrugImageUrls({ docId, urls, existingImages }) {
+  await getAuthUser();
+  const entries = (urls || [])
+    .map(u => normalizeImageUrl((u || '').trim()))
+    .filter(u => /^https?:\/\/.+/i.test(u))
+    .map(u => ({ url: u, is_real: false }));
+  if (entries.length === 0) return 0;
+  await setDrugImages({ docId, images: [...(existingImages || []), ...entries] });
+  return entries.length;
+}
