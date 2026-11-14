@@ -62,7 +62,11 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
     }
     inFlight.current = true;
     try {
-      const blobs = await imagesFromClipboardApi();
+      // iOS shows a "Paste" bubble and waits for a tap; don't hang forever.
+      const blobs = await Promise.race([
+        imagesFromClipboardApi(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('clipboard timeout')), 8000)),
+      ]);
       const fresh = [];
       for (const b of blobs) {
         const sig = await fingerprint(b);
@@ -86,15 +90,16 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
       return;
     }
     seen.current = new Set();
-    // Runs inside the tap that switched it on, so the browser can show its
-    // permission prompt. Existing clipboard content becomes the baseline.
-    const ok = await check({ markOnly: true, force: true });
-    if (!ok) {
-      setStatus('denied');
-      return;
-    }
+    // Switch on immediately so the button reflects the tap. The baseline read
+    // (which may show a permission prompt) happens in the background; the
+    // in-flight guard stops the poller from uploading old clipboard content.
     setEnabled(true);
     setStatus('watching');
+    const ok = await check({ markOnly: true, force: true });
+    if (!ok) {
+      setEnabled(false);
+      setStatus('denied');
+    }
   }, [check]);
 
   const disable = useCallback(() => {
@@ -116,11 +121,15 @@ export default function useAutoPasteImages({ onImages, busy = false, intervalMs 
 
     window.addEventListener('focus', run);
     document.addEventListener('visibilitychange', onVisible);
-    const timer = setInterval(run, intervalMs);
+    // iOS shows a "Paste" bubble on every clipboard read, so polling there is
+    // disruptive; rely on focus/visibility events instead.
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const timer = isIOS ? null : setInterval(run, intervalMs);
     return () => {
       window.removeEventListener('focus', run);
       document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
   }, [enabled, check, intervalMs]);
 

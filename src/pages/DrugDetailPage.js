@@ -873,7 +873,7 @@ function DrugImageCard({ drug }) {
           }`}
         >
           {autoPaste.enabled
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Auto-paste is ON — tap to stop</>
+            ? <><span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" /> Auto-paste is ON — tap to stop</>
             : <><ClipboardPaste className="w-4 h-4" /> Turn on Auto-paste</>}
         </button>
         <p className="text-xs text-drug-muted mt-2 text-center">
