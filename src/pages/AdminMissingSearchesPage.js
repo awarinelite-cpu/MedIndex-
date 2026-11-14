@@ -48,9 +48,14 @@ export default function AdminMissingSearchesPage() {
         const key = norm(x.query);
         if (!key || key.length < 3) return;
         let r = byKey.get(key);
-        if (!r) { r = { key, text: x.query, count: 0, users: new Set(), types: new Set(), last: 0, docs: [], open: 0 }; byKey.set(key, r); }
+        if (!r) { r = { key, text: x.query, count: 0, users: new Map(), types: new Set(), last: 0, docs: [], open: 0 }; byKey.set(key, r); }
         r.count += 1;
-        r.users.add(x.uid || x.userEmail || '?');
+        const uKey = x.uid || x.userEmail || '?';
+        const u = r.users.get(uKey) || { name: '', email: '', times: 0 };
+        u.name = u.name || x.userName || '';
+        u.email = u.email || x.userEmail || '';
+        u.times += 1;
+        r.users.set(uKey, u);
         if (x.type) r.types.add(x.type);
         r.docs.push(d.id);
         if (!x.resolved) r.open += 1;
@@ -143,6 +148,16 @@ export default function AdminMissingSearchesPage() {
                     <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" /> {r.users.size} user{r.users.size === 1 ? '' : 's'}</span>
                     <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {timeAgo(r.last)}</span>
                   </p>
+                  <ul className="mt-2 space-y-0.5">
+                    {[...r.users.values()].slice(0, 5).map((u, i) => (
+                      <li key={i} className="text-xs text-gray-700 break-words">
+                        <span className="font-semibold">{u.name || u.email || 'Unknown user'}</span>
+                        {u.name && u.email ? <span className="text-gray-500"> · {u.email}</span> : null}
+                        {u.times > 1 ? <span className="text-gray-400"> ({u.times}×)</span> : null}
+                      </li>
+                    ))}
+                    {r.users.size > 5 && <li className="text-xs text-gray-400">+ {r.users.size - 5} more</li>}
+                  </ul>
                 </div>
                 <button type="button" onClick={() => dismiss(r)} disabled={busy} aria-label={`Dismiss ${r.text}`} title="Dismiss"
                   className="p-1.5 rounded-full bg-gray-100 text-gray-500 disabled:opacity-50"><X className="w-4 h-4" /></button>
