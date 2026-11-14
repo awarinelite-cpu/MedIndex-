@@ -5,20 +5,16 @@
 // (search, nav links, admin portal, dark mode, AI provider, account), just
 // as its own page instead of an overlay.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins, Fingerprint, ClipboardList,
+  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
-import AiProviderDropdown from '../components/AiProviderDropdown';
-import { isBiometricAvailable, isBiometricEnrolled, enrollBiometric, disableBiometric } from '../utils/biometricAuth';
-import { generateLinkCode, listenTelegramLink, unlinkTelegram } from '../lib/telegramLink';
-import { Send } from 'lucide-react';
 
 const NAV_LINKS = [
   { to: '/',            label: 'Home',              icon: Home         },
@@ -39,71 +35,6 @@ export default function MorePage() {
   } = usePwaInstall();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
-
-  const [bioSupported, setBioSupported] = useState(false);
-  const [bioEnrolled, setBioEnrolled] = useState(false);
-  const [bioBusy, setBioBusy] = useState(false);
-
-  const [tgLink, setTgLink] = useState(null);      // telegram_links/{uid} doc, or null if not linked
-  const [tgCode, setTgCode] = useState(null);       // freshly generated code, shown until they link
-  const [tgLoading, setTgLoading] = useState(false);
-
-  useEffect(() => {
-    if (!user) return;
-    const unsub = listenTelegramLink(user.uid, (link) => {
-      setTgLink(link);
-      if (link) setTgCode(null); // clear the shown code once linking succeeds
-    });
-    return unsub;
-  }, [user]);
-
-  const handleGenerateTgCode = async () => {
-    if (!user) return;
-    setTgLoading(true);
-    try {
-      const code = await generateLinkCode(user.uid, user.email, user.displayName);
-      setTgCode(code);
-    } catch (err) {
-      console.error('[MorePage] generateLinkCode failed:', err);
-    } finally {
-      setTgLoading(false);
-    }
-  };
-
-  const handleUnlinkTg = async () => {
-    if (!user) return;
-    await unlinkTelegram(user.uid);
-  };
-
-  const copy = (text, label) => {
-    navigator.clipboard?.writeText(text);
-  };
-  const [bioError, setBioError] = useState('');
-
-  useEffect(() => { isBiometricAvailable().then(setBioSupported); }, []);
-  useEffect(() => { if (user) setBioEnrolled(isBiometricEnrolled(user.email)); }, [user]);
-
-  const toggleBiometric = async () => {
-    setBioError('');
-    if (bioEnrolled) {
-      disableBiometric(user.email);
-      setBioEnrolled(false);
-      return;
-    }
-    setBioBusy(true);
-    try {
-      await enrollBiometric({ email: user.email, displayName: user.displayName });
-      setBioEnrolled(true);
-    } catch (e) {
-      setBioError(
-        e.name === 'NotAllowedError'
-          ? 'Fingerprint setup was cancelled.'
-          : (e.message || 'Could not set up fingerprint unlock on this device.')
-      );
-    }
-    setBioBusy(false);
-  };
-
 
   const handleLogout = async () => {
     await logout();
@@ -183,72 +114,6 @@ export default function MorePage() {
 
       {user && (
         <div className="border-t border-drug-border pt-4 mt-2">
-          <p className="text-xs text-drug-muted uppercase tracking-widest font-bold mb-2">AI Provider</p>
-          <div className="mb-5">
-            <AiProviderDropdown placement="left" />
-          </div>
-
-          {bioSupported && (
-            <>
-              <div className="flex items-center justify-between px-1 py-2">
-                <div className="flex items-center gap-2 text-drug-text text-sm">
-                  <Fingerprint className="w-4 h-4 flex-shrink-0" />
-                  Fingerprint Unlock
-                </div>
-                <button
-                  onClick={toggleBiometric}
-                  disabled={bioBusy}
-                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50 ${bioEnrolled ? 'bg-primary-600' : 'bg-drug-border'}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${bioEnrolled ? 'translate-x-5' : ''}`} />
-                </button>
-              </div>
-              {bioError && <p className="text-xs text-red-600 px-1 mb-1">{bioError}</p>}
-              {bioEnrolled && !bioError && (
-                <p className="text-xs text-drug-muted px-1 mb-1">MedIndex will ask for your fingerprint each time you open the app on this device.</p>
-              )}
-            </>
-          )}
-
-          <p className="text-xs text-drug-muted uppercase tracking-widest font-bold mb-2 mt-5">Telegram Bot</p>
-          <div className="mb-5 px-1">
-            {tgLink ? (
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">
-                  <Send className="w-4 h-4 flex-shrink-0 text-primary-600" />
-                  <span className="truncate">Linked{tgLink.telegramUsername ? ` as @${tgLink.telegramUsername}` : ''}</span>
-                </div>
-                <button
-                  onClick={handleUnlinkTg}
-                  className="px-3 py-1.5 bg-drug-bg border border-drug-border rounded-lg text-drug-text text-sm font-medium hover:bg-gray-100 transition-colors flex-shrink-0"
-                >
-                  Unlink
-                </button>
-              </div>
-            ) : tgCode ? (
-              <div className="text-sm text-drug-text">
-                <p className="mb-2">Message the bot with:</p>
-                <div className="flex items-center gap-2">
-                  <code style={{ fontSize: 16, fontWeight: 700 }}>/link {tgCode}</code>
-                  <button className="btn btn-sm" onClick={() => copy(`/link ${tgCode}`, 'Command')}>
-                    Copy
-                  </button>
-                </div>
-                <p className="text-xs text-drug-muted mt-2">Code expires in 15 minutes.</p>
-              </div>
-            ) : (
-              <button
-                onClick={handleGenerateTgCode}
-                disabled={tgLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold
-                           bg-drug-bg border border-drug-border text-drug-text hover:bg-gray-100 transition-colors disabled:opacity-50"
-              >
-                <Send className="w-4 h-4" />
-                {tgLoading ? 'Generating…' : 'Generate link code'}
-              </button>
-            )}
-          </div>
-
           <div className="flex items-center justify-between px-1 py-2">
             <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">
               <User className="w-4 h-4 flex-shrink-0" />
