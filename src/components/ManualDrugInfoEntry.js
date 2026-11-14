@@ -4,7 +4,7 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2 } from 'lucide-react';
+import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2, Search, ExternalLink } from 'lucide-react';
 import { db, auth } from '../firebase';
 
 const FIELDS = [
@@ -15,6 +15,16 @@ const FIELDS = [
   'pregnancy_lactation', 'interaction', 'adverse_effect', 'nursing_action',
   'pharmacovigilance', 'product_description', 'storage_recommendations', 'pack_size_price',
 ];
+
+// Builds the Google search that carries the CSV template plus the instruction
+// to return the answer as a downloadable CSV file.
+export function googleDrugInfoUrl(drugName) {
+  const header = ['generic_name', ...FIELDS].join(',');
+  const q = `Give me complete drug information for ${drugName} as a CSV file I can download or copy. `
+    + `Use exactly this header row: ${header} . `
+    + `Then ONE data row for ${drugName} with every value in double quotes and empty if unknown. Output only the CSV.`;
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
 
 const normKey = (k) => String(k || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
@@ -130,7 +140,8 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
     parsed.csvName.toLowerCase() !== String(drug.generic_name || '').toLowerCase();
 
   return (
-    <div className="rounded-[10px] border border-violet-200 bg-violet-50/60 overflow-hidden mt-4 mb-24">
+    <>
+    <div className="rounded-[10px] border border-violet-200 bg-violet-50/60 overflow-hidden mt-4">
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
         className="w-full flex items-center gap-3 px-3 py-3 text-left">
         <ClipboardPaste className="w-6 h-6 text-violet-600" />
@@ -191,5 +202,15 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
         </div>
       )}
     </div>
+    <div className="mt-3 mb-24">
+      <a href={googleDrugInfoUrl(drug.generic_name || '')} target="_blank" rel="noopener noreferrer"
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
+        <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} information on Google <ExternalLink className="w-4 h-4" />
+      </a>
+      <p className="mt-2 text-xs text-drug-muted">
+        Opens Google with the CSV template already filled in and asks for the answer as a CSV file. Copy or download the result, then use “Add drug information (CSV)” above to paste or upload it.
+      </p>
+    </div>
+    </>
   );
 }
