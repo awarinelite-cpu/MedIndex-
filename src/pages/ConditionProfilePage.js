@@ -14,6 +14,7 @@ import {
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import ConditionImagesPanel from '../components/ConditionImagesPanel';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { groupDrugsByCondition } from '../data/systemConditions';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
@@ -226,7 +227,7 @@ export default function ConditionProfilePage() {
   const navigate = useNavigate();
   const { drugs } = useDrugs();
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem, loading: condLoading } = useCustomConditions();
-  const { clinicalInfoByCondition } = useConditionClinicalInfo();
+  const { clinicalInfoByCondition, imagesByCondition } = useConditionClinicalInfo();
 
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutRef = useRef(null);
@@ -371,7 +372,12 @@ export default function ConditionProfilePage() {
 
         </div>
 
-        <div className="cp-content">{content}</div>
+        <div className="cp-content">
+          {entry?.condition && (
+            <ConditionImagesPanel condition={entry.condition} images={imagesByCondition?.[entry.condition.id]} />
+          )}
+          {content}
+        </div>
       </main>
 
       <nav className="cp-nav" aria-label="Main">

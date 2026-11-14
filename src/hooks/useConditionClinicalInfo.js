@@ -155,6 +155,17 @@ export async function addConditionImageUrl({ conditionId, url, existingImages })
   return trimmed;
 }
 
+// Appends several already-hosted image links in one write (batch paste/upload).
+export async function addConditionImageUrls({ conditionId, urls, existingImages }) {
+  const entries = (urls || [])
+    .map(u => normalizeImageUrl((u || '').trim()))
+    .filter(u => /^https?:\/\/.+/i.test(u))
+    .map(url => ({ url }));
+  if (entries.length === 0) return 0;
+  await setConditionImages(conditionId, [...(existingImages || []), ...entries]);
+  return entries.length;
+}
+
 // Removes one picture by index and re-saves the rest.
 export async function deleteConditionImage({ conditionId, images, index }) {
   const next = (images || []).filter((_, i) => i !== index);

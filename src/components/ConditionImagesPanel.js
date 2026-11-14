@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { ImageIcon, ClipboardList, Info, Loader2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ImageIcon, ClipboardList, Info, Loader2, Trash2, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { uploadClipboardImageToImgChest } from '../utils/generateDrugImage';
-import { addConditionImageUrl, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
+import { uploadClipboardImageToImgChest, uploadImageToImgChest } from '../utils/generateDrugImage';
+import { addConditionImageUrls, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
 
 /* ── Condition picture gallery (swipe to view more than one picture) ───── */
 function ConditionImageGallery({ images, altBase }) {
@@ -107,22 +107,52 @@ export default function ConditionImagesPanel({ condition, images }) {
   const list = Array.isArray(images) ? images : [];
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState('');
 
   // Nothing to show a regular user, and nothing to do for them.
   if (!isAdmin && list.length === 0) return null;
 
-  const uploadBlob = async (blob) => {
+  // Uploads a batch one by one, then saves every successful picture in a
+  // single write so nothing overwrites anything. Failures are reported.
+  const uploadMany = async (items, uploadOne) => {
     setPasteState('uploading');
     setError('');
+    const urls = [];
+    let failed = 0;
+    let lastErr = '';
+    for (let i = 0; i < items.length; i++) {
+      setProgress(items.length > 1 ? `Uploading ${i + 1} of ${items.length}…` : '');
+      try {
+        urls.push(await uploadOne(items[i]));
+      } catch (e) {
+        failed += 1;
+        lastErr = e.message || 'Upload failed.';
+      }
+    }
+    setProgress('');
     try {
-      const hostedUrl = await uploadClipboardImageToImgChest({ blob });
-      await addConditionImageUrl({ conditionId: condition.id, url: hostedUrl, existingImages: list });
-      // The live listener pushes the new picture in automatically.
-      setPasteState('idle');
+      if (urls.length > 0) {
+        await addConditionImageUrls({ conditionId: condition.id, urls, existingImages: list });
+      }
+      // The live listener pushes the new pictures in automatically.
+      if (failed > 0) {
+        setError(`${urls.length} of ${items.length} pictures added. ${failed} failed: ${lastErr}`);
+        setPasteState(urls.length > 0 ? 'idle' : 'error');
+      } else {
+        setPasteState('idle');
+      }
     } catch (e) {
-      setError(e.message || 'Failed to paste image.');
+      setError(e.message || 'Failed to save the pictures.');
       setPasteState('error');
     }
+  };
+
+  const uploadBlobs = (blobs) => uploadMany(blobs, (blob) => uploadClipboardImageToImgChest({ blob }));
+
+  const handleFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length > 0) uploadMany(files, (file) => uploadImageToImgChest({ file }));
   };
 
   // Ctrl+V / long-press paste while the panel (or a child) has focus.
@@ -130,15 +160,16 @@ export default function ConditionImagesPanel({ condition, images }) {
     if (!isAdmin) return;
     const items = e.clipboardData?.items;
     if (!items) return;
+    const blobs = [];
     for (const item of items) {
       if (item.type?.startsWith('image/')) {
         const blob = item.getAsFile();
-        if (blob) {
-          e.preventDefault();
-          uploadBlob(blob);
-        }
-        return;
+        if (blob) blobs.push(blob);
       }
+    }
+    if (blobs.length > 0) {
+      e.preventDefault();
+      uploadBlobs(blobs);
     }
   };
 
@@ -149,16 +180,16 @@ export default function ConditionImagesPanel({ condition, images }) {
     setError('');
     try {
       if (!navigator.clipboard?.read) {
-        throw new Error('Clipboard paste isn’t supported in this browser. Click the picture area and press Ctrl+V instead.');
+        throw new Error('Clipboard paste isn’t supported in this browser. Use Upload Photo(s) instead.');
       }
       const items = await navigator.clipboard.read();
-      let blob = null;
+      const blobs = [];
       for (const item of items) {
         const imageType = item.types.find(t => t.startsWith('image/'));
-        if (imageType) { blob = await item.getType(imageType); break; }
+        if (imageType) blobs.push(await item.getType(imageType));
       }
-      if (!blob) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
-      await uploadBlob(blob);
+      if (blobs.length === 0) throw new Error('No image found on the clipboard. Copy a picture first, then try again.');
+      await uploadBlobs(blobs);
     } catch (e) {
       setError(e.message || 'Failed to paste image from clipboard.');
       setPasteState('error');
@@ -191,16 +222,22 @@ export default function ConditionImagesPanel({ condition, images }) {
       </div>
 
       {isAdmin && (
-        <button
-          onClick={handlePasteButton}
-          disabled={uploading}
-          className="inline-flex items-center gap-2 text-[15px] font-bold text-white disabled:opacity-60 px-5 py-2.5 rounded-xl shadow-md"
-          style={{ background: 'linear-gradient(135deg, #7C4DFF, #5B2FE0)' }}
-        >
-          {uploading
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
-            : <><ClipboardList className="w-5 h-5" /> {list.length > 0 ? 'Paste Another' : 'Paste from Clipboard'}</>}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handlePasteButton}
+            disabled={uploading}
+            className="inline-flex items-center gap-2 text-[15px] font-bold text-white disabled:opacity-60 px-5 py-2.5 rounded-xl shadow-md"
+            style={{ background: 'linear-gradient(135deg, #7C4DFF, #5B2FE0)' }}
+          >
+            {uploading
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {progress || 'Uploading…'}</>
+              : <><ClipboardList className="w-5 h-5" /> {list.length > 0 ? 'Paste More' : 'Paste from Clipboard'}</>}
+          </button>
+          <label className={`inline-flex items-center gap-2 text-[15px] font-bold px-5 py-2.5 rounded-xl border border-violet-300 bg-white text-violet-700 cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+            <Upload className="w-5 h-5" /> Upload Photo(s)
+            <input type="file" accept="image/*" multiple className="hidden" onChange={handleFilesSelected} disabled={uploading} />
+          </label>
+        </div>
       )}
 
       {list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
@@ -222,7 +259,7 @@ export default function ConditionImagesPanel({ condition, images }) {
       {isAdmin && (
         <p className="text-[13px] italic text-slate-500 mt-3 flex items-start gap-2">
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>Copy an image, then press the button above — or click here and press Ctrl+V (long-press → Paste on a phone).</span>
+          <span>Copy image(s), then press Paste — or pick several photos with Upload Photo(s). You can also click here and press Ctrl+V (long-press → Paste on a phone).</span>
         </p>
       )}
       {error && <div className="text-xs text-red-600 mt-2">⚠ {error}</div>}
