@@ -159,6 +159,15 @@ export default function Layout({ children }) {
           </span>
         </Link>
         <div className="mi-header-actions">
+          <button
+            type="button"
+            className="mi-theme"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? <Sun size={17} strokeWidth={2} /> : <Moon size={17} strokeWidth={2} />}
+          </button>
           <div className="mi-bell-wrap" ref={miNotifRef}>
             <button
               type="button"
@@ -176,7 +185,7 @@ export default function Layout({ children }) {
               </div>
             )}
           </div>
-          <Link to="/more" className="mi-avatar" aria-label="Account and settings">
+          <Link to="/profile" className="mi-avatar" aria-label="My profile">
             {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={38} strokeWidth={0} fill="currentColor" />}
           </Link>
         </div>

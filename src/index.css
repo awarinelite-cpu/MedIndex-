@@ -431,8 +431,14 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .mi-brand-name { font-size: 34px; font-weight: 800; letter-spacing: -.8px; line-height: 1; color: var(--mi-ink); }
 .mi-brand-name span { color: var(--mi-blue); }
 .mi-brand-tag { margin-top: 4px; font-size: 14px; font-style: italic; color: var(--mi-ink); white-space: nowrap; }
-.mi-header-actions { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+.mi-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .mi-bell-wrap { position: relative; }
+.mi-header button.mi-theme {
+  width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto;
+  border-radius: 50%; border: 0; padding: 0; cursor: pointer; filter: none; transform: none;
+  background: var(--mi-surface, #fff); color: var(--mi-ink); background-image: none;
+  box-shadow: 0 4px 10px -4px rgba(17, 85, 216, .35);
+}
 .mi-header button.mi-bell {
   position: relative; width: 42px; height: 42px; display: grid; place-items: center;
   border-radius: 50%; background: transparent; background-image: none; box-shadow: none;

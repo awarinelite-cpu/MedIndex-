@@ -10,6 +10,7 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [, setProfileTick] = useState(0); // bumps after a profile edit so consumers re-read user.displayName / photoURL
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
@@ -36,6 +37,12 @@ export function AuthProvider({ children }) {
 
   const login    = (email, password) => signInWithEmailAndPassword(auth, email, password);
   const logout   = () => signOut(auth);
+  // Updates the signed-in user's name and/or photo. Pass photoURL: null to remove the photo.
+  const updateUserProfile = async (changes) => {
+    if (!auth.currentUser) throw new Error('Not signed in.');
+    await updateProfile(auth.currentUser, changes);
+    setProfileTick(t => t + 1);
+  };
   const register = async (email, password, displayName) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (displayName) await updateProfile(cred.user, { displayName });
@@ -43,7 +50,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, loading, login, logout, register }}>
+    <AuthContext.Provider value={{ user, isAdmin, loading, login, logout, register, updateUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -28,6 +28,7 @@ import BulkImageUploadPage from './pages/BulkImageUploadPage';
 import LabReferencePage from './pages/LabReferencePage';
 import CalculatorsPage from './pages/CalculatorsPage';
 import SystemPage from './pages/SystemPage';
+import ProfilePage from './pages/ProfilePage';
 import AllConditionsPage from './pages/AllConditionsPage';
 import ConditionProfilePage from './pages/ConditionProfilePage';
 import FavouritesPage from './pages/FavouritesPage';
@@ -131,6 +132,11 @@ function App() {
         <Route path="/calculators" element={
           <ProtectedUserRoute>
             <Layout><CalculatorsPage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedUserRoute>
+            <Layout><ProfilePage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/more" element={

@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, Sun, Moon, ChevronRight, Sparkles, Coins, ClipboardList,
+  LogOut, User, UserCircle, Sun, Moon, ChevronRight, Sparkles, Coins, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -17,6 +17,7 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
 
 const NAV_LINKS = [
+  { to: '/profile',     label: 'My Profile',        icon: UserCircle   },
   { to: '/',            label: 'Home',              icon: Home         },
   { to: '/browse',      label: 'Browse',            icon: Grid3X3      },
   { to: '/procedures',  label: 'Procedures',        icon: ClipboardList },
@@ -115,10 +116,12 @@ export default function MorePage() {
       {user && (
         <div className="border-t border-drug-border pt-4 mt-2">
           <div className="flex items-center justify-between px-1 py-2">
-            <div className="flex items-center gap-2 text-drug-text text-sm min-w-0">
-              <User className="w-4 h-4 flex-shrink-0" />
+            <Link to="/profile" className="flex items-center gap-2 text-drug-text text-sm min-w-0">
+              {user.photoURL
+                ? <img src={user.photoURL} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                : <User className="w-4 h-4 flex-shrink-0" />}
               <span className="truncate">{user.displayName || user.email}</span>
-            </div>
+            </Link>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-drug-bg border border-drug-border rounded-lg
