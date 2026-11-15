@@ -8,6 +8,7 @@ import {
   analyzePair, findLocalIncompatibles, findLocalCombinations,
   mergePairResults, mergeLists,
 } from '../utils/localDrugInteractions';
+import { splitIntoBullets, justifyStyle } from '../utils/bulletText';
 
 // Where a result came from — shown as a small badge so users can tell
 // database-backed findings from AI suggestions.
@@ -1075,10 +1076,10 @@ export default function DrugInteractionChecker({ drug, allDrugs }) {
             Always verify interactions against current prescribing information. Consult a pharmacist for patient-specific interaction checking.
           </p>
           <div className="space-y-1">
-            {livePrimaryDrug.interaction.split('\n').map((line, i) => line.trim() && (
-              <div key={i} className="flex items-start gap-2 text-sm text-drug-text">
-                <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
-                <span>{line}</span>
+            {splitIntoBullets(livePrimaryDrug.interaction).map((line, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm text-drug-text leading-relaxed">
+                <span className="text-primary-400 mt-0.5 flex-shrink-0">•</span>
+                <span className="flex-1" style={justifyStyle}>{line}</span>
               </div>
             ))}
           </div>

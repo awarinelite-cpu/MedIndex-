@@ -21,6 +21,7 @@ import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectio
 import { shareDrugPdf } from '../utils/exportDrugPdf';
 import PasteZone from '../components/PasteZone';
 import ManualDrugInfoEntry from '../components/ManualDrugInfoEntry';
+import { splitIntoBullets, justifyStyle } from '../utils/bulletText';
 import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
 import useAutoPasteImages from '../hooks/useAutoPasteImages';
 import {
@@ -72,12 +73,30 @@ function detectRoutes(doseTexts) {
   return [...new Set(found)];
 }
 
+// Bulleted + justified list; splits on lines, pipes and sentences.
+function renderBullets(value, danger = false) {
+  const textClass = danger ? 'text-red-700 dark:text-red-400' : 'text-drug-text';
+  const dotClass = danger ? 'text-red-500' : 'text-primary-400';
+  const items = splitIntoBullets(value);
+  if (items.length === 0) return <em className="text-drug-muted">No data available</em>;
+  return (
+    <ul className="space-y-1.5">
+      {items.map((item, i) => (
+        <li key={i} className={`flex items-start gap-2 leading-relaxed ${textClass}`}>
+          <span className={`${dotClass} mt-0.5 flex-shrink-0`}>•</span>
+          <span className="flex-1" style={justifyStyle}>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Render dosage text with route abbreviations highlighted inline
 function renderDosageWithRoutes(text) {
   if (!text) return <em className="text-drug-muted">No data available</em>;
 
   // Split on newlines or pipe for sections
-  const sections = text.split(/\n|\|/).map(s => s.trim()).filter(Boolean);
+  const sections = splitIntoBullets(text);
 
   return (
     <div className="space-y-3">
@@ -87,7 +106,7 @@ function renderDosageWithRoutes(text) {
         return (
           <div key={i} className="flex items-start gap-2">
             <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
-            <p className="text-drug-text leading-relaxed">
+            <p className="flex-1 text-drug-text leading-relaxed" style={justifyStyle}>
               {parts.map((part, j) => {
                 const meta = ROUTE_META[part];
                 if (meta) {
@@ -1960,14 +1979,14 @@ export default function DrugDetailPage() {
             {drug.administration && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">Administration</h2>
-                {renderList(drug.administration, '\n')}
+                {renderBullets(drug.administration)}
               </div>
             )}
 
             {drug.nstg_recommendations && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">NSTG Recommendations</h2>
-                {renderList(drug.nstg_recommendations, '\n')}
+                {renderBullets(drug.nstg_recommendations)}
               </div>
             )}
 
@@ -1981,7 +2000,7 @@ export default function DrugDetailPage() {
             <div className="section-card p-5">
               <h2 className="text-lg font-bold mb-3">Pregnancy &amp; Lactation</h2>
               {drug.pregnancy_lactation ? (
-                <p className="text-sm text-drug-text leading-relaxed">{drug.pregnancy_lactation}</p>
+                <div className="text-sm">{renderBullets(drug.pregnancy_lactation)}</div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
@@ -2009,35 +2028,35 @@ export default function DrugDetailPage() {
             {drug.contraindications && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3 text-red-700">Contra-indications</h2>
-                {renderList(drug.contraindications, '\n', true)}
+                {renderBullets(drug.contraindications, true)}
               </div>
             )}
 
             {drug.precautions && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3 text-red-700">Precautions</h2>
-                {renderList(drug.precautions, '\n', true)}
+                {renderBullets(drug.precautions, true)}
               </div>
             )}
 
             {drug.adverse_effect && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">Adverse Effect</h2>
-                {renderList(drug.adverse_effect, '\n')}
+                {renderBullets(drug.adverse_effect)}
               </div>
             )}
 
             {drug.advice_to_patients && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">Advice to Patients</h2>
-                {renderList(drug.advice_to_patients, '\n')}
+                {renderBullets(drug.advice_to_patients)}
               </div>
             )}
 
             {drug.pharmacovigilance && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">Pharmacovigilance</h2>
-                <p className="text-drug-text leading-relaxed">{drug.pharmacovigilance}</p>
+                {renderBullets(drug.pharmacovigilance)}
               </div>
             )}
 
@@ -2050,7 +2069,7 @@ export default function DrugDetailPage() {
             {drug.pharmacology && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-4">Pharmacology</h2>
-                <p className="text-drug-text leading-relaxed">{drug.pharmacology}</p>
+                {renderBullets(drug.pharmacology)}
               </div>
             )}
             <div className="section-card p-6">
@@ -2076,7 +2095,7 @@ export default function DrugDetailPage() {
             {drug.product_description && (
               <div className="section-card p-6">
                 <h2 className="text-lg font-bold mb-3">Product Description</h2>
-                <p className="text-drug-text leading-relaxed">{drug.product_description}</p>
+                {renderBullets(drug.product_description)}
               </div>
             )}
 
@@ -2087,13 +2106,13 @@ export default function DrugDetailPage() {
                   {drug.storage_recommendations && (
                     <div>
                       <div className="text-sm font-semibold text-drug-muted mb-1">Storage Recommendations</div>
-                      <p className="text-drug-text text-sm leading-relaxed">{drug.storage_recommendations}</p>
+                      <div className="text-sm">{renderBullets(drug.storage_recommendations)}</div>
                     </div>
                   )}
                   {drug.pack_size_price && (
                     <div>
                       <div className="text-sm font-semibold text-drug-muted mb-1">Pack Size &amp; Price</div>
-                      <p className="text-drug-text text-sm leading-relaxed">{drug.pack_size_price}</p>
+                      <div className="text-sm">{renderBullets(drug.pack_size_price)}</div>
                     </div>
                   )}
                 </div>
