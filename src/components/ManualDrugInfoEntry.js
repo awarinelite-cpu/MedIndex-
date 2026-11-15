@@ -64,7 +64,7 @@ export function googleDrugInfoUrl(drugName, tabId = 'overview') {
     + `Make every value VERY EXTENSIVE, comprehensive and clinically detailed (long, multi-sentence, nothing summarised or shortened). `
     + `Line 1 MUST be this header row, exactly and only: ${header} . Do not add, rename or drop any column or skip the header. `
     + `Column contents: ${hints}. `
-    + `Then ONE data row for ${drugName} with every value in double quotes and empty only if truly unknown. Output only the CSV.`;
+    + `Then ONE data row for ${drugName} with every value in double quotes and empty only if truly unknown. Output only the plain CSV text - no code, no Python script, no explanation.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
@@ -78,6 +78,50 @@ function normalizeStatus(val) {
 }
 
 // → { updates, ignored, csvName }
+// Sometimes Google/AI answers with a Python script that builds the CSV
+// (header = [...]; row = [...]) instead of the CSV itself. Pull the header and
+// row lists out of it and rebuild a real CSV.
+function csvFromPythonScript(text) {
+  if (!/\bcsv\b|\bheader\s*=|\brow\s*=/.test(text) || !/^\s*\w+\s*=\s*\[/m.test(text)) return null;
+  const lists = [];
+  let i = 0;
+  const n = text.length;
+  const readString = () => {
+    const q3 = text.startsWith('"""', i) ? '"""' : text.startsWith("'''", i) ? "'''" : null;
+    if (q3) {
+      const end = text.indexOf(q3, i + 3);
+      if (end === -1) return null;
+      const v = text.slice(i + 3, end); i = end + 3; return v;
+    }
+    const q = text[i];
+    let v = ''; i++;
+    while (i < n && text[i] !== q) {
+      if (text[i] === '\\' && i + 1 < n) {
+        const c = text[i + 1];
+        v += c === 'n' ? '\n' : c === 't' ? '\t' : c; i += 2;
+      } else { v += text[i++]; }
+    }
+    i++; return v;
+  };
+  while (i < n) {
+    if (text[i] === '#') { while (i < n && text[i] !== '\n') i++; continue; }
+    if (text[i] === '[') {
+      i++;
+      const items = [];
+      while (i < n && text[i] !== ']') {
+        if (text[i] === '"' || text[i] === "'") { const v = readString(); if (v === null) return null; items.push(v); }
+        else i++;
+      }
+      i++;
+      if (items.length >= 2) lists.push(items);
+      continue;
+    }
+    if (text[i] === '"' || text[i] === "'") { if (readString() === null) return null; continue; }
+    i++;
+  }
+  return lists.length >= 2 ? Papa.unparse([lists[0], lists[1]]) : null;
+}
+
 export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
   // Google often wraps the CSV in ```csv fences and uses curly quotes - normalise first.
   const cleaned = String(text || '')
@@ -86,7 +130,7 @@ export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/^\s*csv\s*\n/i, '')
     .trim();
-  const res = Papa.parse(cleaned, { skipEmptyLines: 'greedy' });
+  const res = Papa.parse(csvFromPythonScript(cleaned) || cleaned, { skipEmptyLines: 'greedy' });
   const rows = (res.data || []).filter(r => Array.isArray(r) && r.some(c => String(c).trim()));
   if (rows.length === 0) throw new Error('Nothing to read — paste or upload CSV first.');
 
