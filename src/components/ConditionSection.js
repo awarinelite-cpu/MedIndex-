@@ -1276,25 +1276,29 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             })
           )}
 
-          {/* AI expansion — find more drugs for this condition */}
-          <div className="p-4">
-            <AiConditionFallback
-              conditionId={condition.id}
-              conditionLabel={condition.label}
-              conditionKeywords={condition.keywords}
-              systemName={systemName}
-              existingDrugs={drugs}
-            />
-          </div>
+          {/* AI expansion — find more drugs for this condition (admin only) */}
+          {isAdmin && (
+            <div className="p-4">
+              <AiConditionFallback
+                conditionId={condition.id}
+                conditionLabel={condition.label}
+                conditionKeywords={condition.keywords}
+                systemName={systemName}
+                existingDrugs={drugs}
+              />
+            </div>
+          )}
 
-          {/* Combination therapy regimens for this specific condition */}
-          <div className="px-4 pb-4">
-            <IndicationCombinationPanel
-              conditionId={condition.id}
-              conditionLabel={condition.label}
-              systemName={systemName}
-            />
-          </div>
+          {/* Combination therapy regimens for this specific condition (admin only) */}
+          {isAdmin && (
+            <div className="px-4 pb-4">
+              <IndicationCombinationPanel
+                conditionId={condition.id}
+                conditionLabel={condition.label}
+                systemName={systemName}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
