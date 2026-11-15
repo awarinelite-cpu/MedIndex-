@@ -7,7 +7,7 @@ import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '
 import { addConditionImageUrls, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
 
 // Fades the picture's top, bottom and side edges into the page background.
-const BLEND_MASK = {
+export const BLEND_MASK = {
   WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, #000 7%, #000 70%, transparent 100%), linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%)',
   maskImage: 'linear-gradient(to bottom, transparent 0%, #000 7%, #000 70%, transparent 100%), linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%)',
   WebkitMaskComposite: 'source-in',

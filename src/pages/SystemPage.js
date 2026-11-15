@@ -25,7 +25,7 @@ import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/us
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import ConditionSection from '../components/ConditionSection';
-import ConditionImagesPanel from '../components/ConditionImagesPanel';
+import ConditionImagesPanel, { BLEND_MASK } from '../components/ConditionImagesPanel';
 import { useSystemImages, addSystemImageUrls, deleteSystemImage } from '../hooks/useSystemImages';
 import { shareSystemNotePdf } from '../utils/exportSystemNotePdf';
 
@@ -1131,7 +1131,8 @@ export default function SystemPage() {
     <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${(mergeMode || classMergeMode) ? 'pb-56 md:pb-40' : ''}`}>
       {(() => {
         const sysImgs = systemImagesById[system.id || systemId];
-        const hasHero = !loading && Array.isArray(sysImgs) && sysImgs.length > 0;
+        const hasPicture = !loading && Array.isArray(sysImgs) && sysImgs.length > 0;
+        const hasHero = true; // every system gets the banner layout
         const statChips = loading ? [] : [
           `${drugs.length} medication${drugs.length !== 1 ? 's' : ''}`,
           `${conditionGroups.size} condition${conditionGroups.size !== 1 ? 's' : ''}`,
@@ -1188,7 +1189,7 @@ export default function SystemPage() {
           </>
         );
         const panel = (
-          <ConditionImagesPanel hero blend={hasHero}
+          <ConditionImagesPanel hero blend={hasPicture}
             condition={{ id: system.id || systemId, label: system.name }}
             images={sysImgs}
             onAddUrls={(urls, existing) => addSystemImageUrls({ systemId: system.id || systemId, urls, existingImages: existing })}
@@ -1201,7 +1202,14 @@ export default function SystemPage() {
           return (
             <>
               <div className="relative -mx-4 sm:mx-0 -mt-8 sm:max-w-xl mb-2">
-                {panel}
+                {hasPicture
+                  ? panel
+                  : (
+                    <div
+                      className={`h-60 w-full ${system.bg}`}
+                      style={{ ...BLEND_MASK, opacity: 0.9 }}
+                    />
+                  )}
                 <div className="absolute inset-x-0 top-0 z-10 px-4 pt-4 pointer-events-none">
                   <div className="pointer-events-auto inline-block">{backBtn}</div>
                   <div className="flex items-center gap-3">
@@ -1224,6 +1232,7 @@ export default function SystemPage() {
                   </div>
                 </div>
               </div>
+              {!hasPicture && !loading && <div className="-mx-4 sm:mx-0 sm:max-w-xl mb-4">{panel}</div>}
               {adminRow}
             </>
           );
