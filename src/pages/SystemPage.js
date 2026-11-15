@@ -713,7 +713,7 @@ export default function SystemPage() {
   };
 
   const [viewMode,    setViewMode]    = useState('list');
-  const [classFilter, setClassFilter] = useState('');
+  const [letterFilter, setLetterFilter] = useState('');
   const [nameSearch,  setNameSearch]  = useState('');
   // Only one condition accordion open at a time; none open by default —
   // EXCEPT restored from sessionStorage, so navigating to a drug from an
@@ -1027,35 +1027,27 @@ export default function SystemPage() {
     return [...s].sort();
   }, [drugs]);
 
-  // Condition ids whose own label matches the current search text — drugs
-  // tagged to one of these count as visible even if their own name/class
-  // doesn't contain the search text.
-  const matchingConditionIds = useMemo(() => {
-    const q = nameSearch.trim().toLowerCase();
-    if (!q) return new Set();
-    return new Set(
-      [...conditionGroups.values()]
-        .filter(e => e.condition.label?.toLowerCase().includes(q))
-        .map(e => e.condition.id)
-    );
-  }, [conditionGroups, nameSearch]);
+  // Conditions on this system, filtered by the A-Z letter and the search box.
+  // The search box matches the condition name only (never drug names/classes).
+  const letterOf = (label) => {
+    const c = String(label || '').trim().charAt(0).toUpperCase();
+    return /[A-Z]/.test(c) ? c : '#';
+  };
+  const conditionLetters = useMemo(() => {
+    const counts = new Map();
+    [...conditionGroups.values()].forEach(e => {
+      const l = letterOf(e.condition.label);
+      counts.set(l, (counts.get(l) || 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => (a[0] === '#') - (b[0] === '#') || a[0].localeCompare(b[0]));
+  }, [conditionGroups]);
 
-  // Total visible after filters
-  const visibleCount = useMemo(() => {
+  const filteredConditions = useMemo(() => {
     const q = nameSearch.trim().toLowerCase();
-    return drugs.filter(d => {
-      const matchClass = !classFilter || d.drug_class === classFilter;
-      if (!matchClass) return false;
-      if (!q) return true;
-      const matchName =
-        d.generic_name?.toLowerCase().includes(q) ||
-        d.drug_subclass?.toLowerCase().includes(q) ||
-        d.drug_class?.toLowerCase().includes(q);
-      if (matchName) return true;
-      const tags = Array.isArray(d.condition_tags) ? d.condition_tags : [];
-      return tags.some(id => matchingConditionIds.has(id));
-    }).length;
-  }, [drugs, classFilter, nameSearch, matchingConditionIds]);
+    return [...conditionGroups.values()]
+      .filter(e => !letterFilter || letterOf(e.condition.label) === letterFilter)
+      .filter(e => !q || String(e.condition.label || '').toLowerCase().includes(q));
+  }, [conditionGroups, letterFilter, nameSearch]);
 
   // Same field set as the main Bulk Upload template (UploadPage.js), plus
   // condition_tags so drugs land under the right condition on this System
@@ -1292,19 +1284,19 @@ export default function SystemPage() {
             type="text"
             value={nameSearch}
             onChange={e => setNameSearch(e.target.value)}
-            placeholder="Search within this system…"
+            placeholder="Search conditions in this system…"
             className="w-full pl-4 pr-4 py-2 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
           />
         </div>
 
         <select
-          value={classFilter}
-          onChange={e => setClassFilter(e.target.value)}
+          value={letterFilter}
+          onChange={e => setLetterFilter(e.target.value)}
           className="py-2 px-3 border border-drug-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
         >
-          <option value="">All Drug Classes ({allClasses.length})</option>
-          {allClasses.map(cls => (
-            <option key={cls} value={cls}>{cls}</option>
+          <option value="">All Conditions A–Z ({conditionGroups.size})</option>
+          {conditionLetters.map(([l, n]) => (
+            <option key={l} value={l}>{l} ({n})</option>
           ))}
         </select>
 
@@ -1345,13 +1337,13 @@ export default function SystemPage() {
       )}
 
       {/* Filter summary */}
-      {(classFilter || nameSearch) && (
+      {(letterFilter || nameSearch) && (
         <div className="flex items-center gap-3 mb-4 text-sm text-drug-muted">
           <span>
-            Showing <strong className="text-drug-text">{visibleCount}</strong> of {drugs.length} drugs
+            Showing <strong className="text-drug-text">{filteredConditions.length}</strong> of {conditionGroups.size} conditions
           </span>
           <button
-            onClick={() => { setClassFilter(''); setNameSearch(''); }}
+            onClick={() => { setLetterFilter(''); setNameSearch(''); }}
             className="text-red-500 font-semibold hover:text-red-700"
           >
             Clear filters
@@ -1371,27 +1363,13 @@ export default function SystemPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {[...conditionGroups.values()]
-                .filter((entry) => {
-                  const q = nameSearch.trim().toLowerCase();
-                  if (!q) return true;
-                  if (entry.condition.label?.toLowerCase().includes(q)) return true;
-                  return entry.drugs.some(d => {
-                    const matchClass = !classFilter || d.drug_class === classFilter;
-                    if (!matchClass) return false;
-                    return d.generic_name?.toLowerCase().includes(q) ||
-                      d.drug_subclass?.toLowerCase().includes(q) ||
-                      d.drug_class?.toLowerCase().includes(q);
-                  });
-                })
+              {filteredConditions
                 .map((entry) => (
                 <ConditionSection
                   key={entry.condition.id}
                   condition={entry.condition}
                   drugs={entry.drugs.filter(d => !removedLinks.has(`${d.id}::${entry.condition.id}`))}
                   viewMode={viewMode}
-                  classFilter={classFilter}
-                  nameSearch={nameSearch}
                   isOpen={openConditionId === entry.condition.id}
                   onToggle={() => setOpenConditionId(o => o === entry.condition.id ? null : entry.condition.id)}
                   systemName={system.name}
