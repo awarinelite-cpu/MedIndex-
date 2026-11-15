@@ -138,26 +138,6 @@ function renderDosageWithRoutes(text) {
   );
 }
 
-function renderList(value, separator = '|', danger = false) {
-  const textClass = danger ? 'text-red-700 dark:text-red-400' : 'text-drug-text';
-  const dotClass = danger ? 'text-red-500' : 'text-primary-400';
-  if (!value) return <em className="text-drug-muted">No data available</em>;
-  const items = value.split(separator).map(s => s.trim()).filter(Boolean);
-  if (items.length <= 1) {
-    return <p className={`${textClass} leading-relaxed`}>{value}</p>;
-  }
-  return (
-    <ul className="space-y-1">
-      {items.map((item, i) => (
-        <li key={i} className={`flex items-start gap-2 ${textClass}`}>
-          <span className={`${dotClass} mt-1 flex-shrink-0`}>•</span>
-          <span>{item}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 // Nursing action: splits "Label: text" sections, then each sentence into a justified bullet.
 function NursingActionList({ value }) {
   if (!value) return <em className="text-drug-muted">No data available</em>;
