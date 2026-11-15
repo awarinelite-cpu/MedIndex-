@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  ExternalLink, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
+  ExternalLink, FileText, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
@@ -27,6 +27,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import { hasNoDistinctTypes, hasNoSurgicalManagement } from '../utils/parseConditionClinicalInfo';
 import { renderAiText } from '../utils/renderAiText';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
+import { shareConditionNoteDocx } from '../utils/exportConditionNoteDocx';
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 const OTHER = 'Other relevant treatments';
@@ -347,6 +348,20 @@ export default function ConditionProfilePage() {
     }
   };
 
+  const [sharingWord, setSharingWord] = useState(false);
+  const shareWord = async () => {
+    if (!entry || sharingWord) return;
+    setSharingWord(true);
+    setShareError('');
+    try {
+      await shareConditionNoteDocx({ id: systemId, name: system?.name }, entry.condition, entry.drugs, info);
+    } catch (e) {
+      setShareError(e.message || 'Could not share this condition as a Word document.');
+    } finally {
+      setSharingWord(false);
+    }
+  };
+
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/conditions'));
 
   const summary = firstSentence(info?.introduction);
@@ -408,6 +423,9 @@ export default function ConditionProfilePage() {
         <div className="cp-bar-actions">
           <button type="button" className={`cp-bar-btn ${saved ? 'is-saved' : ''}`} onClick={toggleSaved} disabled={!entry} aria-pressed={saved} aria-label={saved ? 'Remove from favourites' : 'Save to favourites'}>
             <Heart size={36} strokeWidth={2} fill={saved ? 'currentColor' : 'none'} />
+          </button>
+          <button type="button" className="cp-bar-btn" onClick={shareWord} disabled={!entry || sharingWord} aria-label="Share condition as Word document">
+            <FileText size={34} strokeWidth={2} />
           </button>
           <button type="button" className="cp-bar-btn" onClick={share} disabled={!entry || sharing} aria-label="Share condition">
             <Share2 size={34} strokeWidth={2} />

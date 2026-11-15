@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info,
+  Sparkles, RefreshCw, Save, FileText, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info,
 } from 'lucide-react';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { useDrugs } from '../hooks/useDrugs';
@@ -23,6 +23,7 @@ import PasteMedicationsPanel from './PasteMedicationsPanel';
 import ConditionGoogleInfo from './ConditionGoogleInfo';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
+import { shareConditionNoteDocx } from '../utils/exportConditionNoteDocx';
 import AiClassFallback from './AiClassInsight';
 import ConditionImagesPanel from './ConditionImagesPanel';
 import ConditionMedicationsView from './condition/ConditionMedicationsView';
@@ -630,6 +631,23 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     }
   };
 
+  // Same note as a Microsoft Word (.docx) file.
+  const [sharingWord, setSharingWord] = useState(false);
+  const handleShareWord = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (sharingWord) return;
+    setSharingWord(true);
+    setShareError('');
+    try {
+      await shareConditionNoteDocx({ id: systemId, name: systemName }, condition, drugs, clinicalInfo);
+    } catch (err) {
+      setShareError(err.message || 'Failed to share Word document.');
+    } finally {
+      setSharingWord(false);
+    }
+  };
+
   // Admin-only hint under each drug: which keyword tied it to this condition.
   const matchNote = (d) => {
     const m = explainMatch(d, condition);
@@ -958,6 +976,19 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               title="Share this condition's clinical info and drug list as a PDF"
             >
               <Share2 className={`w-[18px] h-[18px] text-blue-600 ${sharingCondition ? 'animate-pulse' : ''}`} />
+            </span>
+          )}
+          {!mergeMode && !classMergeMode && !isEditingLabel && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label={`Share ${condition.label} as a Word document`}
+              onClick={handleShareWord}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleShareWord(e); }}
+              className={`w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff] ${sharingWord ? 'opacity-50 pointer-events-none' : ''}`}
+              title="Share this condition (everything inside it) as a Word document"
+            >
+              <FileText className={`w-[18px] h-[18px] text-blue-600 ${sharingWord ? 'animate-pulse' : ''}`} />
             </span>
           )}
           {!mergeMode && !classMergeMode && !isEditingLabel && (
