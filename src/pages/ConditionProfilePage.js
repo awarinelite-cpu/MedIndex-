@@ -16,6 +16,7 @@ import { useCustomConditions } from '../hooks/useCustomConditions';
 import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionImagesPanel from '../components/ConditionImagesPanel';
 import PasteMedicationsPanel from '../components/PasteMedicationsPanel';
+import ConditionGoogleInfo from '../components/ConditionGoogleInfo';
 import { useAuth } from '../context/AuthContext';
 import { deleteReviewedDrug } from '../utils/aiDrugSave';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
@@ -385,6 +386,8 @@ export default function ConditionProfilePage() {
             </div>
           )}
         </section>
+        {/* Admin only (the component hides itself for everyone else) */}
+        <ConditionGoogleInfo condition={entry.condition} systemName={systemName} existingInfo={info} className="mt-3" />
         <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} />
       </>
     );

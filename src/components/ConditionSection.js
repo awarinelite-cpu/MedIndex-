@@ -20,6 +20,7 @@ import { getDisplayDrugClass } from '../utils/drugCategory';
 import { classifyDrugsByRole, getMainIndicationStrength, explainMatch, getStoredRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
 import PasteMedicationsPanel from './PasteMedicationsPanel';
+import ConditionGoogleInfo from './ConditionGoogleInfo';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 import AiClassFallback from './AiClassInsight';
@@ -403,6 +404,13 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
     }
   };
 
+  // Sections saved from the "Search Google for clinical info" drop-down.
+  // Merge onto whatever is already shown, then open the panel.
+  const onGoogleSaved = (updates) => {
+    setLocalInfo(prev => ({ ...(prev || {}), ...updates }));
+    setExpanded(true);
+  };
+
   const remove = async () => {
     if (removing) return;
     setRemoving(true);
@@ -420,27 +428,36 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
   if (!localInfo) {
     if (!isAdmin) return null; // nothing generated yet, nothing for a non-admin to see
     return (
-      <div className="px-5 py-3 border-b border-drug-border bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0 text-sm text-drug-muted">
-          <BookOpen className="w-4 h-4 flex-shrink-0" />
-          No clinical info added for "{condition.label}" yet.
+      <>
+        <div className="px-5 py-3 border-b border-drug-border bg-gray-50 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 text-sm text-drug-muted">
+            <BookOpen className="w-4 h-4 flex-shrink-0" />
+            No clinical info added for "{condition.label}" yet.
+          </div>
+          {state === 'loading' ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 flex-shrink-0">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating…
+            </span>
+          ) : (
+            <button
+              onClick={generate}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg flex-shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Add Clinical Info
+            </button>
+          )}
+          {state === 'error' && (
+            <div className="w-full text-xs text-red-600">⚠ {error}</div>
+          )}
         </div>
-        {state === 'loading' ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 flex-shrink-0">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Generating…
-          </span>
-        ) : (
-          <button
-            onClick={generate}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg flex-shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Add Clinical Info
-          </button>
-        )}
-        {state === 'error' && (
-          <div className="w-full text-xs text-red-600">⚠ {error}</div>
-        )}
-      </div>
+        <ConditionGoogleInfo
+          condition={condition}
+          systemName={systemName}
+          existingInfo={null}
+          onSaved={onGoogleSaved}
+          className="px-4 pt-3 pb-3"
+        />
+      </>
     );
   }
 
@@ -462,6 +479,14 @@ export function ConditionClinicalInfoPanel({ condition, systemName, info }) {
           ? <ChevronUp className="w-5 h-5 text-[#0A1F5C] flex-shrink-0" />
           : <ChevronDown className="w-5 h-5 text-[#0A1F5C] flex-shrink-0" />}
       </button>
+
+      <ConditionGoogleInfo
+        condition={condition}
+        systemName={systemName}
+        existingInfo={localInfo}
+        onSaved={onGoogleSaved}
+        className="pt-2"
+      />
 
       {expanded && (
         <div className="px-5 py-4 space-y-4">
