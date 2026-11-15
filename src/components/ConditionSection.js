@@ -534,7 +534,7 @@ export function ClinicalInfoSection({ title, body }) {
   return (
     <div>
       <h4 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">{title}</h4>
-      <div className="text-sm text-drug-text leading-relaxed">{renderAiText(body)}</div>
+      <div className="text-[17px] text-drug-text leading-relaxed text-justify">{renderAiText(body, { clinical: true })}</div>
     </div>
   );
 }

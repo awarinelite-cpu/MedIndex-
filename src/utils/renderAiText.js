@@ -83,9 +83,13 @@ function renderLineWithAutoLabel(line, keyPrefix, getLinkPath) {
 // and inline **bold** sub-labels.
 // Pass opts.getLinkPath(drugName) => path to make the first bolded term in
 // each bullet line (typically a drug's generic name) a clickable Link.
+// Pass opts.clinical = true for condition clinical-info bodies: larger text,
+// justified on both edges.
 export function renderAiText(text, opts = {}) {
   if (!text) return null;
-  const { getLinkPath } = opts;
+  const { getLinkPath, clinical = false } = opts;
+  const size = clinical ? 'text-[17px]' : 'text-sm';
+  const align = clinical ? ' text-justify' : '';
   const blocks = text.split(/\n(?=#{1,6}\s)/g);
   return blocks.map((block, i) => {
     const headerMatch = block.match(/^#{1,6}\s+(.+)/);
@@ -94,7 +98,7 @@ export function renderAiText(text, opts = {}) {
     return (
       <div key={i} className="mb-6 last:mb-0">
         {headerMatch && (
-          <h3 className="text-base font-bold text-drug-text mb-2">
+          <h3 className={`${clinical ? 'text-lg' : 'text-base'} font-bold text-drug-text mb-2`}>
             {renderInlineBold(headerMatch[1], `h-${i}`)}
           </h3>
         )}
@@ -103,16 +107,16 @@ export function renderAiText(text, opts = {}) {
             if (/^[-*]\s+/.test(line)) {
               const bulletText = line.replace(/^[-*]\s+/, '');
               return (
-                <div key={j} className="flex items-start gap-2 text-sm text-drug-text leading-relaxed">
+                <div key={j} className={`flex items-start gap-2 ${size} text-drug-text leading-relaxed`}>
                   <span className="text-primary-400 mt-1 flex-shrink-0">•</span>
-                  <span>
+                  <span className={align.trim() || undefined}>
                     {renderLineWithAutoLabel(bulletText, `b-${i}-${j}`, getLinkPath)}
                   </span>
                 </div>
               );
             }
             return (
-              <p key={j} className="text-sm text-drug-text leading-relaxed">
+              <p key={j} className={`${size} text-drug-text leading-relaxed${align}`}>
                 {renderLineWithAutoLabel(line, `p-${i}-${j}`, getLinkPath)}
               </p>
             );

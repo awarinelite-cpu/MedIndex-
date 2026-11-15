@@ -495,19 +495,19 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
         {insight.overview && (
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Overview</h3>
-            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.overview)}</div>
+            <div className="text-[17px] text-drug-text leading-relaxed text-justify">{renderAiText(insight.overview, { clinical: true })}</div>
           </div>
         )}
         {insight.etiology && (
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Etiology</h3>
-            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.etiology)}</div>
+            <div className="text-[17px] text-drug-text leading-relaxed text-justify">{renderAiText(insight.etiology, { clinical: true })}</div>
           </div>
         )}
         {insight.pathophysiology && (
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wide text-violet-600 mb-1.5">Pathophysiology</h3>
-            <div className="text-sm text-drug-text leading-relaxed">{renderAiText(insight.pathophysiology)}</div>
+            <div className="text-[17px] text-drug-text leading-relaxed text-justify">{renderAiText(insight.pathophysiology, { clinical: true })}</div>
           </div>
         )}
       </div>

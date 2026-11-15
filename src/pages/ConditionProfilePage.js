@@ -385,7 +385,7 @@ export default function ConditionProfilePage() {
             <span className="cp-about-main">
               <span className="cp-card-title"><span className="cp-card-icon"><Info size={30} strokeWidth={2.2} /></span>About this Condition</span>
               {info?.introduction
-                ? <span className={`cp-about-text ${aboutOpen ? 'is-open' : ''}`}>{renderAiText(info.introduction)}</span>
+                ? <span className={`cp-about-text ${aboutOpen ? 'is-open' : ''}`}>{renderAiText(info.introduction, { clinical: true })}</span>
                 : <span className="cp-about-text is-open">Clinical details have not been added for this condition yet.</span>}
             </span>
             {info?.introduction && (aboutOpen ? <ChevronUp size={22} strokeWidth={2.6} className="cp-about-chev" /> : <ChevronRight size={22} strokeWidth={2.6} className="cp-about-chev" />)}
@@ -395,7 +395,7 @@ export default function ConditionProfilePage() {
               {detailSections.map(([key, label]) => (
                 <div key={key} className="cp-detail-section">
                   <h3>{label}</h3>
-                  <div className="cp-prose">{renderAiText(info[key])}</div>
+                  <div className="cp-prose">{renderAiText(info[key], { clinical: true })}</div>
                 </div>
               ))}
             </div>

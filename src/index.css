@@ -998,7 +998,7 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 
 .cp-about { display: flex; align-items: flex-start; gap: 8px; }
 .cp-about-main { flex: 1 1 auto; min-width: 0; }
-.cp-about-text { margin-top: 8px; font-size: 15.5px; line-height: 1.45; color: var(--cp-ink); }
+.cp-about-text { margin-top: 8px; font-size: 17px; line-height: 1.5; text-align: justify; color: var(--cp-ink); }
 .cp-about-text, .cp-about-text * { color: var(--cp-ink); }
 .cp-about-text:not(.is-open) { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .cp-screen .cp-about-toggle { flex: 0 0 auto; align-self: center; padding: 4px; border: 0; background: none; color: var(--cp-blue); }
