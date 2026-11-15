@@ -623,7 +623,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     setSharingCondition(true);
     setShareError('');
     try {
-      await shareConditionNotePdf({ id: systemId, name: systemName }, condition, drugs, clinicalInfo);
+      await shareConditionNotePdf({ id: systemId, name: systemName }, condition, drugs, clinicalInfo, images);
     } catch (err) {
       setShareError(err.message || 'Failed to share condition note.');
     } finally {
@@ -640,7 +640,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     setSharingWord(true);
     setShareError('');
     try {
-      await shareConditionNoteDocx({ id: systemId, name: systemName }, condition, drugs, clinicalInfo);
+      await shareConditionNoteDocx({ id: systemId, name: systemName }, condition, drugs, clinicalInfo, images);
     } catch (err) {
       setShareError(err.message || 'Failed to share Word document.');
     } finally {

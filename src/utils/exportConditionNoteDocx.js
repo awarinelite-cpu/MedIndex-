@@ -5,10 +5,11 @@
 // tagged to the condition, grouped by class. Sibling of exportConditionNotePdf.js.
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
-  Footer, PageNumber, BorderStyle,
+  Footer, PageNumber, BorderStyle, ImageRun,
 } from 'docx';
 import { slugify } from './pdfBrand';
 import { hasNoDistinctTypes, hasNoSurgicalManagement } from './parseConditionClinicalInfo';
+import { loadExportImages } from './loadExportImages';
 
 const CLINICAL_FIELDS = [
   ['introduction', 'Introduction'],
@@ -58,6 +59,7 @@ function bodyParagraphs(body) {
     if (bullet) {
       out.push(new Paragraph({
         bullet: { level: bullet[1].length >= 2 ? 1 : 0 },
+        alignment: AlignmentType.JUSTIFIED,
         spacing: { after: 40 },
         children: inlineRuns(bullet[2]),
       }));
@@ -67,12 +69,13 @@ function bodyParagraphs(body) {
     if (num) {
       out.push(new Paragraph({
         indent: { left: 360, hanging: 360 },
+        alignment: AlignmentType.JUSTIFIED,
         spacing: { after: 40 },
         children: inlineRuns(`${num[1]}.  ${num[2]}`),
       }));
       return;
     }
-    out.push(new Paragraph({ spacing: { after: 80 }, children: inlineRuns(line) }));
+    out.push(new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 80 }, children: inlineRuns(line) }));
   });
   return out;
 }
@@ -86,7 +89,7 @@ function sectionHeading(text) {
   });
 }
 
-export function buildConditionNoteDocx(system, condition, drugs, clinicalInfo = null) {
+export function buildConditionNoteDocx(system, condition, drugs, clinicalInfo = null, images = []) {
   const children = [];
 
   children.push(new Paragraph({
@@ -105,6 +108,20 @@ export function buildConditionNoteDocx(system, condition, drugs, clinicalInfo = 
       color: MUTED, font: FONT, size: 20,
     })],
   }));
+
+  // Condition pictures, centred under the title.
+  (images || []).forEach(img => {
+    const ratio = Math.min(440 / img.width, 380 / img.height, 1);
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: 160 },
+      children: [new ImageRun({
+        type: 'jpg',
+        data: img.data,
+        transformation: { width: Math.round(img.width * ratio), height: Math.round(img.height * ratio) },
+      })],
+    }));
+  });
 
   if (!clinicalInfo) {
     children.push(new Paragraph({
@@ -201,8 +218,9 @@ function downloadBlob(blob, fileName) {
 }
 
 // Opens the phone's share sheet with the .docx when possible, otherwise downloads it.
-export async function shareConditionNoteDocx(system, condition, drugs, clinicalInfo) {
-  const blob = await Packer.toBlob(buildConditionNoteDocx(system, condition, drugs, clinicalInfo));
+export async function shareConditionNoteDocx(system, condition, drugs, clinicalInfo, images = []) {
+  const loaded = await loadExportImages(images);
+  const blob = await Packer.toBlob(buildConditionNoteDocx(system, condition, drugs, clinicalInfo, loaded));
   const fileName = `medindex-${slugify(condition.label)}-condition-note.docx`;
   const file = new File([blob], fileName, { type: DOCX_MIME });
 

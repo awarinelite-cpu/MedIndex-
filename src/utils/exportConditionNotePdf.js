@@ -17,6 +17,7 @@ import {
   statusColor, slugify, shareOrDownloadPdf,
 } from './pdfBrand';
 import { hasNoDistinctTypes, hasNoSurgicalManagement } from './parseConditionClinicalInfo';
+import { loadExportImages } from './loadExportImages';
 
 const CLINICAL_FIELDS = [
   ['introduction', 'Introduction'],
@@ -37,9 +38,10 @@ const CLINICAL_FIELDS = [
  * @param {Object} condition — { id, label, icon, ... }
  * @param {Array}  drugs     — drugs tagged to this condition
  * @param {Object|null} clinicalInfo — {introduction, types, ...} or null if not yet generated
+ * @param {Array} images — pre-loaded pictures from loadExportImages() (may be empty)
  * @returns {jsPDF}
  */
-export function buildConditionNotePdf(system, condition, drugs, clinicalInfo = null) {
+export function buildConditionNotePdf(system, condition, drugs, clinicalInfo = null, images = []) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const ctx = { runningHeaderLabel: `${system.name} — ${condition.label}`, pageCount: 1 };
   const state = newPageState();
@@ -58,6 +60,19 @@ export function buildConditionNotePdf(system, condition, drugs, clinicalInfo = n
   );
   state.y = 52;
 
+  // ── Condition pictures, centred under the title ───────────────────────
+  if (images && images.length) state.y += 4;
+  (images || []).forEach(img => {
+    const maxW = CONTENT_W * 0.8;
+    const maxH = 95;
+    const ratio = Math.min(maxW / img.width, maxH / img.height);
+    const w = img.width * ratio;
+    const h = img.height * ratio;
+    ensureSpace(doc, state, h + 6, ctx);
+    doc.addImage(img.dataUrl, 'JPEG', MARGIN + (CONTENT_W - w) / 2, state.y, w, h);
+    state.y += h + 6;
+  });
+
   if (!clinicalInfo) {
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(9);
@@ -72,7 +87,7 @@ export function buildConditionNotePdf(system, condition, drugs, clinicalInfo = n
       if (key === 'surgicalManagement' && hasNoSurgicalManagement(body)) return;
       ensureSpace(doc, state, 10, ctx);
       drawFieldLabel(doc, state, ctx, label);
-      drawFieldBody(doc, state, ctx, body, { fontSize: 9, lineH: 4.3 });
+      drawFieldBody(doc, state, ctx, body, { fontSize: 9, lineH: 4.3, justify: true });
       state.y += 2;
     });
   }
@@ -139,13 +154,13 @@ export function buildConditionNotePdf(system, condition, drugs, clinicalInfo = n
   return doc;
 }
 
-export function downloadConditionNotePdf(system, condition, drugs, clinicalInfo) {
-  const doc = buildConditionNotePdf(system, condition, drugs, clinicalInfo);
+export async function downloadConditionNotePdf(system, condition, drugs, clinicalInfo, images = []) {
+  const doc = buildConditionNotePdf(system, condition, drugs, clinicalInfo, await loadExportImages(images));
   doc.save(`medindex-${slugify(condition.label)}-condition-note.pdf`);
 }
 
-export async function shareConditionNotePdf(system, condition, drugs, clinicalInfo) {
-  const doc = buildConditionNotePdf(system, condition, drugs, clinicalInfo);
+export async function shareConditionNotePdf(system, condition, drugs, clinicalInfo, images = []) {
+  const doc = buildConditionNotePdf(system, condition, drugs, clinicalInfo, await loadExportImages(images));
   return shareOrDownloadPdf(doc, {
     fileName: `medindex-${slugify(condition.label)}-condition-note.pdf`,
     title: `${condition.label} — MedIndex Condition Note`,

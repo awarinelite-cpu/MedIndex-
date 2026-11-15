@@ -109,20 +109,40 @@ export function wrapSegments(doc, segments, maxWidth, fontSize) {
   return rows.filter(r => r.length > 0);
 }
 
-export function drawWrappedRow(doc, row, x, y, fontSize, color) {
+export function drawWrappedRow(doc, row, x, y, fontSize, color, justifyWidth = 0) {
   doc.setFontSize(fontSize);
   doc.setTextColor(...color);
+
+  // Justify: stretch the gaps between words so the row fills justifyWidth.
+  let extra = 0;
+  if (justifyWidth > 0) {
+    const chunks = row.slice();
+    while (chunks.length && chunks[chunks.length - 1].isSpace) chunks.pop();
+    const gaps = chunks.filter(c => c.isSpace).length;
+    if (gaps > 0) {
+      let w = 0;
+      chunks.forEach(c => {
+        doc.setFont('helvetica', c.bold ? 'bold' : 'normal');
+        w += doc.getStringUnitWidth(c.text) * fontSize / doc.internal.scaleFactor;
+      });
+      const slack = justifyWidth - w;
+      if (slack > 0) extra = slack / gaps;
+    }
+    row = chunks;
+  }
+
   let cx = x;
   row.forEach(chunk => {
     doc.setFont('helvetica', chunk.bold ? 'bold' : 'normal');
-    doc.text(chunk.text, cx, y);
+    if (!chunk.isSpace) doc.text(chunk.text, cx, y);
     cx += doc.getStringUnitWidth(chunk.text) * fontSize / doc.internal.scaleFactor;
+    if (chunk.isSpace) cx += extra;
   });
 }
 
 // Renders one field's free-text value: paragraphs, "- " bullets, and
 // inline **bold** — mirroring renderAiText.js's parsing rules exactly.
-export function drawFieldBody(doc, state, ctx, text, { fontSize = 9.5, lineH = 4.6, width = CONTENT_W, x = MARGIN } = {}) {
+export function drawFieldBody(doc, state, ctx, text, { fontSize = 9.5, lineH = 4.6, width = CONTENT_W, x = MARGIN, justify = false } = {}) {
   const lines = String(text).split('\n').map(l => l.trim()).filter(Boolean);
   lines.forEach(line => {
     const isBullet = /^[-*]\s+/.test(line);
@@ -137,7 +157,9 @@ export function drawFieldBody(doc, state, ctx, text, { fontSize = 9.5, lineH = 4
         doc.setTextColor(...BLUE);
         doc.text('•', x, state.y);
       }
-      drawWrappedRow(doc, row, x + indent, state.y, fontSize, INK);
+      // Justify every row except the last of a paragraph/bullet.
+      const isLast = i === rows.length - 1;
+      drawWrappedRow(doc, row, x + indent, state.y, fontSize, INK, justify && !isLast ? width - indent : 0);
       state.y += lineH;
     });
     state.y += 1.2; // small gap between lines/paragraphs

@@ -340,7 +340,7 @@ export default function ConditionProfilePage() {
     setSharing(true);
     setShareError('');
     try {
-      await shareConditionNotePdf({ id: systemId, name: system?.name }, entry.condition, entry.drugs, info);
+      await shareConditionNotePdf({ id: systemId, name: system?.name }, entry.condition, entry.drugs, info, imagesByCondition?.[entry.condition.id]);
     } catch (e) {
       setShareError(e.message || 'Could not share this condition.');
     } finally {
@@ -354,7 +354,7 @@ export default function ConditionProfilePage() {
     setSharingWord(true);
     setShareError('');
     try {
-      await shareConditionNoteDocx({ id: systemId, name: system?.name }, entry.condition, entry.drugs, info);
+      await shareConditionNoteDocx({ id: systemId, name: system?.name }, entry.condition, entry.drugs, info, imagesByCondition?.[entry.condition.id]);
     } catch (e) {
       setShareError(e.message || 'Could not share this condition as a Word document.');
     } finally {
