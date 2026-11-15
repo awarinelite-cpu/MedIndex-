@@ -26,14 +26,32 @@ export const TAB_FIELDS = {
   nursing:      { label: 'Nursing Notes', fields: ['nursing_action'] },
 };
 
-// What each column must contain, so Google's answer stays on-topic for the tab.
+// What each column must contain, so Google's answer stays on-topic AND thorough for the tab.
 const FIELD_HINTS = {
-  adult_dose: 'ADULT dose only: the amount (mg/units), frequency, route (PO/IV/IM/SC...) and duration of treatment, per indication',
-  child_dose: 'CHILD/paediatric dose only: amount by age or weight, frequency, route and duration',
-  renal_dose: 'dose adjustment in renal impairment only: by CrCl/eGFR band and dialysis',
-  administration: 'how to give it only: with/without food, timing, dilution, infusion rate, handling',
-  interaction: 'drug, food and herbal interactions only',
-  nursing_action: 'nursing assessment, administration, monitoring and patient-education actions only',
+  drug_class: 'pharmacological class', drug_subclass: 'subclass/generation',
+  prescription_status: 'Prescription, OTC or Controlled', nafdac_no: 'NAFDAC registration no(s)',
+  pronunciation: 'phonetic pronunciation', brand_names: 'ALL brand names incl. Nigerian/West African, with manufacturer',
+  overview: 'very detailed overview: what it is, class, how it is used, onset, duration, key facts (8-12 sentences)',
+  strength: 'every available strength and dosage form',
+  indications: 'ALL licensed uses, each with detail',
+  off_label_use: 'all well-documented off-label uses',
+  therapeutic_note: 'detailed clinical positioning, place in therapy, advantages, limits, guideline notes',
+  adult_dose: 'ADULT dose only, for EVERY indication: starting dose, amount (mg), frequency, route (PO/IV/IM/SC), titration steps, maximum daily dose, duration of treatment, missed dose, switching from other agents',
+  child_dose: 'CHILD/paediatric dose only, by age band and weight (mg/kg): amount, frequency, route, maximum, duration, or state clearly if not recommended',
+  renal_dose: 'dose adjustment for every CrCl/eGFR band, haemodialysis, peritoneal dialysis, plus hepatic and elderly adjustments',
+  administration: 'complete how-to-give guide: with/without food, timing, dilution/reconstitution, infusion rate, crushing/splitting, storage of prepared dose, what to check before and after',
+  contraindications: 'every contraindication with the reason',
+  precautions: 'every precaution, warning, monitoring parameter and special situation (surgery, stress, elderly, hepatic/renal disease, driving)',
+  adverse_effect: 'all adverse effects grouped by frequency and body system, with serious ones and what to do',
+  pregnancy_lactation: 'pregnancy (by trimester, risk category) and breastfeeding, with advice',
+  advice_to_patients: 'complete patient counselling points: how to take, what to avoid, warning signs, diet, missed dose, storage',
+  pharmacovigilance: 'reportable safety signals, boxed warnings, how to report ADRs in Nigeria (NAFDAC)',
+  interaction: 'ALL interactions grouped (contraindicated, increases effect, reduces effect, absorption, food/alcohol/herbal, disease), each drug with mechanism and effect',
+  pharmacology: 'very detailed: mechanism of action, pharmacodynamics, absorption, distribution, metabolism (enzymes), elimination, half-life, onset, peak and duration',
+  product_description: 'physical description of tablets/vials, colour, markings, excipients, packaging',
+  storage_recommendations: 'temperature, light/humidity, in-use and after-opening storage, shelf life',
+  pack_size_price: 'pack sizes and typical Nigerian price range',
+  nursing_action: 'detailed nursing process: Assessment, Administration, Interventions & Precautions, Monitoring/Evaluation, Patient Education, each with many specific points',
 };
 
 // Builds the Google search that carries the CSV template (for one tab's fields)
@@ -41,11 +59,12 @@ const FIELD_HINTS = {
 export function googleDrugInfoUrl(drugName, tabId = 'overview') {
   const tab = TAB_FIELDS[tabId] || TAB_FIELDS.overview;
   const header = ['generic_name', ...tab.fields].join(',');
-  const hints = tab.fields.filter(f => FIELD_HINTS[f]).map(f => `${f} = ${FIELD_HINTS[f]}`).join('; ');
+  const hints = tab.fields.map(f => `${f} = ${FIELD_HINTS[f] || f}`).join('; ');
   const q = `Give me the ${tab.label.toUpperCase()} information for ${drugName} as a CSV file I can download or copy. `
+    + `Make every value VERY EXTENSIVE, comprehensive and clinically detailed (long, multi-sentence, nothing summarised or shortened). `
     + `Use EXACTLY and ONLY this header row: ${header} . Do not add, rename or drop any column. `
-    + (hints ? `Column contents: ${hints}. ` : '')
-    + `Then ONE data row for ${drugName} with every value in double quotes and empty if unknown. Output only the CSV.`;
+    + `Column contents: ${hints}. `
+    + `Then ONE data row for ${drugName} with every value in double quotes and empty only if truly unknown. Output only the CSV.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
