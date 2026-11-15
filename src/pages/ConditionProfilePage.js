@@ -149,7 +149,8 @@ function RegimenRow({ regimen }) {
 
 // Opens a Google search for the medications used to treat this condition.
 function GoogleMedsButton({ name }) {
-  if (!name) return null;
+  const { isAdmin } = useAuth();
+  if (!isAdmin || !name) return null; // admin-only
   const url = `https://www.google.com/search?q=${encodeURIComponent(`${name} treatment medications list`)}`;
   return (
     <a className="cp-google-btn" href={url} target="_blank" rel="noopener noreferrer">
