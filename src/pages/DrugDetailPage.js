@@ -139,6 +139,40 @@ function renderList(value, separator = '|', danger = false) {
   );
 }
 
+// Nursing action: splits "Label: text" sections, then each sentence into a justified bullet.
+function NursingActionList({ value }) {
+  if (!value) return <em className="text-drug-muted">No data available</em>;
+  const raw = String(value).replace(/\r/g, '').trim();
+  const labelRe = /(?:^|\n|(?<=[.!?])\s+)(?=[A-Z][A-Za-z &/,'-]{2,40}:\s)/;
+  const chunks = raw.split(labelRe).map(s => s.trim()).filter(Boolean);
+  const sections = chunks.map(c => {
+    const m = c.match(/^([A-Z][A-Za-z &/,'-]{2,40}):\s*([\s\S]*)$/);
+    return m ? { title: m[1], body: m[2] } : { title: '', body: c };
+  });
+  const toBullets = (body) => body
+    .split(/\n+|(?<=[.!?])\s+(?=[A-Z])/)
+    .map(s => s.replace(/^[-•*]\s*/, '').trim())
+    .filter(Boolean);
+  const justify = { textAlign: 'justify', hyphens: 'auto', WebkitHyphens: 'auto' };
+  return (
+    <div className="space-y-4">
+      {sections.map((s, i) => (
+        <div key={i}>
+          {s.title && <h3 className="text-base font-bold mb-1.5" style={{ color: NAVY }}>{s.title}</h3>}
+          <ul className="space-y-1.5">
+            {toBullets(s.body).map((b, j) => (
+              <li key={j} className="flex items-start gap-2 text-drug-text leading-relaxed">
+                <span className="text-primary-400 mt-0.5 flex-shrink-0">•</span>
+                <span className="flex-1" style={justify}>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Splits on commas, but not on commas that fall inside parentheses — so
 // "ACS (NSTEMI, STEMI adjunct — ESSENCE/SYNERGY trials)" stays one item
 // instead of being torn apart mid-phrase.
@@ -2248,7 +2282,7 @@ export default function DrugDetailPage() {
           <div className="section-card p-6">
             <h2 className="text-lg font-bold mb-4">Nursing Action</h2>
             {drug.nursing_action
-              ? renderList(drug.nursing_action, '\n')
+              ? <NursingActionList value={drug.nursing_action} />
               : <em className="text-drug-muted">No nursing-specific notes available for this drug.</em>}
             <div className="mt-4">
               <AiSectionFill drug={drug} tabId="nursing" onFilled={handleSectionFilled} />
