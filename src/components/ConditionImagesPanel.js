@@ -104,7 +104,8 @@ function ConditionImageGallery({ images, altBase }) {
    "Paste from Clipboard" button) — there is deliberately no file picker and
    no link field. Pasted images are re-hosted on ImgChest via the same
    /api/imgchest-upload proxy the drug pictures use. */
-export default function ConditionImagesPanel({ condition, images }) {
+export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage }) {
+  // onAddUrls(urls, existing) / onDeleteImage(index, existing) let other owners (e.g. a body system) reuse this panel.
   const { isAdmin } = useAuth();
   const list = Array.isArray(images) ? images : [];
   const [pasteState, setPasteState] = useState('idle'); // idle | uploading | error
@@ -136,7 +137,8 @@ export default function ConditionImagesPanel({ condition, images }) {
     setProgress('');
     try {
       if (urls.length > 0) {
-        await addConditionImageUrls({ conditionId: condition.id, urls, existingImages: list });
+        if (onAddUrls) await onAddUrls(urls, list);
+        else await addConditionImageUrls({ conditionId: condition.id, urls, existingImages: list });
       }
       // The live listener pushes the new pictures in automatically.
       if (failed > 0) {
@@ -190,7 +192,8 @@ export default function ConditionImagesPanel({ condition, images }) {
     if (!window.confirm(`Remove picture ${index + 1} from "${condition.label}"?`)) return;
     setError('');
     try {
-      await deleteConditionImage({ conditionId: condition.id, images: list, index });
+      if (onDeleteImage) await onDeleteImage(index, list);
+      else await deleteConditionImage({ conditionId: condition.id, images: list, index });
     } catch (e) {
       setError(e.message || 'Failed to remove image.');
     }

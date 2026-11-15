@@ -25,6 +25,8 @@ import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/us
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import ConditionSection from '../components/ConditionSection';
+import ConditionImagesPanel from '../components/ConditionImagesPanel';
+import { useSystemImages, addSystemImageUrls, deleteSystemImage } from '../hooks/useSystemImages';
 import { shareSystemNotePdf } from '../utils/exportSystemNotePdf';
 
 const ICONS = {
@@ -598,6 +600,7 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
 
 export default function SystemPage() {
   const { systemId }  = useParams();
+  const systemImagesById = useSystemImages();
   const navigate      = useNavigate();
   const { isAdmin, user } = useAuth();
   const { provider }  = useAiProvider();
@@ -1184,6 +1187,16 @@ export default function SystemPage() {
           </button>
         </div>
       )}
+
+      {/* System picture: shown to everyone once it exists; admins can add/remove */}
+      <div className="max-w-md -mx-1 mb-2">
+        <ConditionImagesPanel
+          condition={{ id: system.id || systemId, label: system.name }}
+          images={systemImagesById[system.id || systemId]}
+          onAddUrls={(urls, existing) => addSystemImageUrls({ systemId: system.id || systemId, urls, existingImages: existing })}
+          onDeleteImage={(index, existing) => deleteSystemImage({ systemId: system.id || systemId, images: existing, index })}
+        />
+      </div>
 
       {/* Floating merge-mode toggle — fixed to the bottom of the screen so it
           stays reachable while scrolling through a long condition list,
