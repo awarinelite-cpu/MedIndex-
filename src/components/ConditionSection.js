@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info, ClipboardPaste,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info,
 } from 'lucide-react';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { useDrugs } from '../hooks/useDrugs';
