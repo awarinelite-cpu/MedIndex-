@@ -16,11 +16,22 @@ const FIELDS = [
   'pharmacovigilance', 'product_description', 'storage_recommendations', 'pack_size_price',
 ];
 
-// Builds the Google search that carries the CSV template plus the instruction
-// to return the answer as a downloadable CSV file.
-export function googleDrugInfoUrl(drugName) {
-  const header = ['generic_name', ...FIELDS].join(',');
-  const q = `Give me complete drug information for ${drugName} as a CSV file I can download or copy. `
+// Each tab gets its own field set, so its Google search asks only for that tab's info.
+export const TAB_FIELDS = {
+  overview:     { label: 'Overview',      fields: ['drug_class', 'drug_subclass', 'prescription_status', 'nafdac_no', 'pronunciation', 'brand_names', 'overview', 'strength', 'indications', 'off_label_use', 'therapeutic_note'] },
+  dosage:       { label: 'Dosage',        fields: ['adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations'] },
+  safety:       { label: 'Safety',        fields: ['contraindications', 'precautions', 'adverse_effect', 'pregnancy_lactation', 'advice_to_patients', 'pharmacovigilance'] },
+  interactions: { label: 'Interactions',  fields: ['interaction'] },
+  pharmacology: { label: 'Pharmacology',  fields: ['pharmacology', 'drug_class', 'drug_subclass', 'product_description', 'storage_recommendations', 'pack_size_price'] },
+  nursing:      { label: 'Nursing Notes', fields: ['nursing_action'] },
+};
+
+// Builds the Google search that carries the CSV template (for one tab's fields)
+// plus the instruction to return the answer as a downloadable CSV file.
+export function googleDrugInfoUrl(drugName, tabId = 'overview') {
+  const tab = TAB_FIELDS[tabId] || TAB_FIELDS.overview;
+  const header = ['generic_name', ...tab.fields].join(',');
+  const q = `Give me complete ${tab.label.toLowerCase()} information for ${drugName} as a CSV file I can download or copy. `
     + `Use exactly this header row: ${header} . `
     + `Then ONE data row for ${drugName} with every value in double quotes and empty if unknown. Output only the CSV.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
@@ -69,7 +80,8 @@ export function parseManualDrugCsv(text) {
   return { updates, ignored, csvName };
 }
 
-export default function ManualDrugInfoEntry({ drug, onSaved }) {
+export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' }) {
+  const tab = TAB_FIELDS[tabId] || TAB_FIELDS.overview;
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [parsed, setParsed] = useState(null);
@@ -106,10 +118,10 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
   };
 
   const downloadTemplate = () => {
-    const csv = Papa.unparse([['generic_name', ...FIELDS], [drug.generic_name || '', ...FIELDS.map(() => '')]]);
+    const csv = Papa.unparse([['generic_name', ...tab.fields], [drug.generic_name || '', ...tab.fields.map(() => '')]]);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
-    a.href = url; a.download = 'drug-info-template.csv'; a.click();
+    a.href = url; a.download = `drug-info-${tabId}-template.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -145,7 +157,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
         className="w-full flex items-center gap-3 px-3 py-3 text-left">
         <ClipboardPaste className="w-6 h-6 text-violet-600" />
-        <span className="flex-1 text-base sm:text-lg font-extrabold text-violet-900">Add drug information (CSV)</span>
+        <span className="flex-1 text-base sm:text-lg font-extrabold text-violet-900">Add {tab.label.toLowerCase()} information (CSV)</span>
         <ChevronDown className={`w-5 h-5 text-violet-700 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -202,13 +214,13 @@ export default function ManualDrugInfoEntry({ drug, onSaved }) {
         </div>
       )}
     </div>
-    <div className="mt-3 mb-24">
-      <a href={googleDrugInfoUrl(drug.generic_name || '')} target="_blank" rel="noopener noreferrer"
+    <div className="mt-3 mb-4">
+      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId)} target="_blank" rel="noopener noreferrer"
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
-        <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} information on Google <ExternalLink className="w-4 h-4" />
+        <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} {tab.label.toLowerCase()} on Google <ExternalLink className="w-4 h-4" />
       </a>
       <p className="mt-2 text-xs text-drug-muted">
-        Opens Google with the CSV template already filled in and asks for the answer as a CSV file. Copy or download the result, then use “Add drug information (CSV)” above to paste or upload it.
+        Opens Google with the {tab.label} CSV template already filled in and asks for the answer as a CSV file. Copy or download the result, then use “Add {tab.label.toLowerCase()} information (CSV)” above to paste or upload it.
       </p>
     </div>
     </>

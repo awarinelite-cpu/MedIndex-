@@ -2219,15 +2219,15 @@ export default function DrugDetailPage() {
               )}
             </div>
 
-            {isAdmin && <ManualDrugInfoEntry drug={drug} onSaved={handleSectionFilled} />}
+            {isAdmin && <ManualDrugInfoEntry drug={drug} tabId="overview" onSaved={handleSectionFilled} />}
           </div>
         )}
 
         {/* ── DOSAGE ───────────────────────────────────────────────────── */}
-        {activeTab === 'dosage' && dosageContent}
+        {activeTab === 'dosage' && (<>{dosageContent}{isAdmin && <ManualDrugInfoEntry drug={drug} tabId="dosage" onSaved={handleSectionFilled} />}</>)}
 
         {/* ── SAFETY ───────────────────────────────────────────────────── */}
-        {activeTab === 'safety' && safetyContent}
+        {activeTab === 'safety' && (<>{safetyContent}{isAdmin && <ManualDrugInfoEntry drug={drug} tabId="safety" onSaved={handleSectionFilled} />}</>)}
 
         {/* ── INTERACTIONS ─────────────────────────────────────────────── */}
         {activeTab === 'interactions' && (
@@ -2236,11 +2236,12 @@ export default function DrugDetailPage() {
             <div className="section-card p-4">
               <AiSectionFill drug={drug} tabId="interactions" onFilled={handleSectionFilled} />
             </div>
+            {isAdmin && <ManualDrugInfoEntry drug={drug} tabId="interactions" onSaved={handleSectionFilled} />}
           </div>
         )}
 
         {/* ── PHARMACOLOGY ─────────────────────────────────────────────── */}
-        {activeTab === 'pharmacology' && pharmacologyContent}
+        {activeTab === 'pharmacology' && (<>{pharmacologyContent}{isAdmin && <ManualDrugInfoEntry drug={drug} tabId="pharmacology" onSaved={handleSectionFilled} />}</>)}
 
         {/* ── NURSING NOTES ────────────────────────────────────────────── */}
         {activeTab === 'nursing' && (
@@ -2252,6 +2253,7 @@ export default function DrugDetailPage() {
             <div className="mt-4">
               <AiSectionFill drug={drug} tabId="nursing" onFilled={handleSectionFilled} />
             </div>
+            {isAdmin && <ManualDrugInfoEntry drug={drug} tabId="nursing" onSaved={handleSectionFilled} />}
           </div>
         )}
 
