@@ -4,7 +4,7 @@
 // saved as a name-only drug (no AI) to be filled in by hand later, then tagged
 // to the condition.
 import React, { useMemo, useState } from 'react';
-import { ClipboardPaste, Check, AlertCircle } from 'lucide-react';
+import { ClipboardPaste, Check, AlertCircle, X } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { parseMedicationList, addMedicationsToCondition } from '../utils/aiDrugSave';
 
@@ -15,10 +15,13 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
   const [text, setText] = useState('');
   const [status, setStatus] = useState({});
   const [running, setRunning] = useState(false);
-  const names = useMemo(() => parseMedicationList(text), [text]);
+  const [removed, setRemoved] = useState([]);
+  const names = useMemo(() => parseMedicationList(text).filter(n => !removed.includes(n)), [text, removed]);
+  const updateText = (t) => { setText(t); setRemoved([]); };
+  const removeName = (n) => setRemoved(prev => [...prev, n]);
 
   const pasteFromClipboard = async () => {
-    try { setText(await navigator.clipboard.readText()); } catch { /* user can paste manually */ }
+    try { updateText(await navigator.clipboard.readText()); } catch { /* user can paste manually */ }
   };
 
   const run = async () => {
@@ -42,7 +45,7 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
       <p className="cp-paste-hint">Copy the list from Google, paste it here (one drug per line), and save. They are saved right away; you can add each drug's full information yourself afterwards.</p>
       <textarea className="cp-paste-box" rows={6} value={text} disabled={running}
         placeholder={`Paste medications for ${conditionName || 'this condition'}...`}
-        onChange={e => setText(e.target.value)} />
+        onChange={e => updateText(e.target.value)} />
       <div className="cp-paste-actions">
         <button type="button" className="cp-paste-btn alt" onClick={pasteFromClipboard} disabled={running}>Paste from clipboard</button>
         <button type="button" className="cp-paste-btn" onClick={run} disabled={running || !names.length}>
@@ -55,11 +58,17 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
             const st = status[n]?.s;
             return (
               <li key={n} className={st ? `is-${st}` : ''}>
-                <span>{n}</span>
+                <span className="cp-paste-name">{n}</span>
                 <span className="cp-paste-st">
                   {(st === 'linked' || st === 'added') && <Check size={14} />}
                   {st === 'failed' && <AlertCircle size={14} />}
                   {st ? (st === 'failed' && status[n].error ? status[n].error : LABELS[st]) : ''}
+                  {!st && !running && (
+                    <button type="button" className="cp-paste-x" onClick={() => removeName(n)}
+                      aria-label={`Remove ${n}`} title="Not a drug - remove">
+                      <X size={16} strokeWidth={3} />
+                    </button>
+                  )}
                 </span>
               </li>
             );
