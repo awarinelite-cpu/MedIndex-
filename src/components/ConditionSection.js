@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid,
+  Sparkles, RefreshCw, Save, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info, ClipboardPaste,
 } from 'lucide-react';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { useDrugs } from '../hooks/useDrugs';
@@ -19,6 +19,7 @@ import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import { classifyDrugsByRole, getMainIndicationStrength, explainMatch, getStoredRole, THERAPY_ROLE_META, THERAPY_ROLE_ORDER } from '../utils/drugRoleClassification';
 import IndicationCombinationPanel from './IndicationCombinationPanel';
+import PasteMedicationsPanel from './PasteMedicationsPanel';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
 import { shareConditionNotePdf } from '../utils/exportConditionNotePdf';
 import AiClassFallback from './AiClassInsight';
@@ -53,6 +54,26 @@ export function normalizeDrugName(name) {
     .replace(/\s+/g, ' ')
     .trim();
   return n;
+}
+
+/* ── Drop-down button used to tuck the admin drug tools away ───────────── */
+function ToolsDropdown({ icon, title, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="px-4 pb-3">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2.5 rounded-xl bg-[#E4EEFF] border border-[#C9DAF6] px-3 py-2.5 text-[15px] font-semibold text-[#0A1F5C]"
+      >
+        <span className="text-primary-600 flex-shrink-0">{icon}</span>
+        <span className="flex-1 min-w-0 text-left">{title}</span>
+        {open ? <ChevronUp className="w-5 h-5 flex-shrink-0" /> : <ChevronDown className="w-5 h-5 flex-shrink-0" />}
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  );
 }
 
 /* ── AI expansion for a clinical condition ───────────────────────────────── */
@@ -1033,9 +1054,11 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           )}
 
           {isEmpty ? (
-            <p className="px-5 pt-4 text-sm text-drug-muted">
-              No drugs matched this condition yet. Use AI below to find and save some.
-            </p>
+            !isAdmin && (
+              <p className="px-5 pt-4 text-sm text-drug-muted">
+                No drugs matched this condition yet.
+              </p>
+            )
           ) : !(classMergeMode || viewMode === 'grid' || classicView) ? (
             <ConditionMedicationsView
               roleBuckets={roleBuckets}
@@ -1276,9 +1299,14 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             })
           )}
 
-          {/* AI expansion — find more drugs for this condition (admin only) */}
+          {/* Admin tools, tucked into drop-down buttons */}
           {isAdmin && (
-            <div className="p-4">
+            <ToolsDropdown icon={<Sparkles className="w-5 h-5" />} title="AI drug finder & combination regimens">
+              {isEmpty && (
+                <p className="text-sm text-drug-muted mb-1">
+                  No drugs matched this condition yet. Use AI below to find and save some.
+                </p>
+              )}
               <AiConditionFallback
                 conditionId={condition.id}
                 conditionLabel={condition.label}
@@ -1286,17 +1314,42 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                 systemName={systemName}
                 existingDrugs={drugs}
               />
-            </div>
+              <div className="pt-3">
+                <IndicationCombinationPanel
+                  conditionId={condition.id}
+                  conditionLabel={condition.label}
+                  systemName={systemName}
+                />
+              </div>
+            </ToolsDropdown>
           )}
 
-          {/* Combination therapy regimens for this specific condition (admin only) */}
-          {isAdmin && (
-            <div className="px-4 pb-4">
-              <IndicationCombinationPanel
-                conditionId={condition.id}
-                conditionLabel={condition.label}
-                systemName={systemName}
-              />
+          {isAdmin ? (
+            <ToolsDropdown icon={<Search className="w-5 h-5" />} title="Search & paste medications">
+              <div className="cp-vars">
+                <a
+                  className="cp-google-btn"
+                  href={`https://www.google.com/search?q=${encodeURIComponent(`${condition.label} treatment medications list`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Search size={18} strokeWidth={2.4} />
+                  <span>Search medications on Google</span>
+                  <ExternalLink size={16} strokeWidth={2.4} />
+                </a>
+                <PasteMedicationsPanel conditionId={condition.id} conditionName={condition.label} />
+                <div className="cp-note" role="note">
+                  <Info size={22} strokeWidth={2.2} />
+                  <p>Treatment options may vary based on individual patient factors. Always refer to current clinical guidelines.</p>
+                </div>
+              </div>
+            </ToolsDropdown>
+          ) : (
+            <div className="cp-vars px-4 pb-4">
+              <div className="cp-note" role="note">
+                <Info size={22} strokeWidth={2.2} />
+                <p>Treatment options may vary based on individual patient factors. Always refer to current clinical guidelines.</p>
+              </div>
             </div>
           )}
         </div>

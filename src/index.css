@@ -1208,3 +1208,16 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 
 .cp-sub-head { padding: 10px 12px 4px; border-top: 1px solid var(--cp-line); color: var(--cp-sub); font-size: 13px; font-weight: 800; font-style: italic; letter-spacing: .01em; }
 .cp-cat-body .cp-sub-head:first-child { border-top: 0; }
+
+/* Same palette + flat buttons as .cp-screen, for condition-profile widgets reused on other pages */
+.cp-vars {
+  --cp-blue: #0a4a9e; --cp-ink: #0a1f5c; --cp-soft: #dce8fb; --cp-soft-2: #c9daf6;
+  --cp-line: #e1e9f6; --cp-page: #f2f6fc; --cp-card: #ffffff; --cp-sub: #5b6b8a;
+  text-align: left; hyphens: none; -webkit-hyphens: none; line-height: 1.3;
+}
+.dark .cp-vars {
+  --cp-ink: #e9f1ff; --cp-soft: #1b2c4a; --cp-soft-2: #27406b; --cp-line: #22314d;
+  --cp-page: #0b1220; --cp-card: #111c31; --cp-sub: #94a8c8;
+}
+.cp-vars * { text-align: left; hyphens: none; -webkit-hyphens: none; }
+.cp-vars .cp-paste-btn, .cp-vars .cp-paste-btn:hover, .cp-vars .cp-paste-btn:active { filter: none; transform: none; box-shadow: none; background-image: none; }
