@@ -965,7 +965,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
 
       {open && !mergeMode && (
         <div>
-          <ConditionImagesPanel condition={condition} images={images} />
+          <ConditionImagesPanel hero condition={condition} images={images} />
           <ConditionClinicalInfoPanel condition={condition} systemName={systemName} info={clinicalInfo} />
 
           {isAdmin && !isEmpty && (

@@ -430,7 +430,7 @@ export default function ConditionProfilePage() {
 
         <div className="cp-content">
           {entry?.condition && (
-            <ConditionImagesPanel condition={entry.condition} images={imagesByCondition?.[entry.condition.id]} />
+            <ConditionImagesPanel hero condition={entry.condition} images={imagesByCondition?.[entry.condition.id]} />
           )}
           {content}
         </div>
