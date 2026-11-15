@@ -1189,8 +1189,8 @@ export default function SystemPage() {
       )}
 
       {/* System picture: shown to everyone once it exists; admins can add/remove */}
-      <div className="max-w-md -mx-1 mb-2">
-        <ConditionImagesPanel
+      <div className="-mx-4 sm:mx-0 sm:max-w-xl mb-4">
+        <ConditionImagesPanel hero
           condition={{ id: system.id || systemId, label: system.name }}
           images={systemImagesById[system.id || systemId]}
           onAddUrls={(urls, existing) => addSystemImageUrls({ systemId: system.id || systemId, urls, existingImages: existing })}

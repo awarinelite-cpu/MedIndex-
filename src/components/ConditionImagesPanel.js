@@ -7,7 +7,7 @@ import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '
 import { addConditionImageUrls, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
 
 /* ── Condition picture gallery (swipe to view more than one picture) ───── */
-function ConditionImageGallery({ images, altBase }) {
+function ConditionImageGallery({ images, altBase, fullWidth = false }) {
   const trackRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -32,13 +32,13 @@ function ConditionImageGallery({ images, altBase }) {
       <img
         src={img.url}
         alt={altBase}
-        className="w-full max-w-sm mx-auto rounded-lg border border-drug-border"
+        className={fullWidth ? 'block w-full' : 'w-full max-w-sm mx-auto rounded-lg border border-drug-border'}
       />
     ) : null;
   }
 
   return (
-    <div className="relative max-w-sm mx-auto">
+    <div className={fullWidth ? 'relative' : 'relative max-w-sm mx-auto'}>
       <div
         ref={trackRef}
         onScroll={handleScroll}
@@ -48,7 +48,7 @@ function ConditionImageGallery({ images, altBase }) {
         onTouchStart={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
-        className="flex overflow-x-auto snap-x snap-mandatory rounded-lg border border-drug-border scroll-smooth"
+        className={`flex overflow-x-auto snap-x snap-mandatory scroll-smooth ${fullWidth ? '' : 'rounded-lg border border-drug-border'}`}
         style={{ scrollbarWidth: 'none', touchAction: 'pan-x' }}
       >
         {images.map((img, i) => (
@@ -104,7 +104,8 @@ function ConditionImageGallery({ images, altBase }) {
    "Paste from Clipboard" button) — there is deliberately no file picker and
    no link field. Pasted images are re-hosted on ImgChest via the same
    /api/imgchest-upload proxy the drug pictures use. */
-export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage }) {
+export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage, hero = false }) {
+  // hero: picture runs edge to edge with no "Images" label bar (used on the system page).
   // onAddUrls(urls, existing) / onDeleteImage(index, existing) let other owners (e.g. a body system) reuse this panel.
   const { isAdmin } = useAuth();
   const list = Array.isArray(images) ? images : [];
@@ -203,16 +204,20 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
 
   return (
     <div
-      className="px-4 pt-4 pb-3 focus:outline-none"
+      className={hero ? 'pb-1 focus:outline-none' : 'px-4 pt-4 pb-3 focus:outline-none'}
       tabIndex={isAdmin ? 0 : undefined}
       onPaste={isAdmin ? handlePasteEvent : undefined}
     >
+      {hero && list.length > 0 && <ConditionImageGallery images={list} altBase={condition.label} fullWidth />}
+      <div className={hero ? 'px-4 pt-3' : ''}>
+      {!hero && (
       <div className="flex items-center gap-2.5 rounded-xl bg-[#EEEAFE] px-3 py-2.5 text-[15px] font-semibold text-[#0A1F5C] mb-3">
         <ImageIcon className="w-5 h-5 text-violet-600 flex-shrink-0" />
         {list.length > 0
           ? `Images${list.length > 1 ? ` (${list.length})` : ''}`
           : `No image yet for ${condition.label}`}
       </div>
+      )}
 
       {isAdmin && (
         <div className="flex flex-wrap gap-2">
@@ -239,7 +244,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
         </div>
       )}
 
-      {list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
+      {!hero && list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
 
       {isAdmin && list.length > 0 && (
         <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
@@ -263,6 +268,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
       )}
       {notice && <div className="text-xs text-slate-600 mt-2">ℹ {notice}</div>}
       {error && <div className="text-xs text-red-600 mt-2">⚠ {error}</div>}
+      </div>
     </div>
   );
 }
