@@ -1,4 +1,4 @@
-import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, FieldPath } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
@@ -947,7 +947,9 @@ export function parseMedicationList(text) {
 // this condition; otherwise save a placeholder drug (name only, no AI) so the
 // admin can fill in the full information by hand later, then tag it. Reports
 // per-drug progress through onProgress(name, status).
-export async function addMedicationsToCondition({ names, conditionId, existingDrugs, onProgress }) {
+export async function addMedicationsToCondition({ names, items, conditionId, existingDrugs, onProgress }) {
+  // items (optional) carry the pasted heading / subheading each drug sits under.
+  const groupOf = new Map((items || []).map(i => [i.name, i]));
   const contributor = await getContributorInfo(); // throws if not signed in
   const byName = new Map();
   (existingDrugs || []).forEach(d => {
@@ -960,6 +962,9 @@ export async function addMedicationsToCondition({ names, conditionId, existingDr
       let id = existing ? (existing.id || slugifyDrugName(existing.generic_name)) : slugifyDrugName(name);
       const ref = doc(db, 'drugs', id);
       let status = 'linked';
+      const g = groupOf.get(name);
+      const group = g && (g.heading || g.sub)
+        ? { heading: g.heading || '', sub: g.sub || '', hOrder: g.hOrder || 0, order: g.order || 0 } : null;
       if (!existing) {
         const snap = await getDoc(ref);
         if (!snap.exists()) {
@@ -971,6 +976,7 @@ export async function addMedicationsToCondition({ names, conditionId, existingDr
             status:              'Active',
             info_pending:        true,
             condition_tags:      [conditionId],
+            ...(group ? { condition_groups: { [conditionId]: group } } : {}),
             created_at:          serverTimestamp(),
             last_updated:        serverTimestamp(),
             ...buildReviewMeta(contributor, 'new'),
@@ -984,6 +990,9 @@ export async function addMedicationsToCondition({ names, conditionId, existingDr
           condition_excluded: arrayRemove(conditionId),
           last_updated: serverTimestamp(),
         });
+      }
+      if (group && (status === 'linked' || existing)) {
+        await updateDoc(ref, new FieldPath('condition_groups', conditionId), group);
       }
       results.push({ name, status });
       onProgress?.(name, status);

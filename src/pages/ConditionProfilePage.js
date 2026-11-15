@@ -167,17 +167,24 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
 
   const { groups, regimens, comboNames } = useMemo(() => {
     const map = new Map();
+    const saved = new Map(); // heading -> lowest paste order, to keep the pasted heading order
     const add = (drug, role) => {
-      const cat = getTreatmentCategory(drug) || (getDisplayDrugClass(drug) || '').trim() || OTHER;
+      const g = drug.condition_groups?.[conditionId];
+      const cat = g?.heading || getTreatmentCategory(drug) || (getDisplayDrugClass(drug) || '').trim() || OTHER;
+      if (g?.heading) saved.set(cat, Math.min(saved.get(cat) ?? Infinity, g.hOrder || 0));
       if (!map.has(cat)) map.set(cat, []);
-      map.get(cat).push({ drug, role });
+      map.get(cat).push({ drug, role, sub: g?.sub || '', order: g?.order ?? Infinity });
     };
     buckets.main.forEach(d => add(d, 'main'));
     buckets.adjunct.forEach(d => add(d, 'adjunct'));
 
-    const rank = (c) => { const i = TREATMENT_CATEGORY_ORDER.indexOf(c); return i === -1 ? 1000 : i; };
+    const rank = (c) => {
+      if (saved.has(c)) return -1000 + saved.get(c); // pasted headings first, in pasted order
+      const i = TREATMENT_CATEGORY_ORDER.indexOf(c); return i === -1 ? 1000 : i;
+    };
     const sorted = [...map.entries()]
       .map(([cat, items]) => [cat, items.sort((a, b) =>
+        (a.order - b.order || 0) ||
         (a.role === b.role ? 0 : a.role === 'main' ? -1 : 1) ||
         (a.drug.generic_name || '').localeCompare(b.drug.generic_name || '', 'en', { sensitivity: 'base' }))])
       .sort((a, b) => (rank(a[0]) - rank(b[0])) || ((a[0] === OTHER) - (b[0] === OTHER)) || a[0].localeCompare(b[0]));
@@ -189,7 +196,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
         .forEach(n => names.add(norm(n)));
     });
     return { groups: sorted, regimens: buckets.combination || [], comboNames: names };
-  }, [buckets]);
+  }, [buckets, conditionId]);
 
   const allKeys = [...groups.map(([c]) => c), ...(regimens.length ? [REGIMENS] : [])];
   const open = openCats || new Set(allKeys.slice(0, 1));
@@ -223,8 +230,11 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       <div className="cp-cats">
         {groups.map(([cat, items]) => (
           <CategoryGroup key={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}>
-            {items.map(({ drug, role }) => (
-              <DrugRow key={drug.id} drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} />
+            {items.map(({ drug, role, sub }, i) => (
+              <React.Fragment key={drug.id}>
+                {sub !== (items[i - 1]?.sub || '') && (sub || items[i - 1]?.sub) && <div className="cp-sub-head">{sub || 'Other'}</div>}
+                <DrugRow drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} />
+              </React.Fragment>
             ))}
           </CategoryGroup>
         ))}

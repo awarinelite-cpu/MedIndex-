@@ -26,13 +26,15 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
       const stopAt = e.type === 'heading' ? ['heading'] : ['heading', 'sub'];
       let has = false;
       for (let j = i + 1; j < entries.length && !stopAt.includes(entries[j].type); j++) {
-        if (entries[j].type === 'drug' && !removed.includes(entries[j].text)) { has = true; break; }
+        const x = entries[j];
+        if (x.type === 'drug' && !removed.includes(x.text) && (e.type === 'heading' || x.underSub)) { has = true; break; }
       }
       if (has) out.push(e);
     });
     return out;
   }, [entries, removed]);
-  const names = useMemo(() => rows.filter(r => r.type === 'drug').map(r => r.text), [rows]);
+  const items = useMemo(() => rows.filter(r => r.type === 'drug').map(r => ({ name: r.text, heading: r.heading || '', sub: r.sub || '', hOrder: r.hOrder || 0, order: r.order || 0 })), [rows]);
+  const names = useMemo(() => items.map(i => i.name), [items]);
   const updateText = (t) => { setText(t); setRemoved([]); };
   const removeName = (n) => setRemoved(prev => [...prev, n]);
 
@@ -46,7 +48,7 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
     setStatus(Object.fromEntries(names.map(n => [n, { s: 'queued' }])));
     try {
       await addMedicationsToCondition({
-        names, conditionId, existingDrugs: drugs,
+        names, items, conditionId, existingDrugs: drugs,
         onProgress: (n, s, error) => setStatus(prev => ({ ...prev, [n]: { s, error } })),
       });
     } catch (e) {

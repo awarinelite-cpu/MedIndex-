@@ -10,7 +10,8 @@ const GENERIC = new Set(('options option agents agent drugs drug medications med
   'formulations combinations immunizations vaccines vaccine symptoms infections infection cough coughing wheezing mucus ' +
   'examples example etc').split(' '));
 const PLACES = new Set(['china', 'india', 'nigeria', 'japan', 'europe', 'africa', 'asia', 'usa', 'uk', 'us', 'canada', 'germany', 'france', 'brazil', 'russia']);
-const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|failure|cancer|fibrosis|asthma|copd|tuberculosis|tb)$/i;
+const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|failure|cancer|fibrosis|asthma|copd|tuberculosis|tb|pneumonia|lupus|gout|arthritis|pleurisy|sepsis|inflammation|pain|fever|infection|infections|injury|trauma|cough|swelling|edema|effusion|embolism|thrombosis|clots?|stroke|attack)$/i;
+const DRUG_WORD_RE = /\b[A-Za-z]{3,}(?:profen|oxicam|olol|pril|sartan|statin|azole|mycin|cillin|floxacin|cycline|prazole|tidine|dipine|thiazide|sone|solone|olone|formin|gliptin|gliflozin|glutide|parin|xaban|afil|triptan|setron|zolam|azepam|barbital|caine|terol|tropium|navir|vudine)\b|\b(?:naproxen|diclofenac|aspirin|paracetamol|acetaminophen|codeine|morphine|tramadol|colchicine|warfarin|heparin|insulin|metformin|ibuprofen|indomethacin|celecoxib|oxycodone|fentanyl|furosemide|spironolactone|amiodarone|digoxin|atenolol)\b/gi;
 const BAD_START_RE = /^(the|a|an|many|some|these|those|various|several|specific|both|certain|most|each|any|all|this|that|such|your|their)\b/i;
 const CLASS_RE = /(agonists?|antagonists?|anticholinergics?|corticosteroids?|steroids?|antibiotics?|antibacterials?|antifungals?|antivirals?|antitubercular|anti-?tb|drugs?|medications?|medicines?|vaccines?|immunizations?|mucolytics?|bronchodilators?|inhibitors?|blockers?|diuretics?|analgesics?|inhalers?|therapies|therapy|agents?|supplements?|antihistamines?|expectorants?|antitussives?|regimens?|sabas?|labas?|samas?|lamas?|anti[a-z-]+)$/i;
 const MODIFIER_RE = /^(?:(?:short|long|rapid|ultra-long)-acting|oral|inhaled|systemic|intravenous|injectable|topical|medical|newer|older|other|others|more|and|or|etc\.?)\s+/i;
@@ -72,7 +73,7 @@ function drugsFromDescription(desc) {
   TRIGGER_RE.lastIndex = 0;
   while ((m = TRIGGER_RE.exec(desc))) {
     const before = desc.slice(0, m.index);
-    if (/(countries|regions|places|areas|cities|states|nations)\s*$/i.test(before)) continue;
+    if (/(countries|regions|places|areas|cities|states|nations|conditions?|infections?|diseases?|illness(?:es)?|disorders?|causes?|cases?|symptoms?|problems?|types?|treat|treating|treats|for)\s*$/i.test(before)) continue;
     const depth0 = (before.match(/\(/g) || []).length - (before.match(/\)/g) || []).length;
     let d = depth0, seg = '';
     for (let i = m.index + m[0].length; i < desc.length; i++) {
@@ -86,6 +87,7 @@ function drugsFromDescription(desc) {
     const cut = seg.split(STOP_RE)[0];
     cut.split(/\s*(?:,|;|&|\bor\b|\band\b)\s*/i).forEach(p => { const n = cleanTerm(p); if (n) found.push(n); });
   }
+  if (!found.length) (desc.match(DRUG_WORD_RE) || []).forEach(w => { const n = cleanTerm(w); if (n) found.push(n); });
   return found;
 }
 
@@ -108,19 +110,19 @@ export function parseMedicationEntries(text, fallback) {
   if (!rich) return plain();
 
   const entries = [], seen = new Set();
-  let sub = null;
+  let sub = null, heading = '', hOrder = -1;
   const addDrug = (n, underSub) => {
     const k = key(n);
     if (!k || seen.has(k)) return;
     seen.add(k);
-    entries.push({ type: 'drug', text: n, underSub });
+    entries.push({ type: 'drug', text: n, underSub, heading, sub: underSub ? (sub || '') : '', hOrder: Math.max(hOrder, 0), order: entries.length });
   };
 
   for (const line of lines) {
     const isBullet = bulletRe.test(line);
     if (!isBullet) {
       const h = headingText(line);
-      if (h) { entries.push({ type: 'heading', text: h }); sub = null; }
+      if (h) { entries.push({ type: 'heading', text: h }); heading = h; hOrder += 1; sub = null; }
       continue; // prose lines hold no drugs
     }
     const body = line.replace(bulletRe, '').trim();

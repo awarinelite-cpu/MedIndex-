@@ -1205,3 +1205,6 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .cp-drug-del { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: #fdecec; color: #c62828; cursor: pointer; }
 .cp-drug-del:disabled { opacity: .5; }
 .dark .cp-drug-del { background: #3a1d1d; color: #ff8a80; }
+
+.cp-sub-head { padding: 10px 12px 4px; border-top: 1px solid var(--cp-line); color: var(--cp-sub); font-size: 13px; font-weight: 800; font-style: italic; letter-spacing: .01em; }
+.cp-cat-body .cp-sub-head:first-child { border-top: 0; }
