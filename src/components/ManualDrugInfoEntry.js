@@ -62,7 +62,7 @@ export function googleDrugInfoUrl(drugName, tabId = 'overview') {
   const hints = tab.fields.map(f => `${f} = ${FIELD_HINTS[f] || f}`).join('; ');
   const q = `Give me the ${tab.label.toUpperCase()} information for ${drugName} as a CSV file I can download or copy. `
     + `Make every value VERY EXTENSIVE, comprehensive and clinically detailed (long, multi-sentence, nothing summarised or shortened). `
-    + `Use EXACTLY and ONLY this header row: ${header} . Do not add, rename or drop any column. `
+    + `Line 1 MUST be this header row, exactly and only: ${header} . Do not add, rename or drop any column or skip the header. `
     + `Column contents: ${hints}. `
     + `Then ONE data row for ${drugName} with every value in double quotes and empty only if truly unknown. Output only the CSV.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
@@ -79,14 +79,28 @@ function normalizeStatus(val) {
 
 // → { updates, ignored, csvName }
 export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
-  const res = Papa.parse(String(text || '').trim(), { skipEmptyLines: 'greedy' });
+  // Google often wraps the CSV in ```csv fences and uses curly quotes - normalise first.
+  const cleaned = String(text || '')
+    .replace(/```[a-z]*\s*/gi, '')
+    .replace(/[\u201c\u201d\u201e]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/^\s*csv\s*\n/i, '')
+    .trim();
+  const res = Papa.parse(cleaned, { skipEmptyLines: 'greedy' });
   const rows = (res.data || []).filter(r => Array.isArray(r) && r.some(c => String(c).trim()));
   if (rows.length === 0) throw new Error('Nothing to read — paste or upload CSV first.');
 
   const pairs = [];
   const header = rows[0].map(normKey);
   const headerLooksLikeFields = header.filter(h => FIELDS.includes(h) || h === 'generic_name').length >= 2;
-  if (rows[0].length > 2 || (headerLooksLikeFields && rows.length >= 2 && rows[0].length >= 2 && rows.length === 2)) {
+  const firstCell = normKey(rows[0][0]);
+  const headerless = rows[0].length >= 2 && !FIELDS.includes(firstCell) && firstCell !== 'generic_name'
+    && header.filter(h => FIELDS.includes(h)).length === 0;
+  if (headerless) {
+    // Data row only (Google dropped the header): map the values onto this tab's columns in order.
+    const cols = rows[0].length === allowed.length ? allowed : ['generic_name', ...allowed];
+    cols.forEach((h, i) => pairs.push([h, rows[0][i]]));
+  } else if (rows[0].length > 2 || (headerLooksLikeFields && rows.length >= 2 && rows[0].length >= 2 && rows.length === 2)) {
     // header row + data row
     if (rows.length < 2) throw new Error('Found a header row but no data row beneath it.');
     header.forEach((h, i) => pairs.push([h, rows[1][i]]));
