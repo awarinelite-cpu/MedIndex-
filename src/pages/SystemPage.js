@@ -1129,74 +1129,122 @@ export default function SystemPage() {
 
   return (
     <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden ${(mergeMode || classMergeMode) ? 'pb-56 md:pb-40' : ''}`}>
-      <button
-        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
-        className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
-      >
-        <ArrowLeft className="w-4 h-4" /> Back
-      </button>
-
-      {/* System header */}
-      <div className="flex items-start gap-4 mb-3">
-        <div className={`p-3 rounded-xl ${system.bg} flex-shrink-0`}>
-          <Icon className={`w-7 h-7 ${system.color}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold break-words">{system.name}</h1>
-          <p className="text-drug-muted mt-0.5 text-sm">
-            {loading ? 'Loading…' : `${drugs.length} medication${drugs.length !== 1 ? 's' : ''} · ${conditionGroups.size} condition${conditionGroups.size !== 1 ? 's' : ''} · ${allClasses.length} drug class${allClasses.length !== 1 ? 'es' : ''}`}
-          </p>
-        </div>
-      </div>
-
-      {isAdmin && !loading && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6">
+      {(() => {
+        const sysImgs = systemImagesById[system.id || systemId];
+        const hasHero = !loading && Array.isArray(sysImgs) && sysImgs.length > 0;
+        const statChips = loading ? [] : [
+          `${drugs.length} medication${drugs.length !== 1 ? 's' : ''}`,
+          `${conditionGroups.size} condition${conditionGroups.size !== 1 ? 's' : ''}`,
+          `${allClasses.length} drug class${allClasses.length !== 1 ? 'es' : ''}`,
+        ];
+        const backBtn = (
           <button
-            onClick={handleRetryEmptyConditions}
-            disabled={retryingEmpty}
-            title="Re-queue any conditions in this system that still have zero drugs — useful if an earlier auto-fill run stalled partway through"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+            className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-6 text-sm font-medium"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${retryingEmpty ? 'animate-spin' : ''}`} />
-            {retryingEmpty ? 'Retrying…' : 'Retry empty conditions'}
+            <ArrowLeft className="w-4 h-4" /> Back
           </button>
-          {(missingClinicalInfoCount > 0 || clinicalSweep.running) && (
+        );
+        const adminRow = (
+          <>
+        {isAdmin && !loading && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6">
             <button
-              onClick={handleGenerateAllClinicalInfo}
-              disabled={clinicalSweep.running}
-              title="Generate the clinical info panel (introduction, types, organ system, etiology, pathophysiology, clinical manifestation, diagnosis, and management) for every condition here that doesn't have one yet"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+              onClick={handleRetryEmptyConditions}
+              disabled={retryingEmpty}
+              title="Re-queue any conditions in this system that still have zero drugs — useful if an earlier auto-fill run stalled partway through"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-primary-800 disabled:opacity-50"
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              {clinicalSweep.running
-                ? `Adding Clinical Info ${clinicalSweep.done}/${clinicalSweep.total}…`
-                : `Add Clinical Info to All (${missingClinicalInfoCount})`}
+              <RefreshCw className={`w-3.5 h-3.5 ${retryingEmpty ? 'animate-spin' : ''}`} />
+              {retryingEmpty ? 'Retrying…' : 'Retry empty conditions'}
             </button>
-          )}
-          <button
-            onClick={openConditionId ? toggleClassMergeMode : toggleMergeMode}
-            title={openConditionId
-              ? "Select two or more drug-class labels in this condition that mean the same thing and fold them into one"
-              : "Select two or more condition cards that represent the same clinical entity and fold them into one"}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 ${
-              (mergeMode || classMergeMode) ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
-            }`}
-          >
-            <Merge className="w-3.5 h-3.5" />
-            {(mergeMode || classMergeMode) ? 'Cancel Merge' : openConditionId ? 'Merge Duplicate Classes' : 'Merge Duplicates'}
-          </button>
-        </div>
-      )}
-
-      {/* System picture: shown to everyone once it exists; admins can add/remove */}
-      <div className="-mx-4 sm:mx-0 sm:max-w-xl mb-4">
-        <ConditionImagesPanel hero
-          condition={{ id: system.id || systemId, label: system.name }}
-          images={systemImagesById[system.id || systemId]}
-          onAddUrls={(urls, existing) => addSystemImageUrls({ systemId: system.id || systemId, urls, existingImages: existing })}
-          onDeleteImage={(index, existing) => deleteSystemImage({ systemId: system.id || systemId, images: existing, index })}
-        />
-      </div>
+            {(missingClinicalInfoCount > 0 || clinicalSweep.running) && (
+              <button
+                onClick={handleGenerateAllClinicalInfo}
+                disabled={clinicalSweep.running}
+                title="Generate the clinical info panel (introduction, types, organ system, etiology, pathophysiology, clinical manifestation, diagnosis, and management) for every condition here that doesn't have one yet"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-800 disabled:opacity-50"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                {clinicalSweep.running
+                  ? `Adding Clinical Info ${clinicalSweep.done}/${clinicalSweep.total}…`
+                  : `Add Clinical Info to All (${missingClinicalInfoCount})`}
+              </button>
+            )}
+            <button
+              onClick={openConditionId ? toggleClassMergeMode : toggleMergeMode}
+              title={openConditionId
+                ? "Select two or more drug-class labels in this condition that mean the same thing and fold them into one"
+                : "Select two or more condition cards that represent the same clinical entity and fold them into one"}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 ${
+                (mergeMode || classMergeMode) ? 'text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg' : 'text-amber-600 hover:text-amber-800'
+              }`}
+            >
+              <Merge className="w-3.5 h-3.5" />
+              {(mergeMode || classMergeMode) ? 'Cancel Merge' : openConditionId ? 'Merge Duplicate Classes' : 'Merge Duplicates'}
+            </button>
+          </div>
+        )}
+          </>
+        );
+        const panel = (
+          <ConditionImagesPanel hero blend={hasHero}
+            condition={{ id: system.id || systemId, label: system.name }}
+            images={sysImgs}
+            onAddUrls={(urls, existing) => addSystemImageUrls({ systemId: system.id || systemId, urls, existingImages: existing })}
+            onDeleteImage={(index, existing) => deleteSystemImage({ systemId: system.id || systemId, images: existing, index })}
+          />
+        );
+        if (hasHero) {
+          // Picture runs up to the top of the page; the back link, title and
+          // counts sit on top of it, and its edges fade into the background.
+          return (
+            <>
+              <div className="relative -mx-4 sm:mx-0 -mt-8 sm:max-w-xl mb-2">
+                {panel}
+                <div className="absolute inset-x-0 top-0 z-10 px-4 pt-4 pointer-events-none">
+                  <div className="pointer-events-auto inline-block">{backBtn}</div>
+                  <div className="flex items-center gap-3">
+                    <div className={`p-3 rounded-2xl ${system.bg} flex-shrink-0 shadow-md ring-2 ring-white/70`}>
+                      <Icon className={`w-8 h-8 ${system.color}`} />
+                    </div>
+                    <h1
+                      className="text-4xl sm:text-5xl font-extrabold tracking-tight leading-none break-words bg-gradient-to-r from-[#0b2a66] via-[#1769e0] to-[#00a6c8] bg-clip-text text-transparent"
+                      style={{ filter: 'drop-shadow(0 2px 6px rgba(255,255,255,.9))' }}
+                    >
+                      {system.name}
+                    </h1>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {statChips.map(t => (
+                      <span key={t} className="px-3 py-1 rounded-full text-xs font-semibold text-[#0b2a66] bg-white/70 backdrop-blur-sm border border-white/80 shadow-sm">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {adminRow}
+            </>
+          );
+        }
+        return (
+          <>
+            {backBtn}
+            <div className="flex items-start gap-4 mb-3">
+              <div className={`p-3 rounded-xl ${system.bg} flex-shrink-0`}>
+                <Icon className={`w-7 h-7 ${system.color}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-3xl font-bold break-words">{system.name}</h1>
+                <p className="text-drug-muted mt-0.5 text-sm">{loading ? 'Loading…' : statChips.join(' · ')}</p>
+              </div>
+            </div>
+            {adminRow}
+            <div className="-mx-4 sm:mx-0 sm:max-w-xl mb-4">{panel}</div>
+          </>
+        );
+      })()}
 
       {/* Floating merge-mode toggle — fixed to the bottom of the screen so it
           stays reachable while scrolling through a long condition list,

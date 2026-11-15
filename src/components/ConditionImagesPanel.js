@@ -6,6 +6,14 @@ import PasteZone from './PasteZone';
 import { imagesFromPasteEvent, imagesFromClipboardApi, ONE_PICTURE_NOTE } from '../utils/clipboardImages';
 import { addConditionImageUrls, deleteConditionImage } from '../hooks/useConditionClinicalInfo';
 
+// Fades the picture's top, bottom and side edges into the page background.
+const BLEND_MASK = {
+  WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, #000 7%, #000 70%, transparent 100%), linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%)',
+  maskImage: 'linear-gradient(to bottom, transparent 0%, #000 7%, #000 70%, transparent 100%), linear-gradient(to right, transparent 0%, #000 13%, #000 87%, transparent 100%)',
+  WebkitMaskComposite: 'source-in',
+  maskComposite: 'intersect',
+};
+
 /* ── Condition picture gallery (swipe to view more than one picture) ───── */
 function ConditionImageGallery({ images, altBase, fullWidth = false }) {
   const trackRef = useRef(null);
@@ -104,7 +112,7 @@ function ConditionImageGallery({ images, altBase, fullWidth = false }) {
    "Paste from Clipboard" button) — there is deliberately no file picker and
    no link field. Pasted images are re-hosted on ImgChest via the same
    /api/imgchest-upload proxy the drug pictures use. */
-export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage, hero = false }) {
+export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage, hero = false, blend = false }) {
   // hero: picture runs edge to edge with no "Images" label bar (used on the system page).
   // onAddUrls(urls, existing) / onDeleteImage(index, existing) let other owners (e.g. a body system) reuse this panel.
   const { isAdmin } = useAuth();
@@ -208,7 +216,11 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
       tabIndex={isAdmin ? 0 : undefined}
       onPaste={isAdmin ? handlePasteEvent : undefined}
     >
-      {hero && list.length > 0 && <ConditionImageGallery images={list} altBase={condition.label} fullWidth />}
+      {hero && list.length > 0 && (
+        blend
+          ? <div style={BLEND_MASK}><ConditionImageGallery images={list} altBase={condition.label} fullWidth /></div>
+          : <ConditionImageGallery images={list} altBase={condition.label} fullWidth />
+      )}
       <div className={hero ? 'px-4 pt-3' : ''}>
       {!hero && (
       <div className="flex items-center gap-2.5 rounded-xl bg-[#EEEAFE] px-3 py-2.5 text-[15px] font-semibold text-[#0A1F5C] mb-3">
