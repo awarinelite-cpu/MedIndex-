@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { ClipboardPaste, Check, AlertCircle, X } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { parseMedicationList, addMedicationsToCondition } from '../utils/aiDrugSave';
+import { parseMedicationEntries } from '../utils/medicationText';
 
 const LABELS = { queued: 'Waiting', linked: 'Linked (already in app)', added: 'Added (fill in info later)', failed: 'Failed' };
 
@@ -16,7 +17,22 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
   const [status, setStatus] = useState({});
   const [running, setRunning] = useState(false);
   const [removed, setRemoved] = useState([]);
-  const names = useMemo(() => parseMedicationList(text).filter(n => !removed.includes(n)), [text, removed]);
+  const entries = useMemo(() => parseMedicationEntries(text, parseMedicationList), [text]);
+  // Drugs still on the list, plus the group labels that still have a drug under them.
+  const rows = useMemo(() => {
+    const out = [];
+    entries.forEach((e, i) => {
+      if (e.type === 'drug') { if (!removed.includes(e.text)) out.push(e); return; }
+      const stopAt = e.type === 'heading' ? ['heading'] : ['heading', 'sub'];
+      let has = false;
+      for (let j = i + 1; j < entries.length && !stopAt.includes(entries[j].type); j++) {
+        if (entries[j].type === 'drug' && !removed.includes(entries[j].text)) { has = true; break; }
+      }
+      if (has) out.push(e);
+    });
+    return out;
+  }, [entries, removed]);
+  const names = useMemo(() => rows.filter(r => r.type === 'drug').map(r => r.text), [rows]);
   const updateText = (t) => { setText(t); setRemoved([]); };
   const removeName = (n) => setRemoved(prev => [...prev, n]);
 
@@ -52,12 +68,15 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
           {running ? 'Saving...' : `Add ${names.length || ''} medication${names.length === 1 ? '' : 's'}`}
         </button>
       </div>
-      {names.length > 0 && (
+      {rows.length > 0 && (
         <ul className="cp-paste-list">
-          {names.map(n => {
+          {rows.map((r, idx) => {
+            if (r.type === 'heading') return <li key={`h${idx}`} className="cp-paste-head">{r.text}</li>;
+            if (r.type === 'sub') return <li key={`s${idx}`} className="cp-paste-sub">{r.text}</li>;
+            const n = r.text;
             const st = status[n]?.s;
             return (
-              <li key={n} className={st ? `is-${st}` : ''}>
+              <li key={n} className={`${st ? `is-${st}` : ''}${r.underSub ? ' under-sub' : ''}`}>
                 <span className="cp-paste-name">{n}</span>
                 <span className="cp-paste-st">
                   {(st === 'linked' || st === 'added') && <Check size={14} />}
