@@ -19,11 +19,21 @@ const FIELDS = [
 // Each tab gets its own field set, so its Google search asks only for that tab's info.
 export const TAB_FIELDS = {
   overview:     { label: 'Overview',      fields: ['drug_class', 'drug_subclass', 'prescription_status', 'nafdac_no', 'pronunciation', 'brand_names', 'overview', 'strength', 'indications', 'off_label_use', 'therapeutic_note'] },
-  dosage:       { label: 'Dosage',        fields: ['adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations'] },
+  dosage:       { label: 'Dosage',        fields: ['adult_dose', 'child_dose', 'renal_dose', 'administration'] },
   safety:       { label: 'Safety',        fields: ['contraindications', 'precautions', 'adverse_effect', 'pregnancy_lactation', 'advice_to_patients', 'pharmacovigilance'] },
   interactions: { label: 'Interactions',  fields: ['interaction'] },
   pharmacology: { label: 'Pharmacology',  fields: ['pharmacology', 'drug_class', 'drug_subclass', 'product_description', 'storage_recommendations', 'pack_size_price'] },
   nursing:      { label: 'Nursing Notes', fields: ['nursing_action'] },
+};
+
+// What each column must contain, so Google's answer stays on-topic for the tab.
+const FIELD_HINTS = {
+  adult_dose: 'ADULT dose only: the amount (mg/units), frequency, route (PO/IV/IM/SC...) and duration of treatment, per indication',
+  child_dose: 'CHILD/paediatric dose only: amount by age or weight, frequency, route and duration',
+  renal_dose: 'dose adjustment in renal impairment only: by CrCl/eGFR band and dialysis',
+  administration: 'how to give it only: with/without food, timing, dilution, infusion rate, handling',
+  interaction: 'drug, food and herbal interactions only',
+  nursing_action: 'nursing assessment, administration, monitoring and patient-education actions only',
 };
 
 // Builds the Google search that carries the CSV template (for one tab's fields)
@@ -31,8 +41,10 @@ export const TAB_FIELDS = {
 export function googleDrugInfoUrl(drugName, tabId = 'overview') {
   const tab = TAB_FIELDS[tabId] || TAB_FIELDS.overview;
   const header = ['generic_name', ...tab.fields].join(',');
-  const q = `Give me complete ${tab.label.toLowerCase()} information for ${drugName} as a CSV file I can download or copy. `
-    + `Use exactly this header row: ${header} . `
+  const hints = tab.fields.filter(f => FIELD_HINTS[f]).map(f => `${f} = ${FIELD_HINTS[f]}`).join('; ');
+  const q = `Give me the ${tab.label.toUpperCase()} information for ${drugName} as a CSV file I can download or copy. `
+    + `Use EXACTLY and ONLY this header row: ${header} . Do not add, rename or drop any column. `
+    + (hints ? `Column contents: ${hints}. ` : '')
     + `Then ONE data row for ${drugName} with every value in double quotes and empty if unknown. Output only the CSV.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
@@ -47,7 +59,7 @@ function normalizeStatus(val) {
 }
 
 // → { updates, ignored, csvName }
-export function parseManualDrugCsv(text) {
+export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
   const res = Papa.parse(String(text || '').trim(), { skipEmptyLines: 'greedy' });
   const rows = (res.data || []).filter(r => Array.isArray(r) && r.some(c => String(c).trim()));
   if (rows.length === 0) throw new Error('Nothing to read — paste or upload CSV first.');
@@ -70,12 +82,14 @@ export function parseManualDrugCsv(text) {
   for (const [k, v] of pairs) {
     const val = String(v ?? '').trim();
     if (k === 'generic_name') { csvName = val; continue; }
-    if (!FIELDS.includes(k)) { if (k) ignored.push(k); continue; }
+    if (!allowed.includes(k)) { if (k) ignored.push(k); continue; }
     if (!val) continue;
     updates[k] = k === 'prescription_status' ? normalizeStatus(val) : val;
   }
   if (Object.keys(updates).length === 0) {
-    throw new Error('No recognised fields with content. Download the template to see the column names.');
+    throw new Error(ignored.length
+      ? `None of these columns belong to ${tabLabel || 'this'} information (found: ${ignored.join(', ')}). Use the search on the tab they belong to.`
+      : 'No recognised fields with content. Download the template to see the column names.');
   }
   return { updates, ignored, csvName };
 }
@@ -95,7 +109,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
     setText(t);
     setState('idle');
     try {
-      setParsed(parseManualDrugCsv(t));
+      setParsed(parseManualDrugCsv(t, tab.fields, tab.label));
       setError('');
     } catch (e) {
       setParsed(null);
@@ -197,7 +211,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
                 ))}
               </div>
               {nameMismatch && <p className="text-amber-700">CSV generic_name “{parsed.csvName}” differs from this drug — it is ignored; data saves to {drug.generic_name}.</p>}
-              {parsed.ignored.length > 0 && <p className="text-amber-700">Ignored unknown columns: {parsed.ignored.join(', ')}</p>}
+              {parsed.ignored.length > 0 && <p className="text-amber-700">Ignored columns (not part of this tab): {parsed.ignored.join(', ')}</p>}
             </div>
           )}
           {state === 'saved' && <p className="text-sm font-semibold text-green-700">Saved to this drug.</p>}
