@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
 import { renderAiText } from '../utils/renderAiText';
 import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+import { summariseStrength } from '../utils/summariseStrength';
 import { needsStrengthOnly, fetchPronunciationText, savePronunciation, fetchBrandsText, saveBrandNames, saveTabAiInsight } from '../utils/aiDrugSave';
 import { TAB_SECTIONS, missingTabFields, fillTabWithAi } from '../utils/aiSectionFill';
 import { shareDrugPdf } from '../utils/exportDrugPdf';
@@ -2345,11 +2346,25 @@ export default function DrugDetailPage() {
       {sheet === 'strength' && (
         <Sheet title="Strength" onClose={() => setSheet(null)}>
           {drug.strength ? (
-            <div className="flex flex-wrap gap-2">
-              {drug.strength.split('\n').map(l => cleanText(l)).filter(Boolean).map((l, i) => (
-                <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">{l}</span>
+            <ul className="space-y-3">
+              {summariseStrength(drug.strength).map((g, i) => (
+                <li key={i} className="flex gap-2 text-drug-text leading-relaxed">
+                  <span className="text-primary-500 leading-relaxed">•</span>
+                  <div className="min-w-0">
+                    {g.form && <div className="font-bold">{g.form}</div>}
+                    {g.form ? (
+                      <ul className="mt-1 space-y-1">
+                        {g.items.map((it, j) => (
+                          <li key={j} className="flex gap-2">
+                            <span className="text-primary-400">–</span><span>{it}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : g.items.map((it, j) => <div key={j}>{it}</div>)}
+                  </div>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : <em className="text-drug-muted">No data available</em>}
           {detectedRoutes.length > 0 && (
             <SubSection title="Routes">
