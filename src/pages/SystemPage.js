@@ -1193,7 +1193,7 @@ export default function SystemPage() {
           // counts sit on top of it, and its edges fade into the background.
           return (
             <>
-              <div className="relative -mx-4 sm:mx-0 -mt-8 sm:max-w-xl mb-2">
+              <div className="relative -mx-4 sm:mx-auto -mt-8 sm:mt-0 sm:max-w-xl mb-2 sm:flex sm:flex-col">
                 {hasPicture
                   ? panel
                   : (
@@ -1202,9 +1202,9 @@ export default function SystemPage() {
                       style={{ ...BLEND_MASK, opacity: 0.9 }}
                     />
                   )}
-                <div className="absolute inset-x-0 top-0 z-10 px-4 pt-4 pointer-events-none">
-                  <div className="pointer-events-auto inline-block">{backBtn}</div>
-                  <div className="flex items-center gap-3">
+                <div className="absolute inset-x-0 top-0 z-10 px-4 pt-4 pointer-events-none sm:static sm:order-first sm:px-0 sm:pt-0 sm:pb-3 sm:text-center">
+                  <div className="pointer-events-auto block sm:text-left">{backBtn}</div>
+                  <div className="flex items-center gap-3 sm:justify-center">
                     <div className={`p-3 rounded-2xl ${system.bg} flex-shrink-0 shadow-md ring-2 ring-white/70`}>
                       <Icon className={`w-8 h-8 ${system.color}`} />
                     </div>
@@ -1215,7 +1215,7 @@ export default function SystemPage() {
                       {system.name}
                     </h1>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-3 sm:justify-center">
                     {statChips.map(t => (
                       <span key={t} className="px-3 py-1 rounded-full text-xs font-semibold text-[#0b2a66] bg-white/70 backdrop-blur-sm border border-white/80 shadow-sm">
                         {t}
@@ -1224,7 +1224,7 @@ export default function SystemPage() {
                   </div>
                 </div>
               </div>
-              {!hasPicture && !loading && <div className="-mx-4 sm:mx-0 sm:max-w-xl mb-4">{panel}</div>}
+              {!hasPicture && !loading && <div className="-mx-4 sm:mx-auto sm:max-w-xl mb-4">{panel}</div>}
               {adminRow}
             </>
           );
