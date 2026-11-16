@@ -306,7 +306,7 @@ export default function BrowsePage() {
             .map(drug => <DrugRow key={drug.id} drug={drug} />)}
         </div>
       ) : (
-        <TaxonomyBrowser drugs={filteredDrugs} allDrugs={ALL_DRUGS} />
+        <TaxonomyBrowser drugs={filteredDrugs} />
       )}
 
       {/* AI lookup fallback — moved to the end of the list once there are

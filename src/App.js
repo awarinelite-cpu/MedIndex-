@@ -14,6 +14,7 @@ import HomePage from './pages/HomePage';
 import DrugDetailPage from './pages/DrugDetailPage';
 import AiDrugPage from './pages/AiDrugPage';
 import BrowsePage from './pages/BrowsePage';
+import DrugClassPage from './pages/DrugClassPage';
 import ProceduresPage from './pages/ProceduresPage';
 import ProcedureDetailPage from './pages/ProcedureDetailPage';
 import DrugListsPage from './pages/DrugListsPage';
@@ -73,6 +74,11 @@ function App() {
         <Route path="/browse" element={
           <ProtectedUserRoute>
             <Layout><BrowsePage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/class/:classId" element={
+          <ProtectedUserRoute>
+            <Layout><DrugClassPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/browse/:condition" element={
