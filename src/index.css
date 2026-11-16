@@ -1221,3 +1221,21 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 }
 .cp-vars * { text-align: left; hyphens: none; -webkit-hyphens: none; }
 .cp-vars .cp-paste-btn, .cp-vars .cp-paste-btn:hover, .cp-vars .cp-paste-btn:active { filter: none; transform: none; box-shadow: none; background-image: none; }
+
+/* ---- Desktop: use the full screen width instead of a narrow centred column ---- */
+@media (min-width: 1024px) {
+  .mi-page > div[class*="max-w-2xl"],
+  .mi-page > div[class*="max-w-3xl"],
+  .mi-page > div[class*="max-w-4xl"],
+  .mi-page > div[class*="max-w-5xl"],
+  .mi-page > div[class*="max-w-7xl"] {
+    max-width: min(1600px, 100%);
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+@media (min-width: 768px) {
+  /* Never allow sideways scrolling on desktop */
+  html, body, #root { max-width: 100%; overflow-x: hidden; }
+  .mi-page { min-height: calc(100vh - 4rem); }
+}

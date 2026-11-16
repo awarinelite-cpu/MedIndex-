@@ -193,51 +193,24 @@ export default function Layout({ children }) {
 
       {/* ── Header (desktop) ─────────────────────────────────────────────── */}
       <header className="bg-primary-900 text-white sticky top-0 z-40 hidden md:block">
-        {/* Brand row — app identity + notifications, mirrors the native app bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-20">
-            <Link to="/" className="flex items-center gap-2.5 flex-shrink-0 min-w-0">
+        {/* Single compact desktop bar: brand, search, nav. Fits the viewport
+            width at any desktop size (nav labels collapse to icons below xl). */}
+        <div className="w-full max-w-[1600px] mx-auto px-3 lg:px-6">
+          <div className="flex items-center gap-3 lg:gap-5 h-16">
+            <Link to="/" className="flex items-center gap-2 flex-shrink-0 min-w-0">
               <span className="p-1.5 bg-white/10 rounded-lg flex-shrink-0">
-                <Pill className="w-6 h-6 sm:w-8 sm:h-8" />
+                <Pill className="w-6 h-6" />
               </span>
-              <span className="min-w-0">
-                <span className="block text-4xl sm:text-5xl font-bold tracking-tight leading-tight truncate">MedIndex</span>
-                <span className="hidden sm:block text-[11px] font-medium text-primary-200 leading-tight">
+              <span className="min-w-0 hidden sm:block">
+                <span className="block text-2xl lg:text-3xl font-bold tracking-tight leading-none whitespace-nowrap">MedIndex</span>
+                <span className="hidden lg:block text-[11px] font-medium text-primary-200 leading-tight mt-0.5 whitespace-nowrap">
                   Your Medication Database
                 </span>
               </span>
             </Link>
 
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {/* Notifications */}
-              <div className="relative" ref={notifRef}>
-                <button
-                  onClick={() => setShowNotifications(v => !v)}
-                  aria-label="Notifications"
-                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                </button>
-                {showNotifications && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white text-drug-text rounded-xl shadow-2xl border border-drug-border overflow-hidden z-50">
-                    <div className="px-4 py-3 border-b border-drug-border">
-                      <p className="text-sm font-bold">Notifications</p>
-                    </div>
-                    <div className="px-4 py-6 text-center text-sm text-drug-muted">
-                      No new notifications
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="hidden md:block max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-
-            {/* Search — desktop */}
-            <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-lg mx-8">
+            {/* Search - desktop */}
+            <form onSubmit={handleSearch} className="hidden md:flex flex-1 min-w-0 max-w-xl">
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
                 <input
@@ -245,27 +218,30 @@ export default function Layout({ children }) {
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search medications, conditions, classes..."
-                  className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg
+                  className="w-full min-w-0 pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg
                              text-white placeholder-white/50 focus:outline-none focus:ring-2
                              focus:ring-white/30 focus:bg-white/15 transition-all"
                 />
               </div>
             </form>
 
+            <div className="flex-1 md:flex-none" />
+
             {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-0.5 xl:gap-1 flex-shrink-0">
               {navLinks.map(link => (
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  title={link.label}
+                  className={`flex items-center gap-2 px-2.5 xl:px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive(link.to)
                       ? 'bg-white/20 text-white'
                       : 'text-white/80 hover:text-white hover:bg-white/10'
                   }`}
                 >
                   <link.icon className="w-4 h-4" />
-                  {link.label}
+                  <span className="hidden xl:inline">{link.label}</span>
                 </Link>
               ))}
               {/* Return to Admin Portal — only shown to logged-in admins browsing the public site */}
@@ -320,6 +296,26 @@ export default function Layout({ children }) {
                   </button>
                 </div>
               )}
+              {/* Notifications */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setShowNotifications(v => !v)}
+                  aria-label="Notifications"
+                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <Bell className="w-5 h-5" />
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white text-drug-text rounded-xl shadow-2xl border border-drug-border overflow-hidden z-50">
+                    <div className="px-4 py-3 border-b border-drug-border">
+                      <p className="text-sm font-bold">Notifications</p>
+                    </div>
+                    <div className="px-4 py-6 text-center text-sm text-drug-muted">
+                      No new notifications
+                    </div>
+                  </div>
+                )}
+              </div>
             </nav>
           </div>
         </div>
