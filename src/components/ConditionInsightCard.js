@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Zap } from 'lucide-react';
+import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -71,7 +71,27 @@ function findFuzzyConditionMatch(searchQuery, existingConditionIndex) {
   return best && bestScore >= 0.5 ? { ...best, score: bestScore } : null;
 }
 
-export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
+// Collapsible "AI tools" wrapper: the AI lookup prompts live behind one drop-down.
+function AiToolsDropdown({ children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2.5 rounded-xl bg-violet-50 border border-violet-200 px-3 py-2.5 text-[15px] font-semibold text-violet-900"
+      >
+        <Sparkles className="w-5 h-5 text-violet-500 flex-shrink-0" />
+        <span className="flex-1 min-w-0 text-left">AI Insight &amp; AI lookup</span>
+        {open ? <ChevronUp className="w-5 h-5 flex-shrink-0" /> : <ChevronDown className="w-5 h-5 flex-shrink-0" />}
+      </button>
+      <div className={open ? 'mt-2 space-y-3 [&>div]:mt-0' : 'hidden'}>{children}</div>
+    </div>
+  );
+}
+
+export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExtra = null }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
@@ -302,6 +322,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
 
   if (!searchQuery.trim()) return null;
 
+  const renderMain = () => {
   const aiInsightPrompt = (
     <div className="bg-violet-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-center gap-2 min-w-0">
@@ -320,6 +341,8 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
       </button>
     </div>
   );
+
+  const aiTools = <AiToolsDropdown>{aiInsightPrompt}{aiExtra}</AiToolsDropdown>;
 
   if (state === 'idle') {
     if (localMatch) {
@@ -348,11 +371,11 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
             onDeleteCondition={handleDeleteLocalCondition}
             isDeleting={deletingCondition}
           />
-          {aiInsightPrompt}
+          {aiTools}
         </div>
       );
     }
-    return <div className="mb-6">{aiInsightPrompt}</div>;
+    return <div className="mb-6">{aiTools}</div>;
   }
 
   if (state === 'loading') {
@@ -585,5 +608,13 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs }) {
         AI-generated reference material — not a substitute for current clinical guidelines. Verify before applying to patient care.
       </div>
     </div>
+  );
+  };
+
+  return (
+    <>
+      {renderMain()}
+      {state !== 'idle' && aiExtra ? <div className="mt-6">{aiExtra}</div> : null}
+    </>
   );
 }

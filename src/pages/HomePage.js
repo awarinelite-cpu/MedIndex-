@@ -16,6 +16,8 @@ import { drugMatchesSystem } from '../utils/systemMatch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
+import NewConditionGoogleSearch from '../components/NewConditionGoogleSearch';
+import { useExistingConditionMatch } from '../hooks/useExistingConditionMatch';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { logSearch } from '../utils/logSearch';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
@@ -212,6 +214,8 @@ export default function HomePage() {
 
   // Everything for a search already renders on this page — submitting just
   // closes the instant dropdown and scrolls down to the full results/insight.
+  const existingCondition = useExistingConditionMatch(deferredQuery);
+
   const handleSearch = (e) => {
     e.preventDefault();
     setShowDropdown(false);
@@ -288,14 +292,22 @@ export default function HomePage() {
           )}
         </form>
 
+        {/* Admin: condition not in the system yet → search Google for its clinical info */}
+        {searchQuery.trim() && !existingCondition && !hasExactDrugMatch && (
+          <NewConditionGoogleSearch query={deferredQuery} />
+        )}
+
         {/* Condition insight — if the search matches (or is close to) a known
             condition, show its clinical overview + drug list right here; if it
             doesn't exist in the system yet, the AI lookup prompt appears
             instead. */}
         {searchQuery.trim() && (
           <section ref={resultsRef} className="mi-results">
-            <ConditionInsightCard searchQuery={deferredQuery} existingDrugs={ALL_DRUGS} />
-            {!hasExactDrugMatch && <AiSearchFallback searchQuery={deferredQuery} />}
+            <ConditionInsightCard
+              searchQuery={deferredQuery}
+              existingDrugs={ALL_DRUGS}
+              aiExtra={!hasExactDrugMatch ? <AiSearchFallback searchQuery={deferredQuery} /> : null}
+            />
 
             {/* Every matching drug by name/indication/class — not just the top 8
                 shown in the dropdown while typing. */}
