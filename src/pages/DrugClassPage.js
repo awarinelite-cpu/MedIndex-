@@ -5,11 +5,12 @@
 // has a collapsed "Find more drugs" dropdown (AI + Google search).
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Pill, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Search, Pill, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { findClassById } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
 import { DrugRow, classVisual } from '../components/TaxonomyBrowser';
+import { subclassIcon } from '../utils/subclassIcons';
 import ClassMoreDrugs from '../components/ClassMoreDrugs';
 
 export default function DrugClassPage() {
@@ -19,6 +20,8 @@ export default function DrugClassPage() {
   const [query, setQuery] = useState('');
   // Single-open accordion: opening one subclass closes the one that was open.
   const [openSubId, setOpenSubId] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
   const classDef = findClassById(classId);
 
   const groups = useMemo(() => {
@@ -55,89 +58,91 @@ export default function DrugClassPage() {
     );
   }
 
-  const { icon: ClassIcon, color, bg } = classVisual(classDef.id);
+  const { icon: ClassIcon } = classVisual(classDef.id);
   const q = query.trim().toLowerCase();
-  const matches = d => !q
+  const matches = d => (!statusFilter || (d.prescription_status || 'Prescription') === statusFilter) && (!q
     || (d.generic_name || '').toLowerCase().includes(q)
     || (d.drug_class || '').toLowerCase().includes(q)
-    || (d.drug_subclass || '').toLowerCase().includes(q);
+    || (d.drug_subclass || '').toLowerCase().includes(q));
+  const filtering = !!(q || statusFilter);
 
   return (
-    <div className="max-w-3xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="cp-page max-w-3xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <button
         onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/browse'))}
-        className="inline-flex items-center gap-1 text-drug-muted hover:text-primary-600 mb-4 text-sm font-medium"
+        className="cp-back"
       >
-        <ArrowLeft className="w-4 h-4" /> Back
+        <ArrowLeft className="w-6 h-6" /> Back
       </button>
 
-      <div className="flex items-center gap-3 mb-4">
-        <span className={`flex-shrink-0 grid place-items-center w-14 h-14 rounded-full ${bg}`}>
-          <ClassIcon className={`w-7 h-7 ${color}`} />
-        </span>
+      <div className="cp-hero">
+        <ClassIcon className="cp-hero-icon" strokeWidth={1.4} />
+        <span className="cp-hero-divider" />
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-extrabold leading-tight">{classDef.name}</h1>
-          <p className="text-sm text-drug-muted mt-0.5">
-            {loading ? 'Loading…' : `${allClassDrugs.length} drug${allClassDrugs.length === 1 ? '' : 's'} · ${classDef.subclasses.length} subclasses`}
+          <h1 className="cp-hero-title">{classDef.name}</h1>
+          <p className="cp-hero-sub">
+            {loading ? 'Loading…' : `${allClassDrugs.length} drug${allClassDrugs.length === 1 ? '' : 's'} \u2022 ${classDef.subclasses.length} subclasses`}
           </p>
         </div>
       </div>
 
-      <div className="relative mb-4">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-600" />
+      <div className="cp-search">
+        <Search className="cp-search-icon" />
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={`Search in ${classDef.name}…`}
-          className="w-full pl-11 pr-4 py-3 rounded-full border border-drug-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
         />
+        <button
+          type="button"
+          onClick={() => setShowFilters(f => !f)}
+          aria-label="Filter drugs"
+          aria-expanded={showFilters}
+          className={`cp-filter-btn ${statusFilter ? 'is-active' : ''}`}
+        >
+          <SlidersHorizontal className="w-6 h-6" />
+        </button>
       </div>
 
-      {/* Jump chips */}
-      {!q && groups.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-3 mb-2" style={{ scrollbarWidth: 'none' }}>
-          {groups.map(({ subclass, drugs }) => (
-            <a
-              key={subclass.id}
-              href={`#${subclass.id}`}
-              onClick={e => {
-                e.preventDefault();
-                setOpenSubId(subclass.id);
-                setTimeout(() => document.getElementById(subclass.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-              }}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-primary-200 bg-primary-50 text-primary-700 whitespace-nowrap"
+      {showFilters && (
+        <div className="cp-filter-panel">
+          {['', 'Prescription', 'OTC', 'Controlled'].map(st => (
+            <button
+              key={st || 'all'}
+              type="button"
+              onClick={() => setStatusFilter(st)}
+              className={`cp-chip ${statusFilter === st ? 'is-on' : ''}`}
             >
-              {subclass.name} ({drugs.length})
-            </a>
+              {st || 'All status'}
+            </button>
           ))}
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className="cp-list">
         {groups.map(({ subclass, drugs }) => {
           const shown = drugs.filter(matches);
-          if (q && shown.length === 0) return null;
-          // While searching, every section with a match stays open so results are visible.
-          const isOpen = q ? true : openSubId === subclass.id;
+          if (filtering && shown.length === 0) return null;
+          // While searching/filtering, every section with a match stays open so results are visible.
+          const isOpen = filtering ? true : openSubId === subclass.id;
+          const SubIcon = subclassIcon(subclass, ClassIcon);
+          const count = filtering ? shown.length : drugs.length;
           return (
-            <section key={subclass.id} id={subclass.id} className="scroll-mt-24 bg-white border border-drug-border rounded-3xl overflow-hidden">
+            <section key={subclass.id} id={subclass.id} className={`cp-card ${isOpen ? 'is-open' : ''}`}>
               <button
                 type="button"
-                onClick={() => !q && setOpenSubId(id => (id === subclass.id ? null : subclass.id))}
+                onClick={() => setOpenSubId(id => (id === subclass.id ? null : subclass.id))}
                 aria-expanded={isOpen}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left"
+                className="cp-row"
               >
-                <h2 className="text-base sm:text-lg font-bold min-w-0">{subclass.name}</h2>
-                <span className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs text-drug-muted whitespace-nowrap">
-                    {drugs.length} drug{drugs.length === 1 ? '' : 's'}
-                  </span>
-                  {isOpen ? <ChevronDown className="w-5 h-5 text-primary-600" /> : <ChevronRight className="w-5 h-5 text-primary-600" />}
-                </span>
+                <span className="cp-row-icon"><SubIcon className="w-7 h-7" /></span>
+                <span className="cp-row-name">{subclass.name}</span>
+                <span className="cp-row-count">{count} drug{count === 1 ? '' : 's'}</span>
+                <ChevronRight className={`cp-row-chev ${isOpen ? 'is-open' : ''}`} />
               </button>
               {isOpen && (
-                <div className="px-3 sm:px-4 pb-4 border-t border-drug-border pt-2">
+                <div className="cp-card-body">
                   {shown.length === 0 ? (
                     <p className="px-3 py-2 text-xs text-drug-muted italic">No drugs added yet</p>
                   ) : (
@@ -145,7 +150,7 @@ export default function DrugClassPage() {
                       {shown.map(d => <DrugRow key={d.id} drug={d} />)}
                     </div>
                   )}
-                  {!q && (
+                  {!filtering && (
                     <ClassMoreDrugs
                       className={subclass.name}
                       parentClassName={classDef.name}
@@ -162,16 +167,16 @@ export default function DrugClassPage() {
         })}
       </div>
 
-      {q && groups.every(g => g.drugs.filter(matches).length === 0) && (
+      {filtering && groups.every(g => g.drugs.filter(matches).length === 0) && (
         <div className="text-center py-16">
           <Pill className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-drug-muted">No drug in this class matches "{query}".</p>
+          <p className="text-drug-muted">No drug in this class matches your search.</p>
         </div>
       )}
 
-      {!q && (
-        <section className="mt-6 bg-white border border-drug-border rounded-3xl p-3 sm:p-4">
-          <h2 className="text-base sm:text-lg font-bold px-2">More in {classDef.name}</h2>
+      {!filtering && (
+        <section className="cp-card cp-more">
+          <h2 className="cp-more-title">More in {classDef.name}</h2>
           <ClassMoreDrugs
             className={classDef.name}
             existingDrugs={allClassDrugs}
