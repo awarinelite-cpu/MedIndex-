@@ -271,6 +271,41 @@ function renderIndicationsList(value, opts = {}) {
   );
 }
 
+// Off-label use is stored as one run-on paragraph ("1. Foo: … 2. Bar: …").
+// Split it into its numbered / bulleted / line-separated items so it can be
+// shown as a proper bullet list, with the short leading "Label:" in bold.
+function splitOffLabelItems(value) {
+  if (!value) return [];
+  const text = String(value).replace(/\r/g, '').trim();
+  const parts = text
+    .split(/\n+|(?:^|\s)(?=\d{1,2}[.)]\s+[A-Z(])/)
+    .map(p => p.replace(/^\s*(?:\d{1,2}[.)]|[-•*])\s+/, '').trim())
+    .filter(Boolean);
+  return parts;
+}
+
+function renderOffLabelList(value) {
+  const items = splitOffLabelItems(value);
+  if (items.length <= 1) {
+    return <p className="text-drug-text leading-relaxed whitespace-pre-line">{value}</p>;
+  }
+  return (
+    <ul className="space-y-2.5">
+      {items.map((item, i) => {
+        const m = item.match(/^([^:]{2,80}):\s+([\s\S]+)$/);
+        return (
+          <li key={i} className="flex gap-2 text-drug-text leading-relaxed">
+            <span className="text-primary-500 leading-relaxed">•</span>
+            <span>
+              {m ? <><strong className="font-bold">{m[1]}:</strong> {m[2]}</> : item}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /* ── In-tab AI fill ───────────────────────────────────────────────────────
    Shown inside each information tab. If any of that tab's fields are missing
    on the drug record, an admin can generate JUST that tab's information with
@@ -2337,7 +2372,7 @@ export default function DrugDetailPage() {
                   linkTo: (indication) => `/browse?q=${encodeURIComponent(coreConditionTerm(indication))}`,
                 })
               : <em className="text-drug-muted">No data available</em>}
-            {drug.off_label_use && <SubSection title="Off-Label Use"><p className="text-drug-text leading-relaxed whitespace-pre-line">{drug.off_label_use}</p></SubSection>}
+            {drug.off_label_use && <SubSection title="Off-Label Use">{renderOffLabelList(drug.off_label_use)}</SubSection>}
             {conds.length > 0 && (
               <SubSection title="Used in these conditions">
                 <ul className="space-y-2">
