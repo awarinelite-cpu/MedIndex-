@@ -30,7 +30,7 @@ function normalizeDrugName(name) {
 // list of { id, name } taxonomy subclasses. Tries an exact case-insensitive
 // match first, then falls back to token overlap so close AI phrasing (e.g.
 // slightly different wording of the same subclass) still resolves.
-function resolveSubclassId(nameGuess, subclasses) {
+export function resolveSubclassId(nameGuess, subclasses) {
   if (!nameGuess || !subclasses || !subclasses.length) return null;
   const norm = s => (s || '').trim().toLowerCase();
   const target = norm(nameGuess);

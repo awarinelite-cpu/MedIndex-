@@ -5,7 +5,7 @@
 // has a collapsed "Find more drugs" dropdown (AI + Google search).
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Pill } from 'lucide-react';
+import { ArrowLeft, Search, Pill, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { findClassById } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
@@ -17,6 +17,8 @@ export default function DrugClassPage() {
   const navigate = useNavigate();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
   const [query, setQuery] = useState('');
+  // Single-open accordion: opening one subclass closes the one that was open.
+  const [openSubId, setOpenSubId] = useState(null);
   const classDef = findClassById(classId);
 
   const groups = useMemo(() => {
@@ -101,7 +103,8 @@ export default function DrugClassPage() {
               href={`#${subclass.id}`}
               onClick={e => {
                 e.preventDefault();
-                document.getElementById(subclass.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                setOpenSubId(subclass.id);
+                setTimeout(() => document.getElementById(subclass.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
               }}
               className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border border-primary-200 bg-primary-50 text-primary-700 whitespace-nowrap"
             >
@@ -115,30 +118,44 @@ export default function DrugClassPage() {
         {groups.map(({ subclass, drugs }) => {
           const shown = drugs.filter(matches);
           if (q && shown.length === 0) return null;
+          // While searching, every section with a match stays open so results are visible.
+          const isOpen = q ? true : openSubId === subclass.id;
           return (
-            <section key={subclass.id} id={subclass.id} className="scroll-mt-24 bg-white border border-drug-border rounded-3xl p-3 sm:p-4">
-              <div className="flex items-center justify-between gap-3 px-2 pb-2">
-                <h2 className="text-base sm:text-lg font-bold">{subclass.name}</h2>
-                <span className="text-xs text-drug-muted whitespace-nowrap">
-                  {drugs.length} drug{drugs.length === 1 ? '' : 's'}
+            <section key={subclass.id} id={subclass.id} className="scroll-mt-24 bg-white border border-drug-border rounded-3xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => !q && setOpenSubId(id => (id === subclass.id ? null : subclass.id))}
+                aria-expanded={isOpen}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left"
+              >
+                <h2 className="text-base sm:text-lg font-bold min-w-0">{subclass.name}</h2>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs text-drug-muted whitespace-nowrap">
+                    {drugs.length} drug{drugs.length === 1 ? '' : 's'}
+                  </span>
+                  {isOpen ? <ChevronDown className="w-5 h-5 text-primary-600" /> : <ChevronRight className="w-5 h-5 text-primary-600" />}
                 </span>
-              </div>
-              {shown.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-drug-muted italic">No drugs added yet</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
-                  {shown.map(d => <DrugRow key={d.id} drug={d} />)}
+              </button>
+              {isOpen && (
+                <div className="px-3 sm:px-4 pb-4 border-t border-drug-border pt-2">
+                  {shown.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-drug-muted italic">No drugs added yet</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">
+                      {shown.map(d => <DrugRow key={d.id} drug={d} />)}
+                    </div>
+                  )}
+                  {!q && (
+                    <ClassMoreDrugs
+                      className={subclass.name}
+                      parentClassName={classDef.name}
+                      existingDrugs={drugs}
+                      databaseDrugs={ALL_DRUGS}
+                      classId={classDef.id}
+                      subclassId={subclass.id}
+                    />
+                  )}
                 </div>
-              )}
-              {!q && (
-                <ClassMoreDrugs
-                  className={subclass.name}
-                  parentClassName={classDef.name}
-                  existingDrugs={drugs}
-                  databaseDrugs={ALL_DRUGS}
-                  classId={classDef.id}
-                  subclassId={subclass.id}
-                />
               )}
             </section>
           );

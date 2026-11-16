@@ -3,19 +3,17 @@
 // "Find more drugs" dropdown for a drug class or subclass page section.
 // Collapsed by default. Opening it reveals the AI panel (missing-info banner
 // plus "Ask AI for more"). A Google search button for the same class sits
-// directly below the dropdown, always visible.
+// directly below the dropdown, always visible, with an admin paste box for
+// the CSV Google returns.
 import React, { useState } from 'react';
-import { Sparkles, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import AiClassInsight from './AiClassInsight';
+import ClassGoogleEntry from './ClassGoogleEntry';
 
 export default function ClassMoreDrugs({
   className, existingDrugs, databaseDrugs, parentClassName, classId, subclassId, subclasses,
 }) {
   const [open, setOpen] = useState(false);
-  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(
-    `${parentClassName ? `${className} (${parentClassName})` : className} drugs list Nigeria`
-  )}`;
-
   return (
     <div className="mt-3 space-y-2">
       <div className="rounded-2xl border border-primary-200 bg-primary-50/60 overflow-hidden">
@@ -44,14 +42,14 @@ export default function ClassMoreDrugs({
         )}
       </div>
 
-      <a
-        href={googleUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center justify-center gap-2 rounded-2xl border border-drug-border bg-white px-4 py-3 text-sm font-semibold text-primary-700 hover:bg-primary-50"
-      >
-        <Search className="w-4 h-4" /> Search Google for more drugs in this class
-      </a>
+      <ClassGoogleEntry
+        className={className}
+        parentClassName={parentClassName}
+        classId={classId}
+        subclassId={subclassId}
+        subclasses={subclasses}
+        databaseDrugs={databaseDrugs}
+      />
     </div>
   );
 }
