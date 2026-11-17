@@ -28,20 +28,50 @@ export const TAB_FIELDS = {
   nursing:      { label: 'Nursing Notes', fields: ['nursing_action'] },
 };
 
-// Google search for one tab: the exact short prompt the app's own AI uses to
-// fill a tab (api/_lib/buildPrompt.js, mode "section"), not a bulky CSV request.
-export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '') {
+// Google search for one tab. Same wording as the app's full AI drug prompt
+// (api/drug-ai-details.js), limited to this tab's sections so the answer can
+// be pasted straight back into the matching "Add ... information from Google".
+const GOOGLE_SECTION_HINTS = {
+  'Overview': 'use the Overview format given below',
+  'Indications': 'primary approved uses',
+  'Off-Label Therapeutic Use': 'clinically recognized off-label uses, each as a bullet with a brief rationale; if none, write "No well-established off-label uses"',
+  'Therapeutic Note': 'clinically useful context: place in therapy, comparison to alternatives, key caveats',
+  'Adult Dose': 'typical dosing, frequency, route(s) - PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD as applicable',
+  'Child Dose': 'pediatric dosing where established; note if not recommended in children',
+  'Renal Dose': 'adjustment for renal impairment',
+  'Administration': 'practical administration instructions - timing with food, reconstitution, infusion rate, etc.',
+  'NSTG Recommendations': 'Nigeria Standard Treatment Guidelines context if known; otherwise general standard-of-care guidance',
+  'Pregnancy & Lactation': '',
+  'Contraindications': '',
+  'Precautions': '',
+  'Adverse Effects': '',
+  'Advice to Patients': 'patient counseling points',
+  'Pharmacovigilance': 'notable safety signals, black box warnings, reporting considerations',
+  'Interactions': 'important drug interactions, mechanism-level detail',
+  'Mechanism of Action & Pharmacology': '',
+  'Pharmacokinetics': 'absorption, distribution, metabolism, elimination, half-life',
+  'Product Description': 'formulation/appearance if commonly known',
+  'Storage Recommendations': '',
+  'Pack Size & Price': 'general Nigerian market context if known; otherwise note this varies and should be verified locally',
+  'Nursing Action': 'nursing-specific monitoring and administration responsibilities',
+};
+
+export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '', brandNames = '') {
   const cfg = TAB_SECTIONS[tabId] || TAB_SECTIONS.overview;
-  const headerList = cfg.headers.map(h => `## ${h}`).join('\n');
-  const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. The app already has a record for the medication below, but its ${cfg.label} information is missing. Provide ONLY that information.\n\n`
-    + `Drug: ${drugName}\n${drugClass ? `Drug class: ${drugClass}\n` : ''}\n`
-    + `Write ONLY the following sections, using these exact markdown headers, in this order:\n${headerList}\n\n`
-    + (cfg.headers.some(h => /^overview$/i.test(h))
-      ? `Under ## Overview write ONE paragraph in exactly this pattern: "${drugName} is a prescription medication primarily used to treat <main indication> in <patient population>. It belongs to the class of <drug class (ABBREVIATION)>, which work by <plain-language mechanism>. ${drugName} is the generic name for medications previously marketed as <brand names>." (say "over-the-counter medication" if it is OTC). Example: "Vardenafil is a prescription medication primarily used to treat erectile dysfunction (ED) in adult men. It belongs to the class of phosphodiesterase type 5 (PDE5) inhibitors, which work by increasing blood flow to the penis, facilitating the achievement and maintenance of an erection during sexual stimulation. Vardenafil is the generic name for medications previously marketed as Levitra and Staxyn." Never start the Overview with pharmacologic action, mechanism or class, and do not use "Generic Name:/Drug Class:/Mechanism of Action:" labels.\n\n`
-      : '')
-    + `Do not add any other sections, preamble, or closing text, start directly with the first header. Within each section, bold sub-labels using **double asterisks** and use bullet points (lines starting with "- ") for lists. `
-    + `If a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it.\n\n`
-    + `Be precise, clinically accurate, and concise.`;
+  const headerList = cfg.headers
+    .map(h => `- ${h}${GOOGLE_SECTION_HINTS[h] ? ` (${GOOGLE_SECTION_HINTS[h]})` : ''}`)
+    .join('\n');
+  const overviewRule = cfg.headers.some(h => /^overview$/i.test(h))
+    ? `Under Overview write ONE paragraph in exactly this pattern: "${drugName} is a prescription medication primarily used to treat <main indication> in <patient population>. It belongs to the class of <drug class (ABBREVIATION)>, which work by <plain-language mechanism>. ${drugName} is the generic name for medications previously marketed as <brand names>." (say "over-the-counter medication" if it is OTC). Example: "Vardenafil is a prescription medication primarily used to treat erectile dysfunction (ED) in adult men. It belongs to the class of phosphodiesterase type 5 (PDE5) inhibitors, which work by increasing blood flow to the penis, facilitating the achievement and maintenance of an erection during sexual stimulation. Vardenafil is the generic name for medications previously marketed as Levitra and Staxyn." Never start the Overview with pharmacologic action, mechanism or class, and do not use "Generic Name:/Drug Class:/Mechanism of Action:" labels.\n\n`
+    : '';
+  const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.\n\n`
+    + `Before writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources - do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n\n`
+    + `Drug: ${drugName}\n${brandNames ? `Known brand names: ${brandNames}\n` : ''}${drugClass ? `Drug class: ${drugClass}\n` : ''}\n`
+    + `Write ONLY the following sections, using clear markdown headers (##) with exactly these names, in this order:\n${headerList}\n\n`
+    + overviewRule
+    + `Write every section in full - if not well established, write "Not well established / consult current prescribing information". Aim for roughly 3-6 sentences, or 4-8 bullets, per section.\n\n`
+    + `Bold sub-labels with **double asterisks**. Use "- " bullets for lists and don't stop at 2-3 items.\n\n`
+    + `Do not add any other sections, preamble, or closing text. Be precise, clinically accurate, and thorough. Do not fabricate specific numeric dosing if you are not confident. Reference material only, not a substitute for the current product monograph.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
@@ -295,7 +325,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
       )}
     </div>
     <div className="mt-3 mb-4">
-      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '')} target="_blank" rel="noopener noreferrer"
+      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '')} target="_blank" rel="noopener noreferrer"
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
         <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} {tab.label.toLowerCase()} on Google <ExternalLink className="w-4 h-4" />
       </a>
