@@ -5,7 +5,7 @@ import {
   Heart, Activity, Brain, Bone, Stethoscope, Soup, Droplets, Droplet,
   HeartHandshake, Sparkle, Shield, Baby, Eye, Apple, Zap, Siren,
   Pill, Grid3X3, List, ArrowLeft,
-  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge, X, Share2,
+  Sparkles, RefreshCw, Save, AlertTriangle, Download, Upload, BookOpen, Merge, X, Share2, ChevronDown,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +25,7 @@ import { useConditionClinicalInfo, saveConditionClinicalInfo } from '../hooks/us
 import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import ConditionSection from '../components/ConditionSection';
+import SystemGoogleConditions from '../components/SystemGoogleConditions';
 import ConditionImagesPanel, { BLEND_MASK } from '../components/ConditionImagesPanel';
 import { useSystemImages, addSystemImageUrls, deleteSystemImage } from '../hooks/useSystemImages';
 import { shareSystemNotePdf } from '../utils/exportSystemNotePdf';
@@ -593,6 +594,34 @@ function BulkAddConditionsCsv({ systemId, systemName, existingLabels }) {
             </div>
           </div>
         )
+      )}
+    </div>
+  );
+}
+
+/* ── One dropdown that holds every "add more conditions" tool ─────────────── */
+function AddConditionsDropdown({ systemId, systemName, existingLabels }) {
+  const { isAdmin } = useAuth();
+  const [open, setOpen] = useState(false);
+  if (!isAdmin) return null;
+  return (
+    <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50/60 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-3 px-4 py-4 text-left"
+      >
+        <Sparkles className="w-5 h-5 text-violet-600 flex-shrink-0" />
+        <span className="flex-1 min-w-0 font-bold text-violet-900 truncate">Add more conditions to {systemName}</span>
+        <ChevronDown className={`w-5 h-5 text-violet-700 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-4">
+          <AiSystemConditionsFallback systemId={systemId} systemName={systemName} existingLabels={existingLabels} />
+          <SystemGoogleConditions systemId={systemId} systemName={systemName} existingLabels={existingLabels} />
+          <BulkAddConditionsCsv systemId={systemId} systemName={systemName} existingLabels={existingLabels} />
+        </div>
       )}
     </div>
   );
@@ -1572,13 +1601,7 @@ export default function SystemPage() {
             </p>
           )}
 
-          <AiSystemConditionsFallback
-            systemId={systemId}
-            systemName={system.name}
-            existingLabels={[...conditionGroups.values()].map(e => e.condition.label)}
-          />
-
-          <BulkAddConditionsCsv
+          <AddConditionsDropdown
             systemId={systemId}
             systemName={system.name}
             existingLabels={[...conditionGroups.values()].map(e => e.condition.label)}
