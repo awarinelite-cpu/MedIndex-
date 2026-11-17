@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
+import BackNavButton from './BackNavButton';
 
 export default function AdminLayout({ children }) {
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -127,6 +128,11 @@ export default function AdminLayout({ children }) {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8" style={{ width: '100%', boxSizing: 'border-box' }}>
           <div className="flex items-center justify-between h-14 gap-2">
 
+            {/* Back (every admin page except the dashboard) */}
+            {location.pathname !== '/admin' && (
+              <BackNavButton fallback="/admin" className="mi-admin-link" />
+            )}
+
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0 min-w-0">
               <div style={{ background: 'rgba(255,255,255,.16)', borderRadius: 32 }} className="w-9 h-9 flex items-center justify-center shrink-0">
@@ -144,7 +150,7 @@ export default function AdminLayout({ children }) {
             {/* Nav links — scrolls internally instead of blowing out the page
                 width if it doesn't fit (topbar overflow was the mobile bug). */}
             <nav
-              className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto"
+              className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto min-w-0 flex-1"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
             >
               {navLinks.map(link => (
@@ -167,11 +173,16 @@ export default function AdminLayout({ children }) {
                 </Link>
               ))}
 
+            </nav>
+
+            {/* Always-visible actions (kept outside the scrolling nav so
+                Public Site / Sign Out can never be pushed off-screen) */}
+            <div className="flex items-center gap-1 shrink-0">
               {/* Dark mode toggle */}
               <button
                 onClick={toggleTheme}
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="flex items-center justify-center w-9 h-9 rounded-lg mi-admin-link transition-colors ml-1 shrink-0"
+                className="flex items-center justify-center w-9 h-9 rounded-lg mi-admin-link transition-colors shrink-0"
               >
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
@@ -180,7 +191,7 @@ export default function AdminLayout({ children }) {
               <Link
                 to="/"
                 title="Public Site"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors ml-1 sm:ml-2 shrink-0"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors shrink-0"
               >
                 <span aria-hidden="true">←</span>
                 <span className="hidden sm:inline">Public Site</span>
@@ -191,13 +202,13 @@ export default function AdminLayout({ children }) {
                 <button
                   onClick={handleLogout}
                   title={`Sign out (${user.email})`}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors ml-1 shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium mi-admin-link transition-colors shrink-0"
                 >
                   <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Sign Out</span>
                 </button>
               )}
-            </nav>
+            </div>
           </div>
         </div>
       </header>

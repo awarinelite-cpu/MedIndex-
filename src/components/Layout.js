@@ -8,6 +8,7 @@ import { usePrefetchDrugImages } from '../hooks/usePrefetchDrugImages';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from './IosInstallModal';
 import AiProviderDropdown from './AiProviderDropdown';
+import BackNavButton from './BackNavButton';
 import { LogoMark, HomeGlyph } from './dashboard/DashboardArt';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
@@ -197,6 +198,9 @@ export default function Layout({ children }) {
             width at any desktop size (nav labels collapse to icons below xl). */}
         <div className="w-full max-w-[1600px] mx-auto px-3 lg:px-6">
           <div className="flex items-center gap-3 lg:gap-5 h-16">
+            {!isHome && (
+              <BackNavButton fallback="/" className="text-white/80 hover:text-white hover:bg-white/10" />
+            )}
             <Link to="/" className="flex items-center gap-2 flex-shrink-0 min-w-0">
               <span className="p-1.5 bg-white/10 rounded-lg flex-shrink-0">
                 <Pill className="w-6 h-6" />
