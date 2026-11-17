@@ -56,7 +56,50 @@ const GOOGLE_SECTION_HINTS = {
   'Nursing Action': 'nursing-specific monitoring and administration responsibilities',
 };
 
-export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '', brandNames = '') {
+// Nursing tab only: the AI Insight's own drug prompt (api/drug-ai-details.js,
+// default drug mode), word for word, with the saved fields filled in and the
+// section list cut down to "Nursing Action" alone. The openFDA/RxNorm block is
+// server-only, so it is not part of the Google version.
+const KNOWN_DATA_LABELS = [
+  ['overview', 'Overview'], ['strength', 'Strength'], ['indications', 'Indications'],
+  ['therapeutic_note', 'Therapeutic Note'], ['pharmacology', 'Mechanism of Action & Pharmacology'],
+  ['adult_dose', 'Adult Dose'], ['child_dose', 'Child Dose'], ['renal_dose', 'Renal Dose'],
+  ['administration', 'Administration'], ['nstg_recommendations', 'NSTG Recommendations'],
+  ['contraindications', 'Contraindications'], ['precautions', 'Precautions'],
+  ['pregnancy_lactation', 'Pregnancy & Lactation'], ['interaction', 'Interaction'],
+  ['adverse_effect', 'Adverse Effect'], ['advice_to_patients', 'Advice to Patients'],
+  ['pharmacovigilance', 'Pharmacovigilance'],
+  ['product_description', 'Product Description'], ['storage_recommendations', 'Storage Recommendations'],
+  ['pack_size_price', 'Pack Size & Price'],
+];
+
+// "Overview: ... Strength: ..." from the drug's saved fields (Nursing Action excluded - it is what we are asking for).
+export function buildKnownDrugData(drug, perField = 250, total = 2500) {
+  let out = '';
+  for (const [key, label] of KNOWN_DATA_LABELS) {
+    const v = String(drug?.[key] || '').replace(/\s+/g, ' ').trim();
+    if (!v) continue;
+    const line = `${label}: ${v.length > perField ? v.slice(0, perField) + '...' : v}\n`;
+    if (out.length + line.length > total) break;
+    out += line;
+  }
+  return out.trim();
+}
+
+function nursingActionGoogleUrl(drugName, drugClass, brandNames, knownData) {
+  const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.\n\n`
+    + `Before writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources - do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n\n`
+    + `Drug: ${drugName}\n${brandNames ? `Known brand names: ${brandNames}\n` : ''}${drugClass ? `Drug class: ${drugClass}\n` : ''}\n`
+    + (knownData ? `Existing reference data already shown to the nurse (do not simply repeat this - add depth, nuance, and anything missing):\n${knownData}\n\n` : '')
+    + `Write ONLY the following section, using a clear markdown header (##) with exactly this name:\n- Nursing Action (nursing-specific monitoring and administration responsibilities)\n\n`
+    + `Write the section in full - if not well established, write "Not well established / consult current prescribing information". Aim for genuine depth (roughly 3-6 sentences, or 4-8 bullet points where a list format fits better) rather than a one-line summary - a nurse should be able to rely on this section alone without needing to look elsewhere.\n\n`
+    + `Bold sub-labels using **double asterisks** (e.g. "**Monitoring:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists, and don't stop at 2-3 items when more genuinely apply.\n\n`
+    + `Do not add any other sections, preamble, or closing text. Be precise, clinically accurate, and thorough. Do not fabricate specific numeric dosing if you are not confident - note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
+export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '', brandNames = '', knownData = '') {
+  if (tabId === 'nursing') return nursingActionGoogleUrl(drugName, drugClass, brandNames, knownData);
   const cfg = TAB_SECTIONS[tabId] || TAB_SECTIONS.overview;
   const headerList = cfg.headers
     .map(h => `- ${h}${GOOGLE_SECTION_HINTS[h] ? ` (${GOOGLE_SECTION_HINTS[h]})` : ''}`)
@@ -325,7 +368,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
       )}
     </div>
     <div className="mt-3 mb-4">
-      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '')} target="_blank" rel="noopener noreferrer"
+      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '', buildKnownDrugData(drug))} target="_blank" rel="noopener noreferrer"
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
         <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} {tab.label.toLowerCase()} on Google <ExternalLink className="w-4 h-4" />
       </a>
