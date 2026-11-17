@@ -102,7 +102,8 @@ export async function saveReviewedDrugEdits({ id, edits }) {
 }
 
 export async function deleteReviewedDrug({ id }) {
-  await getAuthUser();
+  const { isAdmin } = await getContributorInfo();
+  if (!isAdmin) throw new Error('Only an admin can delete drugs.');
   await deleteDoc(doc(db, 'drugs', id));
 }
 

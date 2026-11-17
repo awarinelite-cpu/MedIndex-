@@ -8,10 +8,21 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
     }
 
-    // Drugs — public read, signed-in write
+    // NOTE ON HOW FIRESTORE COMBINES RULES: when several `match` blocks cover
+    // the same document, access is allowed if ANY of them allows it. There is
+    // therefore deliberately NO catch-all `match /{document=**}` at the bottom
+    // of this file — the old one ("any signed-in user may read/write
+    // everything") silently overrode every restriction in this file, including
+    // the one protecting /admins (anyone signed in could have made themselves
+    // an admin). Anything not listed here is now denied.
+
+    // Drugs — public read. Signed-in users may create/update (non-admin
+    // contributions are flagged needs_review client-side and approved on
+    // /admin/review) but ONLY an admin may delete a drug.
     match /drugs/{drugId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if isAdmin();
     }
 
     // Procedures — same access pattern as Drugs: public read, signed-in
@@ -19,13 +30,21 @@ service cloud.firestore {
     // client-side in aiProcedureSave.js, same as drugs).
     match /procedures/{procedureId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if isAdmin();
     }
 
-    // App config (conditions, settings) — public read, signed-in write
+    // App config (conditions, images, settings) — public read. Only an admin
+    // may delete, and only an admin may change the AI model settings.
     match /app_config/{docId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if (request.auth != null && docId != 'ai_settings') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Admin-only settings (e.g. duplicate-review dismissals)
+    match /admin_settings/{docId} {
+      allow read, write: if isAdmin();
     }
 
     // Condition clinical info — one document per condition (moved out of
@@ -34,7 +53,8 @@ service cloud.firestore {
     // access pattern as app_config: public read, signed-in write.
     match /condition_clinical_info/{conditionId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if isAdmin();
     }
 
     // Admins — only read own record
@@ -110,11 +130,6 @@ service cloud.firestore {
       // is redeemed, via the Admin SDK (which bypasses these rules).
       allow delete: if request.auth != null && request.auth.uid == uid;
       allow create, update: if false;
-    }
-
-    // Everything else — signed-in only
-    match /{document=**} {
-      allow read, write: if request.auth != null;
     }
   }
 }

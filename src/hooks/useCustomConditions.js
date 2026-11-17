@@ -251,6 +251,9 @@ export async function removeCondition(systemId, conditionId) {
   if (!user) {
     throw new Error('Not signed in. Please sign in as admin and try again.');
   }
+  if (!(await isCurrentUserAdmin(user))) {
+    throw new Error('Only an admin can change or delete conditions.');
+  }
 
   const ref = doc(db, ...DOC_REF_PATH);
 
@@ -307,6 +310,9 @@ export async function renameCondition(systemId, conditionId, newLabel) {
   const user = auth.currentUser;
   if (!user) {
     throw new Error('Not signed in. Please sign in as admin and try again.');
+  }
+  if (!(await isCurrentUserAdmin(user))) {
+    throw new Error('Only an admin can change or delete conditions.');
   }
 
   const ref = doc(db, ...DOC_REF_PATH);
