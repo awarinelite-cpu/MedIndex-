@@ -553,6 +553,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   const [resorting, setResorting] = useState(false);
   const [resortMsg, setResortMsg] = useState('');
   const [classicView, setClassicView] = useState(false); // admin: old class-grouped list (per-class tools)
+  const [selectedClasses, setSelectedClasses] = useState(() => new Set()); // admin: classes ticked for bulk delete
 
   // Keep the draft in sync if the label changes from elsewhere (e.g. another
   // admin renames it while this one isn't actively editing).
@@ -809,6 +810,36 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       }
       return a[0].localeCompare(b[0]);
     });
+  };
+
+  // Bulk-delete selection (class view, admin). Keyed by class name, matching
+  // the per-class trash icon, which removes the class from Main AND Adjunct.
+  const allClassNames = (() => {
+    const names = new Set();
+    THERAPY_ROLE_ORDER.forEach(roleKey => {
+      (roleBuckets[roleKey] || []).forEach(d => names.add(d.drug_class || 'Other'));
+    });
+    return [...names];
+  })();
+  const toggleClassSelected = (className, e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setSelectedClasses(prev => {
+      const next = new Set(prev);
+      if (next.has(className)) next.delete(className); else next.add(className);
+      return next;
+    });
+  };
+  const selectedClassNames = allClassNames.filter(c => selectedClasses.has(c));
+  const allClassesSelected = allClassNames.length > 0 && selectedClassNames.length === allClassNames.length;
+  const toggleSelectAllClasses = () => setSelectedClasses(allClassesSelected ? new Set() : new Set(allClassNames));
+  const selectedClassDrugs = drugs.filter(d =>
+    !d.is_combination_therapy && !d._seed && selectedClasses.has(d.drug_class || 'Other'));
+  const removeSelectedClasses = async () => {
+    if (selectedClassDrugs.length === 0 || reviewBusy) return;
+    const n = selectedClassNames.length;
+    if (!window.confirm(`Remove ${n} selected class${n !== 1 ? 'es' : ''} (${selectedClassDrugs.length} drug${selectedClassDrugs.length !== 1 ? 's' : ''}) from "${condition.label}"?\n\nThey stay in the database and under other conditions, and won't be added back here automatically.`)) return;
+    await removeDrugs(selectedClassDrugs);
+    setSelectedClasses(new Set());
   };
 
   const isEmpty = filtered.length === 0;
@@ -1074,6 +1105,36 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             </div>
           )}
 
+          {isAdmin && !isEmpty && classicView && !classMergeMode && (
+            <div className="px-4 pb-3 flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={toggleSelectAllClasses}
+                aria-pressed={allClassesSelected}
+                className="inline-flex items-center gap-2.5 text-[15px] font-bold text-[#0A1F5C] bg-white/80 hover:bg-white border border-blue-200 shadow-sm px-4 py-2 rounded-full"
+              >
+                <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${allClassesSelected ? 'bg-red-600 border-red-600' : 'border-blue-400 bg-white'}`}>
+                  {allClassesSelected && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3.5} />}
+                </span>
+                {allClassesSelected ? 'Deselect all' : 'Select all'}
+              </button>
+              {selectedClassNames.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={removeSelectedClasses}
+                    disabled={reviewBusy}
+                    className="inline-flex items-center gap-2 text-[15px] font-bold text-white bg-red-600 hover:bg-red-700 shadow-sm px-4 py-2 rounded-full disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {reviewBusy ? 'Deleting…' : `Delete selected (${selectedClassNames.length})`}
+                  </button>
+                  <span className="text-xs text-drug-muted">{selectedClassDrugs.length} drug{selectedClassDrugs.length !== 1 ? 's' : ''}</span>
+                </>
+              )}
+            </div>
+          )}
+
           {isAdmin && unrelated.length > 0 && (
             <div className="border-b border-drug-border bg-red-50/60">
               <button
@@ -1186,10 +1247,27 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
                           else toggleClassOpen(classKey, e);
                         } }}
                         className={`flex items-center justify-between px-5 py-2 cursor-pointer transition-colors ${ci > 0 ? 'border-t border-drug-border' : ''} ${
-                          isClassSelected ? 'bg-amber-50 hover:bg-amber-100' : 'bg-gray-50 hover:bg-gray-100'
+                          isClassSelected ? 'bg-amber-50 hover:bg-amber-100'
+                            : (isAdmin && selectedClasses.has(className)) ? 'bg-red-50 hover:bg-red-100'
+                            : 'bg-gray-50 hover:bg-gray-100'
                         }`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
+                          {!classMergeMode && isAdmin && (
+                            <span
+                              role="checkbox"
+                              aria-checked={selectedClasses.has(className)}
+                              aria-label={`Select ${className} for deletion`}
+                              tabIndex={0}
+                              onClick={(e) => toggleClassSelected(className, e)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleClassSelected(className, e); }}
+                              className={`flex-shrink-0 mr-1 w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                                selectedClasses.has(className) ? 'bg-red-600 border-red-600' : 'border-blue-400 bg-white'
+                              }`}
+                            >
+                              {selectedClasses.has(className) && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3.5} />}
+                            </span>
+                          )}
                           {classMergeMode ? (
                             <span
                               className={`flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
