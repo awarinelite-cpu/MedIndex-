@@ -21,7 +21,7 @@ const FIELDS = [
 // Each tab gets its own field set, so its Google search asks only for that tab's info.
 export const TAB_FIELDS = {
   overview:     { label: 'Overview',      fields: ['drug_class', 'drug_subclass', 'prescription_status', 'nafdac_no', 'pronunciation', 'brand_names', 'overview', 'strength', 'indications', 'off_label_use', 'therapeutic_note'] },
-  dosage:       { label: 'Dosage',        fields: ['adult_dose', 'child_dose', 'renal_dose', 'administration'] },
+  dosage:       { label: 'Dosage',        fields: ['adult_dose', 'child_dose', 'renal_dose', 'administration', 'nstg_recommendations'] },
   safety:       { label: 'Safety',        fields: ['contraindications', 'precautions', 'adverse_effect', 'pregnancy_lactation', 'advice_to_patients', 'pharmacovigilance'] },
   interactions: { label: 'Interactions',  fields: ['interaction'] },
   pharmacology: { label: 'Pharmacology',  fields: ['pharmacology', 'drug_class', 'drug_subclass', 'product_description', 'storage_recommendations', 'pack_size_price'] },
