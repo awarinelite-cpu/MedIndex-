@@ -803,26 +803,48 @@ export default function SystemPage() {
     }
   };
 
-  // Scroll position — saved continuously while scrolling (not just on
-  // unmount) because a real back-navigation via Link tears this component
-  // down without a clean "leaving the page" moment to hook into.
-  // Restoration waits until drug data has finished loading AND the
-  // previously-open condition card (above) has had a chance to render at
-  // its expanded height — otherwise the page is still short and the
-  // scrollTo lands in the wrong spot.
+  // Scroll position. Saved continuously while scrolling (a Link navigation
+  // tears this page down with no clean "leaving" moment to hook into) and
+  // restored when you come BACK to it. Restoring is a retry loop, not a single
+  // scrollTo: the page grows as drugs, custom conditions, the open condition
+  // card and its open categories render, so we keep nudging to the saved spot
+  // until the layout has settled (or the user starts scrolling themselves).
+  // Saving is paused while restoring so a half-built, shorter page can never
+  // overwrite the real saved position.
+  const restoringRef = React.useRef(false);
   useEffect(() => {
     const key = `system_scroll_${systemId}`;
-    const onScroll = () => sessionStorage.setItem(key, String(window.scrollY));
+    const onScroll = () => {
+      if (restoringRef.current) return;
+      sessionStorage.setItem(key, String(Math.round(window.scrollY)));
+    };
+    const onLeave = () => {
+      if (!restoringRef.current) sessionStorage.setItem(key, String(Math.round(window.scrollY)));
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('pagehide', onLeave);
+    return () => {
+      onLeave();
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', onLeave);
+    };
   }, [systemId]);
 
   const navType = useNavigationType();
   useEffect(() => {
-    if (loading) return;
-    // Arriving by a normal link (not Back) with a condition open: jump straight
-    // to that condition instead of restoring an old scroll position.
+    // Take over from the browser's own (too early) scroll restoration.
+    const prevRestoration = window.history.scrollRestoration;
+    try { window.history.scrollRestoration = 'manual'; } catch { /* ignore */ }
+    return () => { try { window.history.scrollRestoration = prevRestoration || 'auto'; } catch { /* ignore */ } };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return undefined;
+    const key = `system_scroll_${systemId}`;
+    const saved = Number(sessionStorage.getItem(key));
     const openId = sessionStorage.getItem(`system_open_condition_${systemId}`);
+
+    // Arriving by a normal link (not Back) with a condition open: jump to that card.
     if (openId && navType !== 'POP') {
       let tries = 0;
       const go = () => {
@@ -831,21 +853,40 @@ export default function SystemPage() {
         if (++tries < 15) setTimeout(go, 100);
       };
       requestAnimationFrame(go);
-      return;
+      return undefined;
     }
-    const key = `system_scroll_${systemId}`;
-    const saved = sessionStorage.getItem(key);
-    if (!saved) return;
-    // Two rAFs: one for this render's DOM to commit, one more for the
-    // expanded condition card's own content (drug rows) to lay out.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo(0, Number(saved) || 0);
-      });
-    });
-    // Only re-run when loading finishes for this system — not on every
-    // scroll-driven sessionStorage write, or this would fight the user's
-    // own scrolling.
+    if (navType !== 'POP' || !saved) return undefined;
+
+    restoringRef.current = true;
+    let stopped = false;
+    let stableTicks = 0;
+    let lastHeight = -1;
+    const started = Date.now();
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+      window.removeEventListener('keydown', stop);
+      restoringRef.current = false;
+    };
+    const tick = () => {
+      const maxY = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxY >= saved - 2) window.scrollTo(0, saved);
+      else window.scrollTo(0, maxY);                 // page still growing: go as far as possible
+      const h = document.documentElement.scrollHeight;
+      stableTicks = (h === lastHeight && Math.abs(window.scrollY - saved) < 3) ? stableTicks + 1 : 0;
+      lastHeight = h;
+      if (stableTicks >= 4 || Date.now() - started > 4000) stop();   // settled, or give up after 4s
+    };
+    const timer = setInterval(tick, 100);
+    window.addEventListener('wheel', stop, { passive: true });
+    window.addEventListener('touchstart', stop, { passive: true });
+    window.addEventListener('keydown', stop);
+    tick();
+    return stop;
+    // Only when loading finishes for this system, not on every scroll write.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, systemId]);
 

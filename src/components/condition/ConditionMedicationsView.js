@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pill } from 'lucide-react';
 import { getDisplayDrugClass } from '../../utils/drugCategory';
 import { TREATMENT_CATEGORY_ORDER, getTreatmentCategory } from '../../utils/drugRoleClassification';
@@ -13,8 +13,18 @@ const OTHER = 'Other relevant treatments';
 // category (expandable), then a separate Combination regimens section.
 // Uses the condition's existing drug list and role buckets — nothing is
 // created or migrated.
-export default function ConditionMedicationsView({ roleBuckets, allDrugs, renderTrailing, adminNoteFor }) {
-  const [openCats, setOpenCats] = useState(() => new Set());
+export default function ConditionMedicationsView({ roleBuckets, allDrugs, renderTrailing, adminNoteFor, persistKey }) {
+  // Open categories survive leaving to a drug page and pressing Back, so the
+  // page comes back at the same height (the scroll position depends on it).
+  const storageKey = persistKey ? `cond_open_cats_${persistKey}` : null;
+  const [openCats, setOpenCats] = useState(() => {
+    if (!storageKey) return new Set();
+    try { return new Set(JSON.parse(sessionStorage.getItem(storageKey) || '[]')); } catch { return new Set(); }
+  });
+  useEffect(() => {
+    if (!storageKey) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify([...openCats])); } catch { /* ignore */ }
+  }, [openCats, storageKey]);
 
   const groups = useMemo(() => {
     const map = new Map();

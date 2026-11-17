@@ -816,7 +816,13 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
   // Which drug-class sub-groups are expanded — closed by default, keyed by
   // "roleKey::className" so the same class name in a different role bucket
   // (e.g. "ACE Inhibitor" under Main vs under Adjunct) toggles independently.
-  const [expandedClasses, setExpandedClasses] = useState(() => new Set());
+  const classesKey = `cond_open_classes_${systemId || ''}_${condition.id}`;
+  const [expandedClasses, setExpandedClasses] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem(classesKey) || '[]')); } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(classesKey, JSON.stringify([...expandedClasses])); } catch { /* ignore */ }
+  }, [expandedClasses, classesKey]);
   const toggleClassOpen = (key, e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     setExpandedClasses(prev => {
@@ -1117,6 +1123,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
             )
           ) : !(classMergeMode || viewMode === 'grid' || classicView) ? (
             <ConditionMedicationsView
+              persistKey={`${systemId || ''}_${condition.id}`}
               roleBuckets={roleBuckets}
               allDrugs={allDrugs}
               adminNoteFor={isAdmin ? matchNote : null}
