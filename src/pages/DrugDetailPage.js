@@ -1787,7 +1787,7 @@ function Sheet({ title, onClose, children }) {
     >
       <style>{`@keyframes miFade{from{opacity:0}to{opacity:1}}@keyframes miPop{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}`}</style>
       <div
-        className="w-full max-w-md max-h-[80dvh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-2xl ring-1 ring-black/5"
+        className="w-full max-w-3xl max-h-[80dvh] flex flex-col bg-white rounded-[16px] overflow-hidden shadow-2xl ring-1 ring-black/5"
         style={{ animation: 'miPop .22s ease-out' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
