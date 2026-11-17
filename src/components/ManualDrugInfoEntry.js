@@ -7,7 +7,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2, Search, ExternalLink } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { TAB_SECTIONS } from '../utils/aiSectionFill';
-import { parseAiDrugDetail } from '../utils/parseAiDrugDetail';
+import { parseAiDrugDetail, stripCitations, normalizePlainHeadings } from '../utils/parseAiDrugDetail';
 
 const FIELDS = [
   'drug_class', 'drug_subclass', 'prescription_status', 'nafdac_no', 'pronunciation', 'brand_names',
@@ -105,14 +105,15 @@ export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
     .replace(/^\s*csv\s*\n/i, '')
     .trim();
   // Answer in the AI's markdown format ("## Header" sections): same parser the AI buttons use.
-  if (/^\s*#{1,6}\s+\S/m.test(cleaned)) {
-    const md = parseAiDrugDetail(cleaned);
+  const sectioned = normalizePlainHeadings(stripCitations(cleaned));
+  if (/^\s*#{1,6}\s+\S/m.test(sectioned)) {
+    const md = parseAiDrugDetail(sectioned);
     const mdUpdates = {};
     for (const [k, v] of Object.entries(md)) {
       if (allowed.includes(k) && String(v || '').trim()) mdUpdates[k] = k === 'prescription_status' ? normalizeStatus(v) : String(v).trim();
     }
     if (Object.keys(mdUpdates).length === 0) {
-      throw new Error(`No ${tabLabel || 'matching'} sections found in the pasted text. Make sure the "## Header" lines are included.`);
+      throw new Error(`No ${tabLabel || 'matching'} sections found in the pasted text. Make sure the section titles (e.g. "Adult Dose") are included.`);
     }
     return { updates: mdUpdates, ignored: [], csvName: '' };
   }
@@ -240,8 +241,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
       {open && (
         <div className="px-3 pb-3 space-y-3">
           <p className="text-xs text-drug-muted">
-            Paste Google's answer (the \"## Header\" sections), or a CSV, or upload a file.
-            Only filled fields are saved to <strong>{drug.generic_name}</strong>; empty ones are left as they are.
+            Paste Google's answer as it is (section titles like Adult Dose with their text), or a CSV, or upload a file. Citation links are removed automatically. Only filled fields are saved to <strong>{drug.generic_name}</strong>; empty ones are left as they are.
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={pasteFromClipboard}

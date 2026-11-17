@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { slugifyDrugName, normalizeDrugNameForMatch } from '../utils/aiDrugSave';
 import { resolveSubclassId } from './AiClassInsight';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
+import { stripCitations } from '../utils/parseAiDrugDetail';
 
 const COLUMNS = ['generic_name', 'drug_subclass', 'prescription_status', 'strength', 'indications'];
 
@@ -49,12 +50,13 @@ function cleanName(raw) {
 
 // -> [{ name, subclass, status, strength, indications }]
 export function parseClassDrugCsv(text) {
-  const cleaned = String(text || '')
+  let cleaned = String(text || '')
     .replace(/```[a-z]*\s*/gi, '')
     .replace(/[\u201c\u201d\u201e]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/^\s*csv\s*\n/i, '')
     .trim();
+  cleaned = stripCitations(cleaned);
   if (!cleaned) throw new Error('Nothing to read. Paste or upload the Google result first.');
 
   // AI-style markdown answer ("## Subclass" headers + "- **Drug** ... note" bullets)

@@ -33,6 +33,34 @@ const HEADER_FIELD_MAP = [
   [/^prescription status( ?& ?| and )nafdac note$/, '__prescriptionStatus'],
 ];
 
+// Google/AI answers often come with citation markers like "[1] (https://...)"
+// (URLs can contain their own parentheses). Remove them so only the clinical
+// text is saved.
+export function stripCitations(text) {
+  return String(text || '')
+    .replace(/[ \t]*\[\d+(?:,\s*\d+)*\][ \t]*\(https?:\/\/\S+?\)(?=[\s,.;:]|$)/g, '')
+    .replace(/[ \t]*\[\d+(?:,\s*\d+)*\](?!\s*\()/g, '')
+    .replace(/(?:[ \t]*,)+[ \t]*$/gm, '');
+}
+
+// Google usually returns the section titles as plain lines ("Adult Dose") or
+// bold lines ("**Adult Dose**") instead of "## Adult Dose". Turn any line that
+// is exactly one of our known section titles into a "## " header.
+export function normalizePlainHeadings(text) {
+  return String(text || '').split('\n').map(line => {
+    const t = line.trim();
+    if (!t || t.length > 70 || /^[-*•\u2022]\s/.test(t)) return line;
+    const bare = t
+      .replace(/^#{1,6}\s*/, '')
+      .replace(/^\d+[.)]\s*/, '')
+      .replace(/^(\*\*|__)\s*/, '').replace(/\s*(\*\*|__)$/, '')
+      .replace(/\s*:\s*$/, '')
+      .trim();
+    if (!bare) return line;
+    return HEADER_FIELD_MAP.some(([re]) => re.test(normalizeHeader(bare))) ? `## ${bare}` : line;
+  }).join('\n');
+}
+
 function normalizeHeader(h) {
   return h.toLowerCase().trim().replace(/\s+/g, ' ');
 }
@@ -43,7 +71,7 @@ function cleanBody(body) {
     .split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    .map(l => l.replace(/^[-*]\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1'))
+    .map(l => l.replace(/^[-*•\u2022]\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1'))
     .join('\n')
     .trim();
 }
@@ -59,6 +87,7 @@ function normalizePrescriptionStatus(text) {
 export function parseAiDrugDetail(text) {
   const fields = {};
   if (!text) return fields;
+  text = normalizePlainHeadings(stripCitations(text));
 
   const blocks = text.split(/\n(?=#{1,6}\s)/g);
   for (const block of blocks) {
