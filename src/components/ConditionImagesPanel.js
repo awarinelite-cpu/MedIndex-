@@ -15,7 +15,7 @@ export const BLEND_MASK = {
 };
 
 /* ── Condition picture gallery (swipe to view more than one picture) ───── */
-function ConditionImageGallery({ images, altBase, fullWidth = false }) {
+function ConditionImageGallery({ images, altBase, fullWidth = false, framed = false }) {
   const trackRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -34,8 +34,16 @@ function ConditionImageGallery({ images, altBase, fullWidth = false }) {
     if (i !== activeIndex) setActiveIndex(i);
   };
 
+  // framed: gradient border + soft shadow + rounded corners around the picture.
+  const frame = (node) => (framed
+    ? <div className="cp-pic-frame"><div className="cp-pic-frame-inner">{node}</div></div>
+    : node);
+
   if (images.length <= 1) {
     const img = images[0];
+    if (img && framed) {
+      return frame(<img src={img.url} alt={altBase} className="block w-full" />);
+    }
     return img ? (
       <img
         src={img.url}
@@ -47,6 +55,7 @@ function ConditionImageGallery({ images, altBase, fullWidth = false }) {
 
   return (
     <div className={fullWidth ? 'relative' : 'relative max-w-sm mx-auto'}>
+      {frame(
       <div
         ref={trackRef}
         onScroll={handleScroll}
@@ -69,6 +78,7 @@ function ConditionImageGallery({ images, altBase, fullWidth = false }) {
           />
         ))}
       </div>
+      )}
 
       {activeIndex > 0 && (
         <button
@@ -112,7 +122,7 @@ function ConditionImageGallery({ images, altBase, fullWidth = false }) {
    "Paste from Clipboard" button) — there is deliberately no file picker and
    no link field. Pasted images are re-hosted on ImgChest via the same
    /api/imgchest-upload proxy the drug pictures use. */
-export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage, hero = false, blend = false }) {
+export default function ConditionImagesPanel({ condition, images, onAddUrls, onDeleteImage, hero = false, blend = false, framed = false }) {
   // hero: picture runs edge to edge with no "Images" label bar (used on the system page).
   // onAddUrls(urls, existing) / onDeleteImage(index, existing) let other owners (e.g. a body system) reuse this panel.
   const { isAdmin } = useAuth();
@@ -219,7 +229,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
       {hero && list.length > 0 && (
         blend
           ? <div style={BLEND_MASK}><ConditionImageGallery images={list} altBase={condition.label} fullWidth /></div>
-          : <ConditionImageGallery images={list} altBase={condition.label} fullWidth />
+          : <ConditionImageGallery images={list} altBase={condition.label} fullWidth framed={framed} />
       )}
       <div className={hero ? 'px-4 pt-3' : ''}>
       {!hero && (

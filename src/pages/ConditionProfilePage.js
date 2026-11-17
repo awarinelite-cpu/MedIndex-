@@ -58,14 +58,6 @@ function categoryIcon(title) {
 
 const sentenceCase = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-// First sentence of the introduction, with markdown marks removed.
-function firstSentence(text) {
-  const clean = String(text || '').replace(/^#+\s.*$/gm, '').replace(/[*_`>-]/g, '').replace(/\s+/g, ' ').trim();
-  if (!clean) return '';
-  const m = clean.match(/^.*?[.!?](\s|$)/);
-  return (m ? m[0] : clean).trim();
-}
-
 function DrugThumb({ drug }) {
   const [failed, setFailed] = useState(false);
   if (drug.image_url && !failed) {
@@ -364,7 +356,6 @@ export default function ConditionProfilePage() {
 
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/conditions'));
 
-  const summary = firstSentence(info?.introduction);
   const detailSections = DETAIL_SECTIONS.filter(([key]) => isApplicable(key, info?.[key]));
 
   let content;
@@ -445,14 +436,13 @@ export default function ConditionProfilePage() {
             </div>
           </div>
         </div>
-        {summary && <p className="cp-summary">{summary}</p>}
         {shareError && <p className="cp-error" role="alert">{shareError}</p>}
 
         </div>
 
         <div className="cp-content">
           {entry?.condition && (
-            <ConditionImagesPanel hero condition={entry.condition} images={imagesByCondition?.[entry.condition.id]} />
+            <ConditionImagesPanel hero framed condition={entry.condition} images={imagesByCondition?.[entry.condition.id]} />
           )}
           {content}
         </div>

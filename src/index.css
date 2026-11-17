@@ -1333,3 +1333,23 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
   .cp-row-name { font-size: 16px; }
   .cp-row-count { padding: 7px 12px; font-size: 14px; }
 }
+
+/* Condition profile: pull the picture up under the title card and frame it */
+.cp-top { padding-bottom: 0; }
+.cp-top .cp-hero { margin-bottom: 12px; }
+.cp-content { padding-top: 12px; }
+.cp-pic-frame {
+  margin: 0 2px 10px; padding: 5px; border-radius: 26px;
+  background: linear-gradient(135deg, #7c4dff 0%, #2f80ff 55%, #22d3ee 100%);
+  box-shadow: 0 20px 38px -20px rgba(47, 128, 255, .65), 0 8px 16px -10px rgba(124, 77, 255, .5);
+}
+.cp-pic-frame-inner {
+  position: relative; overflow: hidden; border-radius: 21px; background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .6);
+}
+.cp-pic-frame-inner::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,0) 28%);
+}
+.dark .cp-pic-frame-inner { background: #0f1b33; }
+.dark .cp-pic-frame { box-shadow: 0 20px 38px -20px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255,255,255,.06); }
