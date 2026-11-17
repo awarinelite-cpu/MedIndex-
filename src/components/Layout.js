@@ -152,6 +152,9 @@ export default function Layout({ children }) {
 
       {/* ── Dashboard header (all pages, phones) ─────────────────────────── */}
       <header className={`mi-header md:hidden ${(path === '/browse' || path === '/conditions') ? 'mi-header--art' : ''}`}>
+        {!isHome && (
+          <BackNavButton fallback="/" className="mi-theme" style={{ flex: '0 0 auto', marginRight: 6 }} />
+        )}
         <Link to="/" className="mi-brand" aria-label="MedIndex home">
           <LogoMark className="mi-brand-logo" />
           <span>
@@ -198,9 +201,7 @@ export default function Layout({ children }) {
             width at any desktop size (nav labels collapse to icons below xl). */}
         <div className="w-full max-w-[1600px] mx-auto px-3 lg:px-6">
           <div className="flex items-center gap-3 lg:gap-5 h-16">
-            {!isHome && (
-              <BackNavButton fallback="/" className="text-white/80 hover:text-white hover:bg-white/10" />
-            )}
+            <BackNavButton fallback="/" className="text-white/80 hover:text-white hover:bg-white/10" />
             <Link to="/" className="flex items-center gap-2 flex-shrink-0 min-w-0">
               <span className="p-1.5 bg-white/10 rounded-lg flex-shrink-0">
                 <Pill className="w-6 h-6" />

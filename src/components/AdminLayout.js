@@ -128,10 +128,8 @@ export default function AdminLayout({ children }) {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8" style={{ width: '100%', boxSizing: 'border-box' }}>
           <div className="flex items-center justify-between h-14 gap-2">
 
-            {/* Back (every admin page except the dashboard) */}
-            {location.pathname !== '/admin' && (
-              <BackNavButton fallback="/admin" className="mi-admin-link" />
-            )}
+            {/* Back (every admin page) */}
+            <BackNavButton fallback="/admin" className="mi-admin-link" />
 
             {/* Logo */}
             <div className="flex items-center gap-2 shrink-0 min-w-0">
