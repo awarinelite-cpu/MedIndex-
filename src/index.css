@@ -1235,6 +1235,15 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
     padding-right: 2rem;
   }
 }
+/* ---- Desktop: Conditions list fills the screen like the other pages (mobile unchanged) ---- */
+@media (min-width: 1024px) {
+  .mi-cond { max-width: min(1600px, 100%); padding-left: 2rem; padding-right: 2rem; }
+  .mi-cond-hero { margin-left: -2rem; margin-right: -2rem; padding-left: 2rem; padding-right: 2rem; }
+  .mi-cond .mi-cond-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+}
+@media (min-width: 1536px) {
+  .mi-cond .mi-cond-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 @media (min-width: 768px) {
   /* Never allow sideways scrolling on desktop */
   html, body, #root { max-width: 100%; overflow-x: hidden; }
