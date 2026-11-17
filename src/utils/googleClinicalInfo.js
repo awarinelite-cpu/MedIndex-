@@ -7,50 +7,54 @@
 import { parseConditionClinicalInfo } from './parseConditionClinicalInfo';
 
 // Order matters: it is the order of the note (same as the MedIndex condition PDF).
+// `prompt(label)` is the exact per-section instruction the app's own AI uses
+// (mode "condition_clinical_info" in api/_lib/buildPrompt.js), so the Google
+// search carries the same short prompt instead of a bulky custom one.
+const EM = '\u2014';
 export const CLINICAL_SECTIONS = [
   {
     key: 'introduction', header: 'Introduction', part: 1,
-    ask: 'definition, epidemiology, burden, clinical significance and key facts (a full paragraph or more)',
+    prompt: () => '2-4 sentences: a clear definition of the condition and its clinical significance.',
   },
   {
     key: 'types', header: 'Types', part: 1,
-    ask: 'EVERY type, stage, grade and classification as bullets with distinguishing features; if there are none write exactly: No clinically distinct types — managed as a single clinical entity.',
+    prompt: c => `If "${c}" has clinically distinct types, stages, or classifications, list each as a bullet point starting with the **type name in bold**, followed by a brief distinguishing note ${EM} for example "- **Type 1 Diabetes Mellitus** ${EM} autoimmune beta-cell destruction, absolute insulin deficiency, usually childhood/young-adult onset." If it does NOT have clinically distinct types, write exactly this line and nothing else: "No clinically distinct types ${EM} managed as a single clinical entity."`,
   },
   {
     key: 'organRelated', header: 'Organ System Involved', part: 1,
-    ask: 'the organs and body systems affected and how',
+    prompt: () => 'The primary organ(s) or body system(s) affected, 1-2 sentences.',
   },
   {
     key: 'etiology', header: 'Etiology', part: 1,
-    ask: 'ALL causes, risk factors, precipitating and predisposing factors as bullets',
+    prompt: () => 'The causes and risk factors, as concise bullet points (lines starting with "- ").',
   },
   {
     key: 'pathology', header: 'Pathophysiology', part: 1,
-    ask: 'detailed step-by-step disease mechanism',
+    prompt: () => 'A short paragraph (3-6 sentences) explaining the underlying disease mechanism a nurse should understand.',
   },
   {
     key: 'clinicalManifestation', header: 'Clinical Manifestation', part: 1,
-    ask: 'ALL signs and symptoms as bullets, atypical presentations, complications, grouped under ### type sub-headings where types differ',
+    prompt: () => 'The signs and symptoms, as concise bullet points. If types were listed above and their manifestations meaningfully differ, group these under "### <Type Name>" sub-headers matching the type names used above exactly; otherwise give a single flat bullet list.',
   },
   {
     key: 'diagnosis', header: 'Diagnosis and Investigation', part: 2,
-    ask: 'history, physical examination, EVERY laboratory test, imaging and other investigation, diagnostic criteria, differential diagnosis',
+    prompt: () => 'The relevant history/examination findings, laboratory tests, and imaging or other investigations used to diagnose and work this condition up, as concise bullet points.',
   },
   {
     key: 'management', header: 'Medical Management', part: 2,
-    ask: 'non-pharmacological and pharmacological management with drug classes and named drugs, guideline-based, under ### type sub-headings where types are managed differently',
+    prompt: c => `The medical (pharmacological and general, non-surgical) management approach. If "${c}" has clinically distinct types listed under ## Types that are genuinely managed differently, use a "### <Type Name>" sub-header for EACH type ${EM} matching the type names used above exactly ${EM} followed by that type's specific management as bullet points. If there are no clinically distinct types, or all types share essentially the same management approach, give a single flat bullet-point management section instead of sub-headers.`,
   },
   {
     key: 'surgicalManagement', header: 'Surgical Management', part: 2,
-    ask: 'every surgical or interventional procedure and when it is indicated; if surgery is never indicated write exactly: Surgical management is not typically indicated for this condition — managed medically.',
+    prompt: c => `If "${c}" is ever managed surgically (even only in specific cases, complications, or refractory disease), describe the surgical approach(es) as concise bullet points, noting when surgery vs medical management is chosen. If surgery is NOT a recognized part of managing this condition, write exactly this line and nothing else: "Surgical management is not typically indicated for this condition ${EM} managed medically."`,
   },
   {
     key: 'nursingDiagnosis', header: 'Nursing Diagnosis', part: 2,
-    ask: '6-10 NANDA-style nursing diagnoses as bullets (Problem related to cause as evidenced by signs)',
+    prompt: () => 'List 4-8 relevant nursing diagnoses for a patient with this condition, as bullet points in standard NANDA-style format (e.g. "- Risk for [problem] related to [cause] as evidenced by [signs]" or "- [Problem] related to [cause]").',
   },
   {
     key: 'nursingConsideration', header: 'Nursing Consideration', part: 2,
-    ask: 'assessment, monitoring, interventions, medication administration, positioning, safety, emotional support, patient and family education, discharge teaching and complications to watch for, as bullets',
+    prompt: () => `The key nursing considerations and interventions distinct from the medical management above ${EM} monitoring priorities, safety precautions, patient/family education points, and any condition-specific nursing care ${EM} as concise bullet points.`,
   },
 ];
 
@@ -59,12 +63,15 @@ export const SECTION_LABEL = Object.fromEntries(CLINICAL_SECTIONS.map(s => [s.ke
 // part: 0 = everything, 1 = Introduction..Clinical Manifestation, 2 = Diagnosis..Nursing Consideration
 export function googleClinicalInfoUrl(conditionLabel, systemName = '', part = 0) {
   const sections = CLINICAL_SECTIONS.filter(s => !part || s.part === part);
-  const where = systemName ? ` (${systemName} system)` : '';
-  const list = sections.map(s => `## ${s.header} (${s.ask})`).join(' ');
-  const q = `Give me a COMPLETE and very detailed clinical note on ${conditionLabel}${where} for nursing and medical students, `
-    + `with everything known and available online about it. Nothing summarised, shortened or skipped. `
-    + `Use EXACTLY these markdown headings, in this order, each followed by thorough bullet-point content: ${list} `
-    + `Output only the note as plain markdown text - no table, no introduction, no closing remarks, no sources list.`;
+  const where = systemName ? ` (within the ${systemName} system)` : '';
+  const body = sections.map(s => `## ${s.header}\n${s.prompt(conditionLabel)}`).join('\n\n');
+  const q = `You are assisting a licensed nurse and nurse educator using a clinical drug reference app in Nigeria. `
+    + `Provide a structured clinical teaching summary of the condition "${conditionLabel}"${where}, suitable for nursing education and quick clinical reference.\n\n`
+    + `Respond with exactly these sections, using these exact markdown headers, in this order. Do not add any other sections, preamble, or closing text.\n\n`
+    + `${body}\n\n`
+    + `Within each section, bold sub-labels using **double asterisks** where useful, and use bullet points (lines starting with "- ") for lists. `
+    + `Be precise, clinically accurate, and concise ${EM} this is educational/reference material only, not a substitute for current clinical guidelines. `
+    + `Do not fabricate specific numeric dosing; refer to drug classes or first-line agent names only.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 

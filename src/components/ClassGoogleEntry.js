@@ -14,16 +14,17 @@ import { db, auth } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { slugifyDrugName, normalizeDrugNameForMatch } from '../utils/aiDrugSave';
 import { resolveSubclassId } from './AiClassInsight';
+import { parseAiDrugList } from '../utils/parseAiDrugList';
 
 const COLUMNS = ['generic_name', 'drug_subclass', 'prescription_status', 'strength', 'indications'];
 
+// Same short prompt the app's own AI uses for a class (api/_lib/buildPrompt.js, mode "class").
 export function googleClassDrugsUrl(className, parentClassName) {
   const label = parentClassName ? `${className} (${parentClassName})` : className;
-  const q = `Give me a list of ALL drugs in the drug class "${label}" available in Nigeria as a CSV file I can download or copy. `
-    + `Line 1 MUST be this header row, exactly and only: ${COLUMNS.join(',')} . `
-    + `Column contents: generic_name = generic (international non-proprietary) drug name only; drug_subclass = subclass; `
-    + `prescription_status = Prescription, OTC or Controlled; strength = available strengths and dosage forms; indications = main licensed uses. `
-    + `Then ONE row per drug with every value in double quotes. Output only the plain CSV text - no code, no Python script, no explanation.`;
+  const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. List medications (generic names) that belong to the drug class "${label}" or its recognized subclasses.\n\n`
+    + `Include first-line and commonly used second-line agents. Do not include a medication whose primary pharmacological class is something else, even if occasionally used off-label for a related condition.\n\n`
+    + `Group them by subclass using ## markdown headers where subclasses exist. For each medication, use a bullet point starting with the **generic name in bold**, followed by: primary indication, typical route, and any notable distinguishing feature. Keep each note to one short line.\n\n`
+    + `List roughly 12-20 medications ${'\u2014'} the most clinically important ones for this class, not an exhaustive catalog. This is reference material only.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
@@ -54,6 +55,23 @@ export function parseClassDrugCsv(text) {
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/^\s*csv\s*\n/i, '')
     .trim();
+  if (!cleaned) throw new Error('Nothing to read. Paste or upload the Google result first.');
+
+  // AI-style markdown answer ("## Subclass" headers + "- **Drug** ... note" bullets)
+  if (/^\s*[-*]\s+\*\*.+?\*\*/m.test(cleaned)) {
+    const seenMd = new Set();
+    const mdItems = parseAiDrugList(cleaned)
+      .map(i => ({ name: cleanName(`**${i.name}**`), subclass: i.subclass || '', status: 'Prescription', strength: '', indications: i.note || '' }))
+      .filter(d => {
+        const k = normalizeDrugNameForMatch(d.name);
+        if (!d.name || !k || seenMd.has(k)) return false;
+        seenMd.add(k);
+        return true;
+      });
+    if (mdItems.length === 0) throw new Error('No drug names found in the pasted text.');
+    return mdItems;
+  }
+
   const res = Papa.parse(cleaned, { skipEmptyLines: 'greedy' });
   const rows = (res.data || []).filter(r => Array.isArray(r) && r.some(c => String(c).trim()));
   if (rows.length === 0) throw new Error('Nothing to read. Paste or upload the Google result first.');
@@ -191,13 +209,13 @@ export default function ClassGoogleEntry({
           <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
             className="w-full flex items-center gap-3 px-4 py-3 text-left">
             <ClipboardPaste className="w-5 h-5 text-violet-600 flex-shrink-0" />
-            <span className="flex-1 min-w-0 text-sm font-bold text-violet-900">Add drugs from Google (CSV)</span>
+            <span className="flex-1 min-w-0 text-sm font-bold text-violet-900">Add drugs from Google</span>
             <ChevronDown className={`w-4 h-4 text-violet-700 transition-transform ${open ? 'rotate-180' : ''}`} />
           </button>
           {open && (
             <div className="px-3 pb-3 space-y-3">
               <p className="text-xs text-drug-muted">
-                Paste the CSV Google gave you, or upload it. Drugs already in the database are linked to
+                Paste the list Google gave you (or a CSV), or upload it. Drugs already in the database are linked to
                 <strong> {className}</strong>; new ones are added with their name and basic details.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -273,8 +291,8 @@ export default function ClassGoogleEntry({
       </a>
       {isAdmin && (
         <p className="text-xs text-drug-muted">
-          Opens Google with the CSV columns already filled in. Copy or download the result, then paste or upload it in
-          “Add drugs from Google (CSV)” above.
+          Opens Google with the same prompt the AI uses for this class. Copy the answer, then paste it in
+          “Add drugs from Google” above.
         </p>
       )}
     </div>
