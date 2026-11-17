@@ -7,6 +7,7 @@
 const HEADER_FIELD_MAP = [
   [/^overview$/,                                   'overview'],
   [/^pronunciation$/,                              'pronunciation'],
+  [/^brand( names?|s)$/,                            'brand_names'],
   [/^indications$/,                                'indications'],
   [/^off-?label( therapeutic)? use(s)?$/,           'off_label_use'],
   [/^strength$/,                                    'strength'],
