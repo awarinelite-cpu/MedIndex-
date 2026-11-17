@@ -6,6 +6,7 @@ import Papa from 'papaparse';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2, Search, ExternalLink } from 'lucide-react';
 import { db, auth } from '../firebase';
+import { TAB_SECTIONS } from '../utils/aiSectionFill';
 import { parseAiDrugDetail, stripCitations, normalizePlainHeadings } from '../utils/parseAiDrugDetail';
 
 const FIELDS = [
@@ -27,53 +28,50 @@ export const TAB_FIELDS = {
   nursing:      { label: 'Nursing Notes', fields: ['nursing_action'] },
 };
 
-// Google search: the SAME prompt the app's own AI Insight sends
-// (api/drug-ai-details.js, default drug mode), word for word, with the
-// drug's name, brands, class and saved fields filled in. It asks for all 25
-// sections; pasting the answer into any tab saves only that tab's fields
-// (parseManualDrugCsv filters by the tab's allowed fields). The openFDA/RxNorm
-// block is server-only, so it is not part of the Google version.
-const KNOWN_DATA_LABELS = [
-  ['overview', 'Overview'], ['strength', 'Strength'], ['indications', 'Indications'],
-  ['therapeutic_note', 'Therapeutic Note'], ['pharmacology', 'Mechanism of Action & Pharmacology'],
-  ['adult_dose', 'Adult Dose'], ['child_dose', 'Child Dose'], ['renal_dose', 'Renal Dose'],
-  ['administration', 'Administration'], ['nstg_recommendations', 'NSTG Recommendations'],
-  ['contraindications', 'Contraindications'], ['precautions', 'Precautions'],
-  ['pregnancy_lactation', 'Pregnancy & Lactation'], ['interaction', 'Interaction'],
-  ['adverse_effect', 'Adverse Effect'], ['advice_to_patients', 'Advice to Patients'],
-  ['nursing_action', 'Nursing Action'], ['pharmacovigilance', 'Pharmacovigilance'],
-  ['product_description', 'Product Description'], ['storage_recommendations', 'Storage Recommendations'],
-  ['pack_size_price', 'Pack Size & Price'],
-];
+// Google search for one tab. Same wording as the app's full AI drug prompt
+// (api/drug-ai-details.js), limited to this tab's sections so the answer can
+// be pasted straight back into the matching "Add ... information from Google".
+const GOOGLE_SECTION_HINTS = {
+  'Overview': 'use the Overview format given below',
+  'Indications': 'primary approved uses',
+  'Off-Label Therapeutic Use': 'clinically recognized off-label uses, each as a bullet with a brief rationale; if none, write "No well-established off-label uses"',
+  'Therapeutic Note': 'clinically useful context: place in therapy, comparison to alternatives, key caveats',
+  'Adult Dose': 'typical dosing, frequency, route(s) - PO/IV/IM/SC/SL/PR/INH/TOP/NAS/TD as applicable',
+  'Child Dose': 'pediatric dosing where established; note if not recommended in children',
+  'Renal Dose': 'adjustment for renal impairment',
+  'Administration': 'practical administration instructions - timing with food, reconstitution, infusion rate, etc.',
+  'NSTG Recommendations': 'Nigeria Standard Treatment Guidelines context if known; otherwise general standard-of-care guidance',
+  'Pregnancy & Lactation': '',
+  'Contraindications': '',
+  'Precautions': '',
+  'Adverse Effects': '',
+  'Advice to Patients': 'patient counseling points',
+  'Pharmacovigilance': 'notable safety signals, black box warnings, reporting considerations',
+  'Interactions': 'important drug interactions, mechanism-level detail',
+  'Mechanism of Action & Pharmacology': '',
+  'Pharmacokinetics': 'absorption, distribution, metabolism, elimination, half-life',
+  'Product Description': 'formulation/appearance if commonly known',
+  'Storage Recommendations': '',
+  'Pack Size & Price': 'general Nigerian market context if known; otherwise note this varies and should be verified locally',
+  'Nursing Action': 'nursing-specific monitoring and administration responsibilities',
+};
 
-// "Overview: ... Strength: ..." from the drug's saved fields, each trimmed so the link stays a usable length.
-export function buildKnownDrugData(drug, perField = 250, total = 2500) {
-  let out = '';
-  for (const [key, label] of KNOWN_DATA_LABELS) {
-    const v = String(drug?.[key] || '').replace(/\s+/g, ' ').trim();
-    if (!v) continue;
-    const line = `${label}: ${v.length > perField ? v.slice(0, perField) + '...' : v}\n`;
-    if (out.length + line.length > total) break;
-    out += line;
-  }
-  return out.trim();
-}
-
-export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '', brandNames = '', knownData = '') {
+export function googleDrugInfoUrl(drugName, tabId = 'overview', drugClass = '', brandNames = '') {
+  const cfg = TAB_SECTIONS[tabId] || TAB_SECTIONS.overview;
+  const headerList = cfg.headers
+    .map(h => `- ${h}${GOOGLE_SECTION_HINTS[h] ? ` (${GOOGLE_SECTION_HINTS[h]})` : ''}`)
+    .join('\n');
+  const overviewRule = cfg.headers.some(h => /^overview$/i.test(h))
+    ? `Under Overview write ONE paragraph in exactly this pattern: "${drugName} is a prescription medication primarily used to treat <main indication> in <patient population>. It belongs to the class of <drug class (ABBREVIATION)>, which work by <plain-language mechanism>. ${drugName} is the generic name for medications previously marketed as <brand names>." (say "over-the-counter medication" if it is OTC). Example: "Vardenafil is a prescription medication primarily used to treat erectile dysfunction (ED) in adult men. It belongs to the class of phosphodiesterase type 5 (PDE5) inhibitors, which work by increasing blood flow to the penis, facilitating the achievement and maintenance of an erection during sexual stimulation. Vardenafil is the generic name for medications previously marketed as Levitra and Staxyn." Never start the Overview with pharmacologic action, mechanism or class, and do not use "Generic Name:/Drug Class:/Mechanism of Action:" labels.\n\n`
+    : '';
   const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.\n\n`
-    + `Before writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources \u2014 do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n\n`
+    + `Before writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources - do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n\n`
     + `Drug: ${drugName}\n${brandNames ? `Known brand names: ${brandNames}\n` : ''}${drugClass ? `Drug class: ${drugClass}\n` : ''}\n`
-    + (knownData ? `Existing reference data already shown to the nurse (do not simply repeat this \u2014 add depth, nuance, and anything missing):\n${knownData}\n\n` : '')
-    + `Structure your response with these sections, using clear markdown headers (##):\n`
-    + `- Overview (concise summary of what the drug is and its place in therapy)\n`
-    + `- Pronunciation (simple phonetic spelling, e.g. "am-ox-i-SIL-in")\n`
-    + `- Drug Class & Subclass\n- Strength\n- Indications\n- Therapeutic Note\n- Mechanism of Action & Pharmacology\n- Pharmacokinetics\n`
-    + `- Adult Dose\n- Child Dose\n- Renal Dose\n- Administration\n- NSTG Recommendations\n- Contraindications\n- Precautions\n`
-    + `- Pregnancy & Lactation\n- Interaction\n- Adverse Effect\n- Advice to Patients\n- Nursing Action\n- Pharmacovigilance\n`
-    + `- Product Description\n- Storage Recommendations\n- Pack Size & Price\n- Prescription Status & NAFDAC Note\n\n`
-    + `Write every section in full \u2014 if not well established, write "Not well established / consult current prescribing information". Aim for roughly 3-6 sentences, or 4-8 bullets, per section.\n\n`
+    + `Write ONLY the following sections, using clear markdown headers (##) with exactly these names, in this order:\n${headerList}\n\n`
+    + overviewRule
+    + `Write every section in full - if not well established, write "Not well established / consult current prescribing information". Aim for roughly 3-6 sentences, or 4-8 bullets, per section.\n\n`
     + `Bold sub-labels with **double asterisks**. Use "- " bullets for lists and don't stop at 2-3 items.\n\n`
-    + `Be precise, clinically accurate, and thorough. Do not fabricate specific numeric dosing if you are not confident. Reference material only, not a substitute for the current product monograph.`;
+    + `Do not add any other sections, preamble, or closing text. Be precise, clinically accurate, and thorough. Do not fabricate specific numeric dosing if you are not confident. Reference material only, not a substitute for the current product monograph.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
@@ -327,7 +325,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
       )}
     </div>
     <div className="mt-3 mb-4">
-      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '', buildKnownDrugData(drug))} target="_blank" rel="noopener noreferrer"
+      <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '')} target="_blank" rel="noopener noreferrer"
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
         <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} {tab.label.toLowerCase()} on Google <ExternalLink className="w-4 h-4" />
       </a>
