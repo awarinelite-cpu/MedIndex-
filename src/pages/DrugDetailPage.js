@@ -1719,10 +1719,10 @@ function DrugHeroImage({ drug, onOpen }) {
     <div
       {...tap(onOpen)}
       aria-label={`Pictures of ${drug.generic_name}`}
-      className="cursor-pointer relative w-[30%] max-w-[190px] aspect-square flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
+      className="cursor-pointer relative w-[30%] max-w-[190px] aspect-square lg:w-[36%] lg:max-w-[360px] lg:aspect-[4/3] flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
     >
       {img ? (
-        <img src={img.url} alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`} className="w-full h-full object-cover" draggable={false} />
+        <img src={img.url} alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`} className="w-full h-full object-cover lg:object-contain" draggable={false} />
       ) : (
         <div className="flex flex-col items-center gap-1 text-primary-400">
           <ImageIcon className="w-8 h-8" />
