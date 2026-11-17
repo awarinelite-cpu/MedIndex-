@@ -101,16 +101,16 @@ function nursingActionGoogleUrl(drugName, drugClass, brandNames, knownData) {
 }
 
 // Overview tab only: same AI Insight prompt (api/drug-ai-details.js, default drug mode), word for word,
-// with the saved fields filled in and the section list cut down to "Overview" alone.
+// with the saved fields filled in and the section list cut down to "Overview" alone. Nothing else is changed.
 function overviewGoogleUrl(drugName, drugClass, brandNames, knownData) {
   const q = `You are assisting a licensed nurse using a clinical drug reference app in Nigeria. Provide extensive, well-organized clinical reference information about the following medication for professional/educational use.\n\n`
     + `Before writing your answer, use Google Search to verify this drug's current indications, dosing, contraindications, and interactions against up-to-date sources - do this even if you already feel confident about the drug, since training data can be outdated or subtly wrong. Reach your conclusions from what the search turns up, not from recall alone.\n\n`
     + `Drug: ${drugName}\n${brandNames ? `Known brand names: ${brandNames}\n` : ''}${drugClass ? `Drug class: ${drugClass}\n` : ''}\n`
     + (knownData ? `Existing reference data already shown to the nurse (do not simply repeat this - add depth, nuance, and anything missing):\n${knownData}\n\n` : '')
-    + `Write ONLY the following section, using a clear markdown header (##) with exactly this name:\n- Overview (concise summary of what the drug is and its place in therapy)\n\n`
-    + `Write the section in full - if not well established, write "Not well established / consult current prescribing information". Aim for genuine depth (roughly 3-6 sentences, or 4-8 bullet points where a list format fits better) rather than a one-line summary - a nurse should be able to rely on this section alone without needing to look elsewhere.\n\n`
-    + `Bold sub-labels using **double asterisks** (e.g. "**Monitoring:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists, and don't stop at 2-3 items when more genuinely apply.\n\n`
-    + `Do not add any other sections, preamble, or closing text. Be precise, clinically accurate, and thorough. Do not fabricate specific numeric dosing if you are not confident - note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
+    + `Structure your response with these sections, using clear markdown headers (##):\n- Overview (concise summary of what the drug is and its place in therapy)\n\n`
+    + `Write every section listed above in full - if a section is not well established for this drug, write "Not well established / consult current prescribing information" rather than omitting it, so the response fully mirrors this reference schema. Aim for genuine depth in each section (roughly 3-6 sentences, or 4-8 bullet points where a list format fits better) rather than a one-line summary - a nurse should be able to rely on this section alone without needing to look elsewhere.\n\n`
+    + `Within each section, bold any sub-labels using **double asterisks** (e.g. "**Absorption:** ...", "**Renal impairment:** ...") so a nurse can scan the section quickly. Use bullet points (starting each line with "- ") for lists of items like contraindications, adverse effects, or interactions, and don't stop at 2-3 items when more genuinely apply - list them thoroughly.\n\n`
+    + `Be precise, clinically accurate, and thorough within each section. Do not pad with filler or repeat yourself, but do not compress well-established clinical detail into a single sentence when it deserves more. Do not fabricate specific numeric dosing if you are not confident - note where prescribing information should be consulted instead. This is reference material only, not a substitute for the current product monograph.`;
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
