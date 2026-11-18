@@ -91,7 +91,7 @@ function AiToolsDropdown({ children }) {
   );
 }
 
-export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExtra = null }) {
+export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExtra = null, hideAiWhenNoMatch = false }) {
   const { isAdmin } = useAuth();
   const { provider } = useAiProvider();
   const { customConditionsBySystem, hiddenConditionIdsBySystem } = useCustomConditions();
@@ -375,6 +375,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
         </div>
       );
     }
+    if (hideAiWhenNoMatch) return null;
     return <div className="mb-6">{aiTools}</div>;
   }
 

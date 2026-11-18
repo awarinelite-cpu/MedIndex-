@@ -98,7 +98,7 @@ function RxBadge({ status }) {
 
 
 export default function HomePage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { imagesByCondition } = useConditionClinicalInfo();
   const { drugs: ALL_DRUGS } = useDrugs();
   const recent = useRecentActivity(user?.uid);
@@ -307,6 +307,7 @@ export default function HomePage() {
               searchQuery={deferredQuery}
               existingDrugs={ALL_DRUGS}
               aiExtra={!hasExactDrugMatch ? <AiSearchFallback searchQuery={deferredQuery} /> : null}
+              hideAiWhenNoMatch={isAdmin && !existingCondition && !hasExactDrugMatch}
             />
 
             {/* Every matching drug by name/indication/class — not just the top 8

@@ -39,6 +39,7 @@ import EssentialDrugsPage from './pages/EssentialDrugsPage';
 import MorePage from './pages/MorePage';
 import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
 import AiCreditsPage from './pages/AiCreditsPage';
+import NotInSystemPage from './pages/NotInSystemPage';
 import AppLockGate from './components/AppLockGate';
 import BackButtonHandler from './components/BackButtonHandler';
 function App() {
@@ -59,6 +60,11 @@ function App() {
         <Route path="/" element={
           <ProtectedUserRoute>
             <Layout><HomePage /></Layout>
+          </ProtectedUserRoute>
+        } />
+        <Route path="/lookup" element={
+          <ProtectedUserRoute>
+            <Layout><NotInSystemPage /></Layout>
           </ProtectedUserRoute>
         } />
         <Route path="/drug/:id" element={
