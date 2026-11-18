@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Pill, ChevronRight, Syringe, Stethoscope as StethoIcon,
   PersonStanding, FilePlus2, Calculator,
@@ -98,7 +98,7 @@ function RxBadge({ status }) {
 
 
 export default function HomePage() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { imagesByCondition } = useConditionClinicalInfo();
   const { drugs: ALL_DRUGS } = useDrugs();
   const recent = useRecentActivity(user?.uid);
@@ -161,6 +161,7 @@ export default function HomePage() {
   }, [ALL_DRUGS, recent, customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem]);
   const recentShown = showAllRecent ? RECENT : RECENT.slice(0, 3);
 
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -216,9 +217,17 @@ export default function HomePage() {
   // closes the instant dropdown and scrolls down to the full results/insight.
   const existingCondition = useExistingConditionMatch(deferredQuery);
 
+  const nothingFound = !!deferredQuery.trim() && deferredQuery === searchQuery
+    && !existingCondition && !hasExactDrugMatch && allMatchingDrugs.length === 0;
+
   const handleSearch = (e) => {
     e.preventDefault();
     setShowDropdown(false);
+    // Nothing in the app matches this search: open the lookup page straight away.
+    if (nothingFound) {
+      navigate(`/lookup?q=${encodeURIComponent(searchQuery.trim())}`);
+      return;
+    }
     resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -307,7 +316,7 @@ export default function HomePage() {
               searchQuery={deferredQuery}
               existingDrugs={ALL_DRUGS}
               aiExtra={!hasExactDrugMatch ? <AiSearchFallback searchQuery={deferredQuery} /> : null}
-              hideAiWhenNoMatch={isAdmin && !existingCondition && !hasExactDrugMatch}
+              hideAiWhenNoMatch={!existingCondition && !hasExactDrugMatch && allMatchingDrugs.length === 0}
             />
 
             {/* Every matching drug by name/indication/class — not just the top 8

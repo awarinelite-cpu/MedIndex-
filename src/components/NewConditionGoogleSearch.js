@@ -1,11 +1,10 @@
-// Admin-only. Under the home search bar a single "Not in the system" button
+// Under the home search bar a single "Not in the system" button
 // (default export) opens the /lookup page, which uses ConditionGooglePanel to
 // search Google for the condition's clinical note, paste the answer, pick the
 // body system, and save, adding the condition and its clinical info at once.
 import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, ChevronRight, ClipboardPaste, ExternalLink, Loader2, Save, Search, Upload } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { addCustomConditions, slugifyConditionLabel } from '../hooks/useCustomConditions';
 import { saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
@@ -130,9 +129,8 @@ export function ConditionGooglePanel({ query }) {
 
 // Single entry point shown under the home search bar (admins only).
 export default function NewConditionGoogleSearch({ query }) {
-  const { isAdmin } = useAuth();
   const label = String(query || '').trim();
-  if (!isAdmin || !label) return null;
+  if (!label) return null;
   return (
     <Link
       to={`/lookup?q=${encodeURIComponent(label)}`}
