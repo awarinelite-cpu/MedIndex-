@@ -53,10 +53,7 @@ const CALCULATORS = [
 ];
 
 export default function CalculatorsPage() {
-  const [activeKey, setActiveKey] = useState(() => {
-    const tool = new URLSearchParams(window.location.search).get('tool');
-    return CALCULATORS.some(c => c.key === tool) ? tool : null;
-  });
+  const [activeKey, setActiveKey] = useState(null);
   const active = CALCULATORS.find(c => c.key === activeKey);
 
   return (
