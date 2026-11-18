@@ -399,7 +399,6 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 }
 
 .mi-home {
-  min-height: 100vh;
   padding: 6px 0 12px;
   background: linear-gradient(180deg, #e6efff 0, #f1f6ff 260px, #f8fbff 100%);
 }

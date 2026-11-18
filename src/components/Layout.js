@@ -330,7 +330,7 @@ export default function Layout({ children }) {
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <main className={`flex-1 ${isHome ? '' : 'pb-16 md:pb-0 mi-page'}`}>
+      <main className={isHome ? '' : 'flex-1 pb-16 md:pb-0 mi-page'}>
         {children}
       </main>
 
