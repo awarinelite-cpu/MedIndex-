@@ -103,7 +103,7 @@ export default function HomePage() {
   const { drugs: ALL_DRUGS } = useDrugs();
   const recent = useRecentActivity(user?.uid);
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem } = useCustomConditions();
-  const [showAllRecent, setShowAllRecent] = useState(true); // expanded by default
+  const [showAllRecent, setShowAllRecent] = useState(false); // always starts on Show Less (3 items)
 
   // Hero carousel: auto-advances every 6s unless the person prefers reduced
   // motion; tapping a dot jumps to that slide and restarts the timer.

@@ -400,7 +400,7 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 
 .mi-home {
   min-height: 100vh;
-  padding: 6px 0 28px;
+  padding: 6px 0 12px;
   background: linear-gradient(180deg, #e6efff 0, #f1f6ff 260px, #f8fbff 100%);
 }
 .dark .mi-home { background: linear-gradient(180deg, #0f1c36 0, #0b1424 320px, #0b1220 640px); }
@@ -415,7 +415,7 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .mi-home a { text-decoration: none; }
 
 @media (max-width: 767px) {
-  .mi-home { margin-bottom: -4rem; padding-bottom: calc(4rem + 28px); }
+  .mi-home { margin-bottom: 0; padding-bottom: 8px; }
 }
 
 /* ---- header ---- */
