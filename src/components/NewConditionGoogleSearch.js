@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { addCustomConditions, slugifyConditionLabel } from '../hooks/useCustomConditions';
 import { saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
+import NewDrugGoogleSearch from './NewDrugGoogleSearch';
 import { CLINICAL_SECTIONS, googleClinicalInfoUrl, parseGoogleClinicalInfo } from '../utils/googleClinicalInfo';
 
 const wordCount = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length;
@@ -138,6 +139,9 @@ export default function NewConditionGoogleSearch({ query }) {
                 : <><Save className="w-4 h-4" /> Add condition &amp; save clinical info</>}
             </button>
           </div>
+
+          {/* Searched term is a medicine, not a condition */}
+          <NewDrugGoogleSearch label={label} />
         </div>
       )}
     </div>
