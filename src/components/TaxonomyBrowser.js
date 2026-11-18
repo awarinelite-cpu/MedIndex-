@@ -1,15 +1,17 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChevronRight, Pill, Brain, Bone, Syringe, Soup, Heart,
   Droplet, Wind, ShieldAlert, ShieldCheck, Activity, Baby, Dna, Eye,
   Ear, Layers, SprayCan, ShieldPlus, Smile, AlertTriangle, Thermometer,
-  Sparkles,
+  Sparkles, Trash2, Loader2,
 } from 'lucide-react';
 import { DRUG_CLASS_TAXONOMY, UNCLASSIFIED_BUCKET } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 import AddToFavoritesHeart from './AddToFavoritesHeart';
+import { useAuth } from '../context/AuthContext';
+import { deleteReviewedDrug } from '../utils/aiDrugSave';
 
 // Icon + tint for each of the 21 formulary chapters — purely visual, keyed
 // off the taxonomy's own class id, so it doesn't touch the taxonomy data
@@ -51,6 +53,25 @@ function statusBadgeClass(status) {
 }
 
 export function DrugRow({ drug }) {
+  const { isAdmin } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+
+  // Admin only: permanently remove this drug from the system.
+  const handleDelete = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (deleting) return;
+    if (drug._seed) { window.alert(`"${drug.generic_name}" is built-in sample data and cannot be deleted here.`); return; }
+    if (!window.confirm(`Delete "${drug.generic_name}" from the system?\n\nThis permanently removes the drug and its information.`)) return;
+    setDeleting(true);
+    try {
+      await deleteReviewedDrug({ id: drug.id });
+    } catch (err) {
+      window.alert(err.message || 'Could not delete the drug.');
+      setDeleting(false);
+    }
+  };
+
   return (
     <Link
       to={`/drug/${drug.id}`}
@@ -68,6 +89,18 @@ export function DrugRow({ drug }) {
         <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 ${statusBadgeClass(drug.prescription_status)}`}>
           {drug.prescription_status}
         </span>
+      )}
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          aria-label={`Delete ${drug.generic_name}`}
+          title="Delete drug"
+          className="p-1.5 rounded-md text-red-500 hover:bg-red-50 disabled:opacity-50 flex-shrink-0"
+        >
+          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+        </button>
       )}
     </Link>
   );

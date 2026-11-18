@@ -12,7 +12,7 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { Pill, ChevronRight, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
+import { Pill, ChevronRight, ChevronDown, ChevronUp, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
@@ -84,6 +84,7 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
 
   const cacheKey = `ai_class_${(parentClassName ? parentClassName.trim().toLowerCase() + '::' : '')}${className.trim().toLowerCase()}`;
   const [state, setState] = useState(() => sessionStorage.getItem(cacheKey) ? 'done' : 'idle');
+  const [idleOpen, setIdleOpen] = useState(false); // idle prompt is a drop-down
   const [text, setText]   = useState(() => sessionStorage.getItem(cacheKey) || '');
   const [error, setError] = useState('');
   const [queriedFor, setQueriedFor] = useState(className);
@@ -292,17 +293,30 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
 
   if (state === 'idle') {
     content = (
-      <div className="mt-6 bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
-        <Sparkles className="w-8 h-8 text-primary-500 mx-auto mb-3" />
-        <p className="text-sm text-drug-text mb-4">
-          Want the AI to find other medications in "{className}" and its subclasses not yet in our database?
-        </p>
+      <div className="mt-6">
         <button
-          onClick={runLookup}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+          type="button"
+          onClick={() => setIdleOpen(o => !o)}
+          aria-expanded={idleOpen}
+          className="w-full flex items-center gap-2.5 rounded-xl bg-primary-50 border border-primary-200 px-3 py-3 text-[15px] font-semibold text-primary-900"
         >
-          <Sparkles className="w-4 h-4" /> Ask AI for more in "{className}"
+          <Sparkles className="w-5 h-5 text-primary-500 flex-shrink-0" />
+          <span className="flex-1 min-w-0 text-left">AI: find more medications</span>
+          {idleOpen ? <ChevronUp className="w-5 h-5 flex-shrink-0" /> : <ChevronDown className="w-5 h-5 flex-shrink-0" />}
         </button>
+        {idleOpen && (
+          <div className="mt-2 bg-primary-50 border border-primary-200 rounded-xl p-5 text-center">
+            <p className="text-sm text-drug-text mb-4">
+              Want the AI to find other medications in "{className}" and its subclasses not yet in our database?
+            </p>
+            <button
+              onClick={runLookup}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl font-semibold text-sm hover:bg-primary-700 transition-colors"
+            >
+              <Sparkles className="w-4 h-4" /> Ask AI for more in "{className}"
+            </button>
+          </div>
+        )}
       </div>
     );
   } else if (state === 'loading' || state === 'streaming') {
