@@ -9,7 +9,8 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from './IosInstallModal';
 import AiProviderDropdown from './AiProviderDropdown';
 import BackNavButton from './BackNavButton';
-import { LogoMark, HomeGlyph } from './dashboard/DashboardArt';
+import { HomeGlyph } from './dashboard/DashboardArt';
+import { BookLogo, AvatarSilhouette } from './dashboard/MockupArt';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -101,6 +102,7 @@ export default function Layout({ children }) {
     { to: '/',       label: 'Home',    active: path === '/',                render: (on) => <HomeGlyph filled={on} /> },
     { to: '/favourites', label: 'Favourites', active: path === '/favourites', render: (on) => <Heart strokeWidth={1.8} fill={on ? 'currentColor' : 'none'} /> },
     { to: '/lists',  label: 'Saved',   active: path.startsWith('/lists'),   render: () => <Bookmark strokeWidth={1.8} /> },
+    { to: '/calculators', label: 'Calculators', active: path === '/calculators', render: () => <Calculator strokeWidth={1.8} /> },
     { to: '/more',   label: 'Profile', active: path === '/more',            render: () => <User strokeWidth={1.8} /> },
   ];
 
@@ -156,14 +158,14 @@ export default function Layout({ children }) {
           <BackNavButton fallback="/" className="mi-theme" style={{ flex: '0 0 auto', marginRight: 6 }} />
         )}
         <Link to="/" className="mi-brand" aria-label="MedIndex home">
-          <LogoMark className="mi-brand-logo" />
+          <BookLogo className="mi-brand-logo" />
           <span>
             <span className="mi-brand-name" style={{ display: 'block' }}>Med<span>Index</span></span>
             <span className="mi-brand-tag" style={{ display: 'block' }}>Learn &bull; Reference &bull; Excel</span>
           </span>
         </Link>
         <div className="mi-header-actions">
-          <button
+          {!isHome && <button
             type="button"
             className="mi-theme"
             onClick={toggleTheme}
@@ -171,7 +173,7 @@ export default function Layout({ children }) {
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark ? <Sun size={17} strokeWidth={2} /> : <Moon size={17} strokeWidth={2} />}
-          </button>
+          </button>}
           <div className="mi-bell-wrap" ref={miNotifRef}>
             <button
               type="button"
@@ -179,7 +181,7 @@ export default function Layout({ children }) {
               onClick={() => setShowNotifications(v => !v)}
               aria-label={notificationCount ? `Notifications (${notificationCount} new)` : 'Notifications'}
             >
-              <Bell size={28} strokeWidth={1.8} />
+              <Bell size={32} strokeWidth={1.8} />
               {notificationCount > 0 && <span className="mi-badge">{notificationCount}</span>}
             </button>
             {showNotifications && (
@@ -190,7 +192,7 @@ export default function Layout({ children }) {
             )}
           </div>
           <Link to="/profile" className="mi-avatar" aria-label="My profile">
-            {user?.photoURL ? <img src={user.photoURL} alt="" /> : <User size={38} strokeWidth={0} fill="currentColor" />}
+            {user?.photoURL ? <img src={user.photoURL} alt="" /> : <AvatarSilhouette />}
           </Link>
         </div>
       </header>
