@@ -3,6 +3,7 @@
 // the answer, preview the sections it was split into, and save them.
 // Works the same way as the Google search on a drug's information tabs.
 import React, { useMemo, useRef, useState } from 'react';
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import { BookOpen, ChevronDown, ChevronUp, ClipboardPaste, ExternalLink, Loader2, Save, Search, Upload } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { saveConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
@@ -26,6 +27,8 @@ export default function ConditionGoogleInfo({ condition, systemName = '', existi
     catch (e) { return { error: e.message }; }
   }, [text]);
 
+  const auto = useAutoSaveOnPaste(!!result?.parsed);
+
   if (!isAdmin || !condition?.label) return null;
 
   const label = condition.label;
@@ -36,12 +39,14 @@ export default function ConditionGoogleInfo({ condition, systemName = '', existi
   const onFile = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) change(await f.text());
+    if (f) { auto.arm(); change(await f.text()); }
   };
 
   const pasteFromClipboard = async () => {
     try {
-      change(await navigator.clipboard.readText());
+      const t = await navigator.clipboard.readText();
+      auto.arm();
+      change(t);
     } catch {
       setError('Could not read the clipboard — long-press in the box below and choose Paste.');
     }
@@ -60,6 +65,8 @@ export default function ConditionGoogleInfo({ condition, systemName = '', existi
       setError(e.message || 'Save failed.');
     }
   };
+
+  auto.saveRef.current = save;
 
   const linkCls = 'inline-flex items-center justify-center gap-2 rounded-full font-semibold text-sm';
 
@@ -121,6 +128,7 @@ export default function ConditionGoogleInfo({ condition, systemName = '', existi
             <textarea
               value={text}
               onChange={e => change(e.target.value)}
+              onPaste={auto.arm}
               rows={6}
               placeholder={'## Introduction\n...\n## Types\n...\n## Etiology\n...'}
               className="w-full rounded-lg border border-violet-200 bg-white p-2 text-sm font-mono"

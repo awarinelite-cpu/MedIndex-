@@ -7,6 +7,7 @@
 // The Google search carries the same short prompt the app's own AI uses for
 // "more conditions" (mode "system_conditions" in api/_lib), including the list
 // of conditions already in the system so Google is told not to repeat them.
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useState } from 'react';
 import { Search, ExternalLink, ClipboardPaste, Save, Loader2, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -108,9 +109,10 @@ export default function SystemGoogleConditions({ systemId, systemName, existingL
   }, [text, existingKeys]);
 
   const toAdd = rows.filter(r => r.status === 'new');
+  const auto = useAutoSaveOnPaste(toAdd.length > 0);
 
   const pasteFromClipboard = async () => {
-    try { setText(await navigator.clipboard.readText()); setState('idle'); setError(''); }
+    try { const t = await navigator.clipboard.readText(); auto.arm(); setText(t); setState('idle'); setError(''); }
     catch { setError('Could not read the clipboard. Long-press in the box below and choose Paste.'); }
   };
 
@@ -131,6 +133,8 @@ export default function SystemGoogleConditions({ systemId, systemName, existingL
       setError(`SAVE FAILED: ${e.code ? `[${e.code}] ` : ''}${e.message || 'Unknown error'}`);
     }
   };
+
+  auto.saveRef.current = save;
 
   if (!isAdmin) return null;
 
@@ -171,6 +175,7 @@ export default function SystemGoogleConditions({ systemId, systemName, existingL
           </button>
           <textarea
             value={text}
+            onPaste={auto.arm}
             onChange={e => { setText(e.target.value); setState('idle'); setError(''); }}
             rows={6}
             placeholder={'### Atrial Septal Defect\nIcon: \uD83E\uDEC0\nKeywords: atrial septal defect, asd, congenital heart defect'}

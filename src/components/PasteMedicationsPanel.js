@@ -5,6 +5,7 @@
 // to the condition.
 import React, { useMemo, useState } from 'react';
 import { ClipboardPaste, Check, AlertCircle, X } from 'lucide-react';
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import { useDrugs } from '../hooks/useDrugs';
 import { parseMedicationList, addMedicationsToCondition } from '../utils/aiDrugSave';
 import { parseMedicationEntries } from '../utils/medicationText';
@@ -35,11 +36,12 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
   }, [entries, removed]);
   const items = useMemo(() => rows.filter(r => r.type === 'drug').map(r => ({ name: r.text, heading: r.heading || '', sub: r.sub || '', hOrder: r.hOrder || 0, order: r.order || 0 })), [rows]);
   const names = useMemo(() => items.map(i => i.name), [items]);
+  const auto = useAutoSaveOnPaste(names.length > 0);
   const updateText = (t) => { setText(t); setRemoved([]); };
   const removeName = (n) => setRemoved(prev => [...prev, n]);
 
   const pasteFromClipboard = async () => {
-    try { updateText(await navigator.clipboard.readText()); } catch { /* user can paste manually */ }
+    try { const t = await navigator.clipboard.readText(); auto.arm(); updateText(t); } catch { /* user can paste manually */ }
   };
 
   const run = async () => {
@@ -57,12 +59,15 @@ export default function PasteMedicationsPanel({ conditionId, conditionName }) {
     setRunning(false);
   };
 
+  auto.saveRef.current = run;
+
   return (
     <div className="cp-paste">
       <h3 className="cp-paste-title"><ClipboardPaste size={18} strokeWidth={2.4} /> Paste medication list</h3>
       <p className="cp-paste-hint">Copy the list from Google, paste it here (one drug per line), and save. They are saved right away; you can add each drug's full information yourself afterwards.</p>
       <textarea className="cp-paste-box" rows={6} value={text} disabled={running}
         placeholder={`Paste medications for ${conditionName || 'this condition'}...`}
+        onPaste={auto.arm}
         onChange={e => updateText(e.target.value)} />
       <div className="cp-paste-actions">
         <button type="button" className="cp-paste-btn alt" onClick={pasteFromClipboard} disabled={running}>Paste from clipboard</button>

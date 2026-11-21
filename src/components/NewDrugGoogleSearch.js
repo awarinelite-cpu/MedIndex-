@@ -2,6 +2,7 @@
 // For when the searched term is a DRUG, not a condition: search Google with the
 // same prompt the drug Overview tab uses, paste the answer, and save it as a
 // new drug record (same fields/parser as ManualDrugInfoEntry).
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -31,15 +32,16 @@ export default function NewDrugGoogleSearch({ label }) {
     catch (e) { return { error: e.message }; }
   }, [text, tab]);
   const parsed = result?.parsed || null;
+  const auto = useAutoSaveOnPaste(!!parsed);
 
   const change = (t) => { setText(t); setState('idle'); setError(''); };
   const onFile = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) change(await f.text());
+    if (f) { auto.arm(); change(await f.text()); }
   };
   const paste = async () => {
-    try { change(await navigator.clipboard.readText()); }
+    try { const t = await navigator.clipboard.readText(); auto.arm(); change(t); }
     catch { setError('Could not read the clipboard — long-press in the box below and choose Paste.'); }
   };
 
@@ -68,6 +70,8 @@ export default function NewDrugGoogleSearch({ label }) {
     }
   };
 
+  auto.saveRef.current = save;
+
   return (
     <div className="space-y-3 pt-1">
       <a href={googleDrugInfoUrl(drugName, 'overview')} target="_blank" rel="noopener noreferrer"
@@ -93,7 +97,7 @@ export default function NewDrugGoogleSearch({ label }) {
           </button>
           <input ref={fileRef} type="file" accept=".md,.markdown,.txt,.csv,text/plain,text/markdown,text/csv" className="hidden" onChange={onFile} />
         </div>
-        <textarea value={text} onChange={e => change(e.target.value)} rows={6}
+        <textarea value={text} onChange={e => change(e.target.value)} onPaste={auto.arm} rows={6}
           placeholder={'## Overview\n...\n## Indications\n...'}
           className="w-full rounded-lg border border-emerald-200 bg-white p-2 text-sm font-mono" />
 

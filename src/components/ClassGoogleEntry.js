@@ -6,6 +6,7 @@
 // drugs found, and saves them into the class. Drugs already in the database
 // are only linked into the class; new ones are created as name-level records
 // (flagged info_pending) that "Complete Missing Info" can fill in later.
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
@@ -124,6 +125,7 @@ export default function ClassGoogleEntry({
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
+  const auto = useAutoSaveOnPaste(!!items);
 
   const byName = useMemo(() => {
     const m = new Map();
@@ -142,11 +144,11 @@ export default function ClassGoogleEntry({
   const onFile = async e => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) preview(await f.text());
+    if (f) { auto.arm(); preview(await f.text()); }
   };
 
   const pasteFromClipboard = async () => {
-    try { preview(await navigator.clipboard.readText()); }
+    try { const t = await navigator.clipboard.readText(); auto.arm(); preview(t); }
     catch { setError('Could not read the clipboard. Long-press in the box below and choose Paste.'); }
   };
 
@@ -204,6 +206,8 @@ export default function ClassGoogleEntry({
     }
   };
 
+  auto.saveRef.current = save;
+
   return (
     <div className="space-y-2">
       {isAdmin && (
@@ -235,7 +239,7 @@ export default function ClassGoogleEntry({
                 </button>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="hidden" onChange={onFile} />
               </div>
-              <textarea value={text} onChange={e => preview(e.target.value)} rows={5}
+              <textarea value={text} onChange={e => preview(e.target.value)} onPaste={auto.arm} rows={5}
                 placeholder={'generic_name,drug_subclass,prescription_status,strength,indications\nDiazepam,"Benzodiazepines",Controlled,"2 mg, 5 mg tablets","Anxiety"'}
                 className="w-full rounded-lg border border-violet-200 bg-white p-2 text-sm font-mono" />
               {error && <p className="text-xs text-red-600">{error}</p>}

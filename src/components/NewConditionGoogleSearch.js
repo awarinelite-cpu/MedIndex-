@@ -2,6 +2,7 @@
 // (default export) opens the /lookup page, which uses ConditionGooglePanel to
 // search Google for the condition's clinical note, paste the answer, pick the
 // body system, and save, adding the condition and its clinical info at once.
+import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, ChevronRight, ClipboardPaste, ExternalLink, Loader2, Save, Search, Upload } from 'lucide-react';
@@ -28,6 +29,8 @@ export function ConditionGooglePanel({ query }) {
     catch (e) { return { error: e.message }; }
   }, [text]);
 
+  const auto = useAutoSaveOnPaste(!!result?.parsed);
+
   if (!label) return null;
   const parsed = result?.parsed || null;
   const change = (t) => { setText(t); setState('idle'); setError(''); };
@@ -35,15 +38,16 @@ export function ConditionGooglePanel({ query }) {
   const onFile = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';
-    if (f) change(await f.text());
+    if (f) { auto.arm(); change(await f.text()); }
   };
   const paste = async () => {
-    try { change(await navigator.clipboard.readText()); }
+    try { const t = await navigator.clipboard.readText(); auto.arm(); change(t); }
     catch { setError('Could not read the clipboard — long-press in the box below and choose Paste.'); }
   };
 
   const save = async () => {
-    if (!parsed || !systemId || state === 'saving') return;
+    if (!parsed || state === 'saving') return;
+    if (!systemId) { setError('Select a system below, then tap Save.'); return; }
     setState('saving'); setError('');
     try {
       const id = slugifyConditionLabel(label);
@@ -56,6 +60,8 @@ export function ConditionGooglePanel({ query }) {
       setError(e.message || 'Save failed.');
     }
   };
+
+  auto.saveRef.current = save;
 
   const sysName = ANATOMICAL_SYSTEMS.find(s => s.id === systemId)?.name || '';
 
@@ -88,7 +94,7 @@ export function ConditionGooglePanel({ query }) {
           </button>
           <input ref={fileRef} type="file" accept=".md,.markdown,.txt,text/plain,text/markdown" className="hidden" onChange={onFile} />
         </div>
-        <textarea value={text} onChange={e => change(e.target.value)} rows={6}
+        <textarea value={text} onChange={e => change(e.target.value)} onPaste={auto.arm} rows={6}
           placeholder={'## Introduction\n...\n## Types\n...'}
           className="w-full rounded-lg border border-violet-200 bg-white p-2 text-sm font-mono" />
 
