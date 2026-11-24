@@ -155,9 +155,33 @@ function GoogleMedsButton({ name }) {
   );
 }
 
+// Admin-only dropdown that keeps the Google search, paste box and guideline note folded away.
+function MedsToolsDropdown({ conditionId, conditionName }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`cp-cat ${open ? 'is-open' : ''}`} style={{ marginTop: 14 }}>
+      <button type="button" className="cp-cat-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="cp-cat-icon"><Search size={20} strokeWidth={2.4} /></span>
+        <span className="cp-cat-title">Search &amp; paste medications</span>
+        {open ? <ChevronUp size={22} strokeWidth={2.6} /> : <ChevronDown size={22} strokeWidth={2.6} />}
+      </button>
+      {open && (
+        <div className="cp-cat-body">
+          <GoogleMedsButton name={conditionName} />
+          <PasteMedicationsPanel conditionId={conditionId} conditionName={conditionName} />
+          <div className="cp-note" role="note">
+            <Info size={22} strokeWidth={2.2} />
+            <p>Treatment options may vary based on individual patient factors. Always refer to current clinical guidelines.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MedicationsCard({ buckets, conditionName, conditionId }) {
   const { isAdmin } = useAuth();
-  const pastePanel = isAdmin ? <PasteMedicationsPanel conditionId={conditionId} conditionName={conditionName} /> : null;
+  const adminTools = isAdmin ? <MedsToolsDropdown conditionId={conditionId} conditionName={conditionName} /> : null;
   const [openCats, setOpenCats] = useState(null); // null = first group open by default
 
   const { groups, regimens, comboNames } = useMemo(() => {
@@ -206,8 +230,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       <section className="cp-card">
         <h2 className="cp-card-title"><span className="cp-card-icon"><Pill size={30} strokeWidth={2.4} /></span>Medications Used for this Condition</h2>
         <p className="cp-empty">No medications have been linked to this condition yet.</p>
-        <GoogleMedsButton name={conditionName} />
-        {pastePanel}
+        {adminTools}
       </section>
     );
   }
@@ -240,13 +263,14 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
         )}
       </div>
 
-      <GoogleMedsButton name={conditionName} />
-      {pastePanel}
+      {adminTools}
 
-      <div className="cp-note" role="note">
-        <Info size={22} strokeWidth={2.2} />
-        <p>Treatment options may vary based on individual patient factors. Always refer to current clinical guidelines.</p>
-      </div>
+      {!isAdmin && (
+        <div className="cp-note" role="note">
+          <Info size={22} strokeWidth={2.2} />
+          <p>Treatment options may vary based on individual patient factors. Always refer to current clinical guidelines.</p>
+        </div>
+      )}
     </section>
   );
 }

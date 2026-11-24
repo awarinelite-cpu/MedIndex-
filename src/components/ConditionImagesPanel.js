@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ImageIcon, ClipboardList, Info, Loader2, Trash2, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ImageIcon, ClipboardList, Info, Loader2, Trash2, Upload, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { uploadClipboardImageToImgChest, uploadImageToImgChest } from '../utils/generateDrugImage';
 import PasteZone from './PasteZone';
@@ -131,6 +131,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [notice, setNotice] = useState('');
+  const [toolsOpen, setToolsOpen] = useState(false); // hero: admin tools stay folded behind a small + button
 
   // Nothing to show a regular user, and nothing to do for them.
   if (!isAdmin && list.length === 0) return null;
@@ -219,6 +220,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
   };
 
   const uploading = pasteState === 'uploading';
+  const showTools = !hero || toolsOpen;
 
   return (
     <div
@@ -241,7 +243,22 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
       </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && hero && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setToolsOpen(o => !o)}
+            aria-expanded={toolsOpen}
+            aria-label={toolsOpen ? 'Hide picture tools' : 'Show picture tools'}
+            title={toolsOpen ? 'Hide picture tools' : 'Add or remove pictures'}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-violet-300 bg-white text-violet-700 shadow-sm"
+          >
+            <Plus className="w-4 h-4 transition-transform" style={{ transform: toolsOpen ? 'rotate(45deg)' : 'none' }} />
+          </button>
+        </div>
+      )}
+
+      {isAdmin && showTools && (
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handlePasteButton}
@@ -260,7 +277,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
         </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && showTools && (
         <div className="mt-3">
           <PasteZone onImages={uploadBlobs} disabled={uploading} />
         </div>
@@ -268,7 +285,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
 
       {!hero && list.length > 0 && <div className="mt-3"><ConditionImageGallery images={list} altBase={condition.label} /></div>}
 
-      {isAdmin && list.length > 0 && (
+      {isAdmin && showTools && list.length > 0 && (
         <div className="flex items-center justify-center gap-3 flex-wrap mt-2">
           {list.map((_, i) => (
             <button
@@ -282,7 +299,7 @@ export default function ConditionImagesPanel({ condition, images, onAddUrls, onD
         </div>
       )}
 
-      {isAdmin && (
+      {isAdmin && showTools && (
         <p className="text-[13px] italic text-slate-500 mt-3 flex items-start gap-2">
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>Copy image(s), then press Paste — or pick several photos with Upload Photo(s). You can also click here and press Ctrl+V (long-press → Paste on a phone).</span>
