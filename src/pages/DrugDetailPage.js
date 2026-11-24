@@ -1753,6 +1753,9 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
         <span className="line-clamp-2 text-[13px] sm:text-sm text-drug-text leading-snug mt-0.5">
           {preview || <span className="text-drug-muted">Tap to view</span>}
         </span>
+        {preview && preview.length > 90 && (
+          <span className="block text-[12px] font-semibold text-primary-700 mt-0.5">Read more ›</span>
+        )}
       </span>
     </div>
   );
@@ -1876,6 +1879,16 @@ export default function DrugDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [sheet, setSheet] = useState(null);   // which row/tile sheet is open
   const [aiOpen, setAiOpen] = useState(false); // AI-assisted information card
+  // Compact name + class strip that appears once the hero scrolls out of view.
+  const heroRef = useRef(null);
+  const [showMini, setShowMini] = useState(false);
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => setShowMini(!entry.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [baseDrug?.id]);
 
   // ── Swipe between tabs (left = next tab, right = previous tab) ──────────
   const swipeStartRef = useRef({ x: 0, y: 0 });
@@ -1964,6 +1977,20 @@ export default function DrugDetailPage() {
     pediatric: populationFlag(drug.child_dose),
     geriatric: populationFlag(drug.geriatric_use || drug.elderly_dose),
   };
+
+  // Key-fact badges: only shown when the record's own text says so.
+  const warnText = [drug.precautions, drug.contraindications, drug.adverse_effect, drug.pharmacovigilance, drug.therapeutic_note, drug.overview]
+    .filter(Boolean).join(' ');
+  const hasBoxedWarning = /\b(black[- ]?box|boxed warning)\b/i.test(warnText);
+  const pregCat = (String(drug.pregnancy_lactation || '').match(/pregnancy\s*category\s*[:-]?\s*([A-DX])\b/i) || [])[1];
+  const isAiSource = /\bai\b/i.test(String(drug.source || ''));
+  const adminReviewed = drug.needs_review === false && !!drug.reviewed_by;
+  const provenance = drug.needs_review === true
+    ? { label: 'Pending review', cls: 'bg-amber-100 text-amber-800' }
+    : isAiSource && adminReviewed ? { label: 'AI-generated · admin-reviewed', cls: 'bg-blue-100 text-blue-800' }
+    : isAiSource ? { label: 'AI-generated', cls: 'bg-gray-100 text-gray-700' }
+    : adminReviewed ? { label: 'Admin-reviewed', cls: 'bg-blue-100 text-blue-800' }
+    : null;
 
   const dosageContent = (
     <>
@@ -2195,7 +2222,7 @@ export default function DrugDetailPage() {
       </div>
 
       {/* Hero */}
-      <div className="flex gap-3 mb-3">
+      <div ref={heroRef} className="flex gap-3 mb-3">
         <DrugHeroImage drug={drug} onOpen={() => setSheet('images')} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
@@ -2239,6 +2266,21 @@ export default function DrugDetailPage() {
               )}
             </div>
           )}
+          {(hasBoxedWarning || pregCat || provenance) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {hasBoxedWarning && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                  <AlertTriangle className="w-3 h-3" /> Boxed warning
+                </span>
+              )}
+              {pregCat && (
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pink-100 text-pink-800">Pregnancy cat. {pregCat.toUpperCase()}</span>
+              )}
+              {provenance && (
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${provenance.cls}`}>{provenance.label}</span>
+              )}
+            </div>
+          )}
           {drug.source && isAdmin && (
             <p className="text-[10px] text-drug-muted mt-1 uppercase tracking-wide">Source: {drug.source}</p>
           )}
@@ -2246,7 +2288,21 @@ export default function DrugDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="sticky top-0 md:top-16 z-30 -mx-2 sm:mx-0 px-2 sm:px-0 py-1.5 mb-1.5 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div className="sticky top-0 md:top-16 z-30 -mx-2 sm:mx-0 px-2 sm:px-0 py-1.5 mb-1.5" style={{ background: 'var(--drug-bg)' }}>
+      {showMini && (
+        <div className="flex items-center gap-2 pb-1.5">
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="min-w-0 flex-1 text-left"
+            aria-label="Back to top"
+          >
+            <span className="block text-base font-extrabold leading-tight truncate" style={{ color: NAVY }}>{drug.generic_name}</span>
+            <span className="block text-xs text-drug-muted leading-tight truncate">{getDisplayDrugClass(drug)}</span>
+          </button>
+          <FavouriteHeart item={{ type: 'drug', refId: drug.id, name: drug.generic_name, subtitle: getDisplayDrugClass(drug) }} />
+        </div>
+      )}
       <div className="flex rounded-full border border-primary-100 bg-primary-50/70 p-1 overflow-x-auto shadow-sm" style={{ scrollbarWidth: 'none' }}>
         {TABS.map(tab => (
           <button
