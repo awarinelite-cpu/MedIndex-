@@ -1479,35 +1479,4 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .em-timer-btn.is-ghost { background: rgba(255,255,255,.18); color: #fff; }
 @keyframes em-pulse { from { filter: brightness(1); } to { filter: brightness(1.25); } }
 @media (prefers-reduced-motion: reduce) { .em-timer.is-due { animation: none; } }
-
-/* ── Drug of the Day (Home) ─────────────────────────────────────────── */
-.dotd { margin: 14px 0 6px; padding: 14px; border-radius: 22px; background: var(--mi-surface); border: 1px solid var(--mi-line); box-shadow: 0 10px 22px -18px rgba(21, 101, 216, .6); }
-.dotd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.dotd-tag { font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: #0a8f5a; background: #dcf6ea; padding: 4px 10px; border-radius: 999px; }
-.dark .dotd-tag { background: rgba(34, 201, 130, .16); color: #4fe0a4; }
-.dotd-streak { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; color: #e27a12; }
-.dotd-main { display: flex; align-items: center; gap: 12px; min-height: 44px; color: var(--mi-ink); }
-.dotd-icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; color: #fff; background: linear-gradient(145deg, #22c98a, #0a8f5a); flex: 0 0 auto; }
-.dotd-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.dotd-name { font-size: 19px; font-weight: 800; letter-spacing: -.2px; overflow-wrap: anywhere; }
-.dotd-class { font-size: 12.5px; font-weight: 600; color: var(--mi-muted); }
-.dotd-over { margin: 10px 0 6px; font-size: 14px; line-height: 1.45; color: var(--mi-body); }
-.dotd-facts { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.dotd-facts li { font-size: 13px; line-height: 1.4; color: var(--mi-body); }
-.dotd-facts b { color: var(--mi-ink); }
-.dotd-quiz { border-top: 1px dashed var(--mi-line); padding-top: 12px; }
-.dotd-q { font-size: 14px; color: var(--mi-ink); margin-bottom: 8px; }
-.dotd-opts { display: flex; flex-direction: column; gap: 7px; }
-.dotd-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 8px 14px; text-align: left; font-size: 14px; font-weight: 600; color: var(--mi-ink); background: transparent; border: 1.5px solid var(--mi-line); border-radius: 14px; }
-.dotd-opt:disabled { cursor: default; }
-.dotd-opt.is-right { border-color: #12a05e; background: rgba(18, 160, 94, .12); color: #0a7a47; }
-.dotd-opt.is-wrong { border-color: #d93a3a; background: rgba(217, 58, 58, .1); color: #b42323; }
-.dotd-opt.is-dim { opacity: .55; }
-.dark .dotd-opt.is-right { color: #4fe0a4; }
-.dark .dotd-opt.is-wrong { color: #ff8a8a; }
-.dotd-result { margin-top: 10px; font-size: 13px; font-weight: 700; }
-.dotd-result.ok { color: #0a8f5a; }
-.dotd-result.no { color: #b42323; }
-.dark .dotd-result.ok { color: #4fe0a4; }
-.dark .dotd-result.no { color: #ff8a8a; }
-.dotd-result a { text-decoration: underline; }
+.mi-banner h2 span { overflow-wrap: anywhere; }

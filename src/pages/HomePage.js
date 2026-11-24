@@ -22,7 +22,7 @@ import { useExistingConditionMatch } from '../hooks/useExistingConditionMatch';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { logSearch } from '../utils/logSearch';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
-import DrugOfTheDay from '../components/DrugOfTheDay';
+import { pickDrugOfTheDay } from '../utils/drugOfTheDay';
 
 // ── Explore medical topics: six shortcut cards ────────────────────────────
 const TOPICS = [
@@ -109,13 +109,25 @@ export default function HomePage() {
 
   // Hero carousel: auto-advances every 6s unless the person prefers reduced
   // motion; tapping a dot jumps to that slide and restarts the timer.
+  // Drug of the Day is one of the slides (added once the drug list has loaded).
+  const dotd = useMemo(() => pickDrugOfTheDay(ALL_DRUGS), [ALL_DRUGS]);
+  const slides = useMemo(() => (dotd ? [
+    ...SLIDES,
+    {
+      title: 'Drug of the Day,',
+      accent: dotd.generic_name,
+      body: getDisplayDrugClass(dotd),
+      cta: 'View drug',
+      to: `/drug/${dotd.id}`,
+    },
+  ] : SLIDES), [dotd]);
   const [slide, setSlide] = useState(0);
   useEffect(() => {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
-    const t = setTimeout(() => setSlide(i => (i + 1) % SLIDES.length), 6000);
+    const t = setTimeout(() => setSlide(i => (i + 1) % slides.length), 6000);
     return () => clearTimeout(t);
-  }, [slide]);
-  const current = SLIDES[slide];
+  }, [slide, slides.length]);
+  const current = slides[slide] || slides[0];
 
   // Recently viewed feed: drugs and conditions the person opened, plus drugs
   // and conditions recently added or edited. Newest first, one row per item.
@@ -362,7 +374,7 @@ export default function HomePage() {
           </div>
           <div className="mi-banner-art" aria-hidden="true" style={{ backgroundImage: `url(${PUBLIC}/img/banner-art.webp)` }} />
           <div className="mi-dots" role="tablist" aria-label="Choose highlight">
-            {SLIDES.map((sl, i) => (
+            {slides.map((sl, i) => (
               <button
                 key={sl.to}
                 type="button"
@@ -385,9 +397,6 @@ export default function HomePage() {
           </span>
           <ChevronRight size={22} strokeWidth={2.4} />
         </Link>
-
-        {/* Drug of the Day + daily quiz */}
-        <DrugOfTheDay drugs={ALL_DRUGS} />
 
         {/* Explore medical topics */}
         <div className="mi-sec-head">
