@@ -1484,3 +1484,13 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 @keyframes em-pulse { from { filter: brightness(1); } to { filter: brightness(1.25); } }
 @media (prefers-reduced-motion: reduce) { .em-timer.is-due { animation: none; } }
 .mi-banner h2 span { overflow-wrap: anywhere; }
+
+/* Admin bulk select / delete on the medications list */
+.cp-sel-bar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 4px 0 12px; }
+.cp-sel-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--cp-soft-2); border-radius: 999px; background: var(--cp-soft); color: var(--cp-blue); font-size: 14px; font-weight: 700; cursor: pointer; }
+.cp-sel-btn.is-danger { background: #fee2e2; border-color: #fecaca; color: #b91c1c; }
+.cp-sel-btn:disabled { opacity: .5; cursor: default; }
+.cp-drug-select { cursor: pointer; user-select: none; }
+.cp-drug-select.is-selected { background: var(--cp-soft); }
+.cp-sel-check { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 2px solid var(--cp-blue); border-radius: 7px; background: transparent; color: #fff; }
+.cp-sel-check.is-on { background: var(--cp-blue); }

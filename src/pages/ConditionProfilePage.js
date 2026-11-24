@@ -105,10 +105,17 @@ function DeleteDrugButton({ drug }) {
   );
 }
 
-function DrugRow({ drug, role, inCombination }) {
+// Admin bulk-select state handed down from MedicationsCard: { on, ids:Set, toggle(id) }.
+function SelectBox({ checked }) {
+  return <span className={`cp-sel-check ${checked ? 'is-on' : ''}`} aria-hidden="true">{checked && <Check size={16} strokeWidth={3.2} />}</span>;
+}
+
+function DrugRow({ drug, role, inCombination, sel }) {
   const label = role === 'main' ? 'First-line option' : 'Alternative option';
-  return (
-    <Link to={`/drug/${drug.id}`} className="cp-drug">
+  const selecting = !!sel?.on;
+  const body = (
+    <>
+      {selecting && <SelectBox checked={sel.ids.has(drug.id)} />}
       <DrugThumb drug={drug} />
       <span className="cp-drug-text">
         <span className="cp-drug-name">{drug.generic_name}</span>
@@ -118,27 +125,51 @@ function DrugRow({ drug, role, inCombination }) {
         {label}
         {role === 'main' && inCombination && <span className="cp-tag-extra">(in combinations)</span>}
       </span>
-      <DeleteDrugButton drug={drug} />
-      <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />
-    </Link>
+      {!selecting && <DeleteDrugButton drug={drug} />}
+      {!selecting && <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />}
+    </>
   );
+  if (selecting) {
+    return (
+      <div role="checkbox" aria-checked={sel.ids.has(drug.id)} tabIndex={0}
+        className={`cp-drug cp-drug-select ${sel.ids.has(drug.id) ? 'is-selected' : ''}`}
+        onClick={() => sel.toggle(drug.id)}
+        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); sel.toggle(drug.id); } }}>
+        {body}
+      </div>
+    );
+  }
+  return <Link to={`/drug/${drug.id}`} className="cp-drug">{body}</Link>;
 }
 
-function RegimenRow({ regimen }) {
+function RegimenRow({ regimen, sel }) {
   const parts = (Array.isArray(regimen.combination_components) ? regimen.combination_components : [])
     .map(c => (typeof c === 'string' ? c : c?.name)).filter(Boolean);
-  return (
-    <Link to={`/drug/${regimen.id}`} className="cp-drug">
+  const selecting = !!sel?.on;
+  const body = (
+    <>
+      {selecting && <SelectBox checked={sel.ids.has(regimen.id)} />}
       <span className="cp-thumb cp-thumb-fallback" aria-hidden="true"><Boxes size={22} strokeWidth={2} /></span>
       <span className="cp-drug-text">
         <span className="cp-drug-name">{regimen.generic_name}</span>
         {parts.length > 0 && <span className="cp-drug-sub">{parts.join(' + ')}</span>}
       </span>
       <span className="cp-tag is-alt">Regimen</span>
-      <DeleteDrugButton drug={regimen} />
-      <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />
-    </Link>
+      {!selecting && <DeleteDrugButton drug={regimen} />}
+      {!selecting && <ChevronRight size={22} strokeWidth={2.4} className="cp-drug-go" />}
+    </>
   );
+  if (selecting) {
+    return (
+      <div role="checkbox" aria-checked={sel.ids.has(regimen.id)} tabIndex={0}
+        className={`cp-drug cp-drug-select ${sel.ids.has(regimen.id) ? 'is-selected' : ''}`}
+        onClick={() => sel.toggle(regimen.id)}
+        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); sel.toggle(regimen.id); } }}>
+        {body}
+      </div>
+    );
+  }
+  return <Link to={`/drug/${regimen.id}`} className="cp-drug">{body}</Link>;
 }
 
 // Opens a Google search for the medications used to treat this condition.
@@ -218,8 +249,48 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
   }, [buckets, conditionId]);
 
   const allKeys = [...groups.map(([c]) => c), ...(regimens.length ? [REGIMENS] : [])];
-  const open = openCats || new Set(allKeys.slice(0, 1));
+  // Admin-only bulk select / delete.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [delProgress, setDelProgress] = useState('');
+  const selectable = useMemo(() => {
+    const byId = new Map();
+    groups.forEach(([, items]) => items.forEach(({ drug }) => byId.set(drug.id, drug)));
+    regimens.forEach(r => byId.set(r.id, r));
+    return [...byId.values()].filter(d => !d._seed);
+  }, [groups, regimens]);
+  const sel = isAdmin ? {
+    on: selectMode,
+    ids: selectedIds,
+    toggle: (id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+  } : null;
+  const allSelected = selectable.length > 0 && selectable.every(d => selectedIds.has(d.id));
+  const exitSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
+  const deleteSelected = async () => {
+    const targets = selectable.filter(d => selectedIds.has(d.id));
+    if (!targets.length || deleting) return;
+    if (!window.confirm(`Delete ${targets.length} item${targets.length === 1 ? '' : 's'} from the system?\n\nThis permanently removes ${targets.length === 1 ? 'it' : 'them'} and all their information, and ${targets.length === 1 ? 'it' : 'they'} will disappear from every condition ${targets.length === 1 ? 'it is' : 'they are'} listed under.`)) return;
+    setDeleting(true);
+    const failed = [];
+    for (let i = 0; i < targets.length; i++) {
+      setDelProgress(`Deleting ${i + 1} of ${targets.length}…`);
+      try { await deleteReviewedDrug({ id: targets[i].id }); }
+      catch (err) { failed.push(`${targets[i].generic_name}: ${err.message || err}`); }
+    }
+    setDelProgress('');
+    setDeleting(false);
+    if (failed.length) {
+      window.alert(`${targets.length - failed.length} deleted. ${failed.length} failed:\n\n${failed.slice(0, 5).join('\n')}`);
+      setSelectedIds(new Set(targets.filter(d => failed.some(f => f.startsWith(`${d.generic_name}:`))).map(d => d.id)));
+    } else {
+      exitSelect();
+    }
+  };
+
+  const open = selectMode ? new Set(allKeys) : (openCats || new Set(allKeys.slice(0, 1)));
   const toggle = (key) => {
+    if (selectMode) return; // everything stays open while selecting
     const next = new Set(open);
     if (next.has(key)) next.delete(key); else next.add(key);
     setOpenCats(next);
@@ -245,20 +316,39 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
         </div>
       </div>
 
+      {isAdmin && (
+        <div className="cp-sel-bar">
+          {!selectMode ? (
+            <button type="button" className="cp-sel-btn" onClick={() => setSelectMode(true)}>Select</button>
+          ) : (
+            <>
+              <button type="button" className="cp-sel-btn" disabled={deleting}
+                onClick={() => setSelectedIds(allSelected ? new Set() : new Set(selectable.map(d => d.id)))}>
+                {allSelected ? 'Clear all' : `Select all (${selectable.length})`}
+              </button>
+              <button type="button" className="cp-sel-btn is-danger" disabled={deleting || selectedIds.size === 0} onClick={deleteSelected}>
+                <Trash2 size={15} strokeWidth={2.4} /> {delProgress || `Delete (${selectedIds.size})`}
+              </button>
+              <button type="button" className="cp-sel-btn" disabled={deleting} onClick={exitSelect}>Cancel</button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="cp-cats">
         {groups.map(([cat, items]) => (
           <CategoryGroup key={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}>
             {items.map(({ drug, role, sub }, i) => (
               <React.Fragment key={drug.id}>
                 {sub !== (items[i - 1]?.sub || '') && (sub || items[i - 1]?.sub) && <div className="cp-sub-head">{sub || 'Other'}</div>}
-                <DrugRow drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} />
+                <DrugRow drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} sel={sel} />
               </React.Fragment>
             ))}
           </CategoryGroup>
         ))}
         {regimens.length > 0 && (
           <CategoryGroup title={REGIMENS} count={regimens.length} open={open.has(REGIMENS)} onToggle={() => toggle(REGIMENS)}>
-            {regimens.map(r => <RegimenRow key={r.id} regimen={r} />)}
+            {regimens.map(r => <RegimenRow key={r.id} regimen={r} sel={sel} />)}
           </CategoryGroup>
         )}
       </div>
