@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  ExternalLink, FileText, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
+  ExternalLink, FileText, ListChecks, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
@@ -308,30 +308,34 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
 
   return (
     <section className="cp-card">
-      <div className="cp-card-head">
-        <span className="cp-card-icon"><Pill size={34} strokeWidth={2.4} style={{ transform: 'rotate(-45deg)' }} /></span>
-        <div>
-          <h2 className="cp-card-title cp-card-title-lg">Medications Used for this Condition</h2>
-          <p className="cp-card-sub">Organised by treatment category</p>
+      <div className="cp-meds-hero">
+        <span className="cp-meds-icon" aria-hidden="true"><Pill size={30} strokeWidth={2.2} style={{ transform: 'rotate(-45deg)' }} /></span>
+        <div className="cp-meds-text">
+          <h2 className="cp-meds-title">Medications Used for this Condition</h2>
+          <p className="cp-meds-sub">Organised by treatment category</p>
         </div>
       </div>
 
-      {isAdmin && (
-        <div className="cp-sel-bar">
-          {!selectMode ? (
-            <button type="button" className="cp-sel-btn" onClick={() => setSelectMode(true)}>Select</button>
-          ) : (
-            <>
-              <button type="button" className="cp-sel-btn" disabled={deleting}
-                onClick={() => setSelectedIds(allSelected ? new Set() : new Set(selectable.map(d => d.id)))}>
-                {allSelected ? 'Clear all' : `Select all (${selectable.length})`}
-              </button>
-              <button type="button" className="cp-sel-btn is-danger" disabled={deleting || selectedIds.size === 0} onClick={deleteSelected}>
-                <Trash2 size={15} strokeWidth={2.4} /> {delProgress || `Delete (${selectedIds.size})`}
-              </button>
-              <button type="button" className="cp-sel-btn" disabled={deleting} onClick={exitSelect}>Cancel</button>
-            </>
-          )}
+      <div className="cp-meds-strip">
+        <span className="cp-meds-chip"><i className="cp-dot is-a" /><b>{groups.reduce((n, [, items]) => n + items.length, 0) + regimens.length}</b> medications</span>
+        <span className="cp-meds-chip"><i className="cp-dot is-b" /><b>{groups.length}</b> {groups.length === 1 ? 'category' : 'categories'}</span>
+        {isAdmin && !selectMode && (
+          <button type="button" className="cp-sel-btn is-primary" onClick={() => setSelectMode(true)}>
+            <ListChecks size={16} strokeWidth={2.4} /> Select
+          </button>
+        )}
+      </div>
+
+      {isAdmin && selectMode && (
+        <div className="cp-sel-bar" role="toolbar" aria-label="Bulk actions">
+          <button type="button" className="cp-sel-btn" disabled={deleting}
+            onClick={() => setSelectedIds(allSelected ? new Set() : new Set(selectable.map(d => d.id)))}>
+            <ListChecks size={16} strokeWidth={2.4} /> {allSelected ? 'Clear all' : `Select all (${selectable.length})`}
+          </button>
+          <button type="button" className="cp-sel-btn is-danger" disabled={deleting || selectedIds.size === 0} onClick={deleteSelected}>
+            <Trash2 size={15} strokeWidth={2.4} /> {delProgress || `Delete (${selectedIds.size})`}
+          </button>
+          <button type="button" className="cp-sel-btn is-ghost" disabled={deleting} onClick={exitSelect}>Cancel</button>
         </div>
       )}
 

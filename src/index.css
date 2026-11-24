@@ -1494,3 +1494,28 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .cp-drug-select.is-selected { background: var(--cp-soft); }
 .cp-sel-check { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 2px solid var(--cp-blue); border-radius: 7px; background: transparent; color: #fff; }
 .cp-sel-check.is-on { background: var(--cp-blue); }
+
+/* Medications card: hero header, stat chips, select button */
+.cp-meds-hero { position: relative; display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(135deg, var(--cp-soft) 0%, rgba(220, 232, 251, 0) 85%); border: 1px solid var(--cp-line); }
+.cp-meds-hero::after { content: ''; position: absolute; right: -28px; top: -34px; width: 110px; height: 110px; border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(34, 195, 214, .28), rgba(47, 128, 237, 0) 70%); pointer-events: none; }
+.cp-meds-icon { position: relative; z-index: 1; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 18px; color: #fff;
+  background: linear-gradient(135deg, #0a4a9e 0%, #2f80ed 58%, #22c3d6 100%); box-shadow: 0 10px 20px -8px rgba(10, 74, 158, .65), inset 0 1px 0 rgba(255, 255, 255, .35); }
+.cp-meds-text { position: relative; z-index: 1; min-width: 0; }
+.cp-meds-title { margin: 0; padding: 0; font-size: 19px; font-weight: 800; line-height: 1.2; letter-spacing: -.3px; color: var(--cp-ink); }
+.cp-meds-sub { margin: 4px 0 0; font-size: 14px; font-weight: 500; color: var(--cp-sub); }
+.cp-meds-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 14px; }
+.cp-meds-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 999px; background: var(--cp-card); border: 1px solid var(--cp-line);
+  font-size: 13.5px; font-weight: 600; color: var(--cp-sub); box-shadow: 0 2px 6px -4px rgba(10, 74, 158, .35); }
+.cp-meds-chip b { color: var(--cp-ink); font-weight: 800; }
+.cp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cp-dot.is-a { background: linear-gradient(135deg, #2f80ed, #0a4a9e); }
+.cp-dot.is-b { background: linear-gradient(135deg, #22c3d6, #2f80ed); }
+.cp-meds-strip .cp-sel-btn { margin-left: auto; }
+.cp-sel-btn { transition: transform .12s ease, box-shadow .12s ease; }
+.cp-sel-btn:active:not(:disabled) { transform: scale(.96); }
+.cp-sel-btn.is-primary { border: 0; padding: 9px 16px; color: #fff; background: linear-gradient(135deg, #0a4a9e 0%, #2f80ed 100%); box-shadow: 0 8px 16px -8px rgba(10, 74, 158, .7); }
+.cp-sel-btn.is-ghost { background: transparent; border-color: transparent; color: var(--cp-sub); }
+.cp-sel-bar { align-items: center; justify-content: space-between; gap: 8px; padding: 8px; margin: 0 0 14px; border-radius: 18px; border: 1px solid var(--cp-line);
+  background: linear-gradient(135deg, var(--cp-soft), var(--cp-card)); box-shadow: 0 10px 22px -16px rgba(10, 74, 158, .55); }
