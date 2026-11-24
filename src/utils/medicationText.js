@@ -8,12 +8,20 @@
 const GENERIC = new Set(('options option agents agent drugs drug medications medication medicines medicine steroids inhalers inhaler ' +
   'treatments treatment therapies therapy antibiotics others other classes class types type regimens supplements products ' +
   'formulations combinations immunizations vaccines vaccine symptoms infections infection cough coughing wheezing mucus ' +
-  'examples example etc').split(' '));
+  'examples example etc issues issue problems problem forms form relief control management').split(' '));
 const PLACES = new Set(['china', 'india', 'nigeria', 'japan', 'europe', 'africa', 'asia', 'usa', 'uk', 'us', 'canada', 'germany', 'france', 'brazil', 'russia']);
 const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|failure|cancer|fibrosis|asthma|copd|tuberculosis|tb|pneumonia|lupus|gout|arthritis|pleurisy|sepsis|inflammation|pain|fever|infection|infections|injury|trauma|cough|swelling|edema|effusion|embolism|thrombosis|clots?|stroke|attack)$/i;
 const DRUG_WORD_RE = /\b[A-Za-z]{3,}(?:profen|oxicam|olol|pril|sartan|statin|azole|mycin|cillin|floxacin|cycline|prazole|tidine|dipine|thiazide|sone|solone|olone|formin|gliptin|gliflozin|glutide|parin|xaban|afil|triptan|setron|zolam|azepam|barbital|caine|terol|tropium|navir|vudine)\b|\b(?:naproxen|diclofenac|aspirin|paracetamol|acetaminophen|codeine|morphine|tramadol|colchicine|warfarin|heparin|insulin|metformin|ibuprofen|indomethacin|celecoxib|oxycodone|fentanyl|furosemide|spironolactone|amiodarone|digoxin|atenolol)\b/gi;
 const BAD_START_RE = /^(the|a|an|many|some|these|those|various|several|specific|both|certain|most|each|any|all|this|that|such|your|their)\b/i;
 const CLASS_RE = /(agonists?|antagonists?|anticholinergics?|corticosteroids?|steroids?|antibiotics?|antibacterials?|antifungals?|antivirals?|antitubercular|anti-?tb|drugs?|medications?|medicines?|vaccines?|immunizations?|mucolytics?|bronchodilators?|inhibitors?|blockers?|diuretics?|analgesics?|inhalers?|therapies|therapy|agents?|supplements?|antihistamines?|expectorants?|antitussives?|regimens?|sabas?|labas?|samas?|lamas?|anti[a-z-]+)$/i;
+const CLASS_EXTRA_RE = /(modulators?|relaxants?|spasmodics?|depressants?|sedatives?|anxiolytics?|nitrates?|laxatives?|stimulants?|prokinetics?|antacids?|stabili[sz]ers?|chelators?|binders?|alkaloids?)$/i;
+const isClassLabel = (t) => {
+  const s = String(t || '').trim();
+  const test = x => CLASS_RE.test(x.trim()) || CLASS_EXTRA_RE.test(x.trim());
+  return test(s) || s.split(/\s+or\s+/i).some(test);
+};
+// Inside a "such as ..." list a lone brand-like word (e.g. "Antivert") is a drug; only plural or multi-word labels count as classes.
+const looksLikeClassInList = (t) => isClassLabel(t) && (/\s/.test(t.trim()) || /s$/i.test(t.trim()));
 const MODIFIER_RE = /^(?:(?:short|long|rapid|ultra-long)-acting|oral|inhaled|systemic|intravenous|injectable|topical|medical|newer|older|other|others|more|and|or|etc\.?)\s+/i;
 const TRIGGER_RE = /(?:\bsuch as|\bincluding|\bfor example|\bnamely|\be\.g\.,?|\blike)\s+/gi;
 const STOP_RE = /\s(?:are|is|may|might|can|could|which|that|used|often|who|will|should|must|help|helps|when|during|if|with|for|in|as|to|by|from|on|of|than|also|but|while|because)\s/i;
@@ -129,17 +137,23 @@ export function parseMedicationEntries(text, fallback) {
     if (!body || /\?$/.test(body)) continue;
     const [lead, desc] = splitLeadDesc(body);
     const terms = stripParens(lead).split(/\s*(?:&|\band\b|\/|,)\s*/i).filter(Boolean);
-    const isClass = terms.some(t => CLASS_RE.test(t.trim()));
-    if (isClass) {
+    const isClass = terms.some(t => isClassLabel(t));
+    // A label with a description after it and no usable drug name ("Motility issues: ...") is a group, not a drug.
+    const isLabelOnly = !isClass && !!desc && terms.length > 0 && terms.every(t => !cleanTerm(t));
+    if (isClass || isLabelOnly) {
       sub = lead;
       entries.push({ type: 'sub', text: lead });
-      terms.filter(t => !CLASS_RE.test(t.trim())).forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, true); });
+      terms.filter(t => !isClassLabel(t)).forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, true); });
     } else {
       sub = null;
       terms.forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, false); });
     }
     const nested = !!sub;
-    drugsFromDescription(desc).forEach(n => addDrug(n, nested));
+    let inGroup = nested;
+    drugsFromDescription(desc).forEach(n => {
+      if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); return; }
+      addDrug(n, inGroup);
+    });
   }
   return entries.some(e => e.type === 'drug') ? entries : plain();
 }
