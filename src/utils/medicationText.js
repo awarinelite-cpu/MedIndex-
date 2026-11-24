@@ -150,10 +150,10 @@ export function parseMedicationEntries(text, fallback) {
     }
     const nested = !!sub;
     let inGroup = nested;
-    drugsFromDescription(desc).forEach(n => {
-      if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); return; }
+    for (const n of drugsFromDescription(desc)) {
+      if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); continue; }
       addDrug(n, inGroup);
-    });
+    }
   }
   return entries.some(e => e.type === 'drug') ? entries : plain();
 }
