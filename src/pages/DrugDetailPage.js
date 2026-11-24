@@ -1758,12 +1758,40 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
   );
 }
 
-function PopulationTile({ emoji, label, onClick }) {
+// Conservative caution flag read from the record's own wording. It only ever
+// raises a red/amber dot when the text clearly says so; it never shows "safe".
+const FLAG_AVOID   = /\b(contraindicated|contra-indicated|avoid|do not use|must not|not recommended|not safe|should not be used)\b/i;
+const FLAG_CAUTION = /\b(caution|cautiously|monitor|risk|use only if|only if|reduce[d]? dose|dose adjustment|renal impairment)\b/i;
+function populationFlag(text) {
+  const t = String(text || '');
+  if (!t.trim()) return null;
+  if (FLAG_AVOID.test(t)) return 'avoid';
+  if (FLAG_CAUTION.test(t)) return 'caution';
+  return null;
+}
+const FLAG_META = {
+  avoid:   { color: '#DC2626', label: 'Avoid / contraindicated — open for details' },
+  caution: { color: '#D97706', label: 'Use with caution — open for details' },
+};
+function linesAbout(text, re) {
+  return String(text || '').split(/\n|(?<=[.;])\s+/).filter(l => re.test(l)).join(' ');
+}
+
+function PopulationTile({ emoji, label, onClick, flag }) {
+  const meta = flag ? FLAG_META[flag] : null;
   return (
     <div
       {...tap(onClick)}
-      className="cursor-pointer flex flex-col items-center justify-center gap-1 py-2 rounded-[8px] bg-primary-50 border border-primary-100 hover:bg-primary-100 transition-colors"
+      aria-label={meta ? `${label}: ${meta.label}` : label}
+      className="relative cursor-pointer flex flex-col items-center justify-center gap-1 py-2 rounded-[8px] bg-primary-50 border border-primary-100 hover:bg-primary-100 transition-colors"
     >
+      {meta && (
+        <span
+          title={meta.label}
+          className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-white"
+          style={{ background: meta.color }}
+        />
+      )}
       <span className="text-2xl leading-none">{emoji}</span>
       <span className="text-[13px] sm:text-sm font-semibold text-drug-text">{label}</span>
     </div>
@@ -1928,6 +1956,13 @@ export default function DrugDetailPage() {
       }
     }
     swipeDeltaRef.current = { x: 0, y: 0 };
+  };
+
+  const popFlags = {
+    pregnancy: populationFlag(linesAbout(drug.pregnancy_lactation, /pregnan|fetal|foetal|teratogen/i)),
+    lactation: populationFlag(linesAbout(drug.pregnancy_lactation, /lactat|breast|nursing mother/i)),
+    pediatric: populationFlag(drug.child_dose),
+    geriatric: populationFlag(drug.geriatric_use || drug.elderly_dose),
   };
 
   const dosageContent = (
@@ -2211,11 +2246,12 @@ export default function DrugDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex rounded-full border border-primary-100 bg-primary-50/70 p-1 mb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <div className="sticky top-0 md:top-16 z-30 -mx-2 sm:mx-0 px-2 sm:px-0 py-1.5 mb-1.5 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div className="flex rounded-full border border-primary-100 bg-primary-50/70 p-1 overflow-x-auto shadow-sm" style={{ scrollbarWidth: 'none' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => goToTab(tab.id)}
             className={`flex-1 flex-shrink-0 px-3 py-2 rounded-full text-[13px] sm:text-sm font-semibold whitespace-nowrap transition-colors ${
               activeTab === tab.id ? 'text-white shadow' : 'text-primary-900 hover:bg-primary-100'
             }`}
@@ -2224,6 +2260,7 @@ export default function DrugDetailPage() {
             {tab.label}
           </button>
         ))}
+      </div>
       </div>
 
       {/* Tab Content */}
@@ -2261,11 +2298,18 @@ export default function DrugDetailPage() {
                 <h2 className="text-base sm:text-lg font-extrabold" style={{ color: NAVY }}>Special Populations</h2>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                <PopulationTile emoji="🤰" label="Pregnancy" onClick={() => setSheet('pregnancy')} />
-                <PopulationTile emoji="🤱" label="Lactation" onClick={() => setSheet('lactation')} />
-                <PopulationTile emoji="👶" label="Pediatric" onClick={() => setSheet('pediatric')} />
-                <PopulationTile emoji="👴" label="Geriatric" onClick={() => setSheet('geriatric')} />
+                <PopulationTile emoji="🤰" label="Pregnancy" flag={popFlags.pregnancy} onClick={() => setSheet('pregnancy')} />
+                <PopulationTile emoji="🤱" label="Lactation" flag={popFlags.lactation} onClick={() => setSheet('lactation')} />
+                <PopulationTile emoji="👶" label="Pediatric" flag={popFlags.pediatric} onClick={() => setSheet('pediatric')} />
+                <PopulationTile emoji="👴" label="Geriatric" flag={popFlags.geriatric} onClick={() => setSheet('geriatric')} />
               </div>
+              {Object.values(popFlags).some(Boolean) && (
+                <div className="mt-2 flex items-center gap-3 text-[11px] text-drug-muted">
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#DC2626' }} /> Avoid</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#D97706' }} /> Caution</span>
+                  <span>Based on the record text. No dot does not mean safe.</span>
+                </div>
+              )}
             </div>
 
             <div className="rounded-[10px] border border-primary-200 bg-primary-50/80 overflow-hidden">
