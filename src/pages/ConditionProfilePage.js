@@ -18,6 +18,7 @@ import ConditionImagesPanel from '../components/ConditionImagesPanel';
 import PasteMedicationsPanel from '../components/PasteMedicationsPanel';
 import ConditionGoogleInfo from '../components/ConditionGoogleInfo';
 import { useAuth } from '../context/AuthContext';
+import { recordRecentCondition } from '../hooks/useRecentlyViewed';
 import { deleteReviewedDrug } from '../utils/aiDrugSave';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { groupDrugsByCondition } from '../data/systemConditions';
@@ -468,6 +469,12 @@ export default function ConditionProfilePage() {
     if (!entry) return { main: [], adjunct: [], combination: [] };
     return classifyDrugsByRole(entry.drugs, entry.condition);
   }, [entry]);
+
+  const { user } = useAuth();
+  const foundEntry = !!entry;
+  useEffect(() => {
+    if (foundEntry && systemId && conditionId) recordRecentCondition(systemId, conditionId, user?.uid);
+  }, [foundEntry, systemId, conditionId, user?.uid]);
 
   const info = clinicalInfoByCondition?.[conditionId] || null;
   const systemName = (system?.name || systemId || '').split(' & ')[0];

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -153,8 +153,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
     return dbDrugs.filter(d => Array.isArray(d.condition_tags) && d.condition_tags.includes(localMatch.id));
   }, [dbDrugs, localMatch]);
   const { clinicalInfoByCondition, imagesByCondition } = useConditionClinicalInfo();
-  const [conditionOpen, setConditionOpen] = useState(true);
-  useEffect(() => { setConditionOpen(true); }, [localMatch?.id]);
+  const navigate = useNavigate();
   const [deletingCondition, setDeletingCondition] = useState(false);
   const handleDeleteLocalCondition = async (condition) => {
     if (!window.confirm(`Delete "${condition.label}"? This removes the condition card and unlinks its drugs. This cannot be undone.`)) return;
@@ -361,8 +360,8 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
             viewMode="list"
             classFilter=""
             nameSearch=""
-            isOpen={conditionOpen}
-            onToggle={() => setConditionOpen(o => !o)}
+            isOpen={false}
+            onToggle={() => navigate(`/condition/${localMatch.systemId}/${localMatch.id}`)}
             systemName={localMatch.systemName}
             systemId={localMatch.systemId}
             onDrugRemoved={() => {}}

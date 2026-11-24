@@ -749,9 +749,9 @@ export default function SystemPage() {
   // open condition card and pressing Back lands you right back on it
   // instead of resetting to fully collapsed. Scoped per systemId so
   // switching systems doesn't leak one system's open card into another's.
-  const [openConditionId, setOpenConditionId] = useState(
-    () => sessionStorage.getItem(`system_open_condition_${systemId}`) || null
-  );
+  // Conditions no longer expand inline: tapping one opens its profile page
+  // (/condition/:systemId/:conditionId), so nothing is ever "open" here.
+  const [openConditionId, setOpenConditionId] = useState(null); // eslint-disable-line no-unused-vars
 
   useEffect(() => {
     if (openConditionId) {
@@ -1447,8 +1447,8 @@ export default function SystemPage() {
                   condition={entry.condition}
                   drugs={entry.drugs.filter(d => !removedLinks.has(`${d.id}::${entry.condition.id}`))}
                   viewMode={viewMode}
-                  isOpen={openConditionId === entry.condition.id}
-                  onToggle={() => setOpenConditionId(o => o === entry.condition.id ? null : entry.condition.id)}
+                  isOpen={false}
+                  onToggle={() => navigate(`/condition/${systemId}/${entry.condition.id}`)}
                   systemName={system.name}
                   systemId={systemId}
                   onDrugRemoved={handleDrugRemoved}
