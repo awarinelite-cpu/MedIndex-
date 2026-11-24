@@ -1,6 +1,8 @@
 // src/utils/drugOfTheDay.js
 // One drug per Nigerian calendar day (Africa/Lagos), the same for every user,
 // picked deterministically from the live drug list. Used by the Home carousel.
+// The pick cycles through the whole list, so no drug repeats until every
+// eligible drug has been shown.
 
 import { getDisplayDrugClass } from './drugCategory';
 
@@ -18,24 +20,18 @@ function lagosDay() {
   return Math.floor(Date.UTC(y, m - 1, d) / 86400000);
 }
 
-// Small seeded PRNG so every device gets the same pick on the same day.
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 const clean = (v) => String(v || '').replace(/[#*_`]/g, '').replace(/\s+/g, ' ').trim();
+
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
 
 export function pickDrugOfTheDay(drugs) {
   const pool = (drugs || [])
     .filter(d => d && d.id && d.generic_name && clean(d.overview).length > 20 && getDisplayDrugClass(d))
     .sort((a, b) => a.generic_name.localeCompare(b.generic_name));
   if (!pool.length) return null;
-  return pool[Math.floor(mulberry32(lagosDay())() * pool.length)];
+  // Walk the list with a step that shares no factor with its length: this
+  // visits every drug exactly once per cycle, in a scrambled (not A-Z) order.
+  let step = 7919;
+  while (gcd(step, pool.length) !== 1) step += 2;
+  return pool[(lagosDay() * step) % pool.length];
 }
