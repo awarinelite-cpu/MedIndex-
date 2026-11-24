@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Pill, ChevronRight, Syringe, Stethoscope as StethoIcon,
   PersonStanding, FilePlus2, Calculator,
+  ShieldAlert,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useAuth } from '../context/AuthContext';
@@ -373,6 +374,16 @@ export default function HomePage() {
             ))}
           </div>
         </section>
+
+        {/* Emergency guides: always one tap away, works offline */}
+        <Link to="/emergency" className="em-home-tile">
+          <span className="em-home-icon"><ShieldAlert size={30} strokeWidth={2} /></span>
+          <span className="em-home-text">
+            <span className="em-home-title">Emergency guides</span>
+            <span className="em-home-sub">CPR · Eclampsia · PPH · Malaria · Anaphylaxis</span>
+          </span>
+          <ChevronRight size={22} strokeWidth={2.4} />
+        </Link>
 
         {/* Explore medical topics */}
         <div className="mi-sec-head">

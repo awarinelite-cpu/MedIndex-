@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Heart, Bookmark } from 'lucide-react';
+import { Pill, Search, X, Home, Grid3X3, Download, RefreshCw, FlaskConical, Calculator, LogOut, User, Sun, Moon, Bell, ClipboardList, Heart, Bookmark, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDrugs } from '../hooks/useDrugs';
@@ -9,6 +9,7 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from './IosInstallModal';
 import AiProviderDropdown from './AiProviderDropdown';
 import BackNavButton from './BackNavButton';
+import OfflineBanner from './OfflineBanner';
 import { LogoMark, HomeGlyph } from './dashboard/DashboardArt';
 export default function Layout({ children }) {
   const { user, isAdmin, logout } = useAuth();
@@ -86,6 +87,7 @@ export default function Layout({ children }) {
     { to: '/procedures',  label: 'Procedures',  icon: ClipboardList },
     { to: '/labs',        label: 'Lab Ref',     icon: FlaskConical },
     { to: '/calculators', label: 'Calculators', icon: Calculator   },
+    { to: '/emergency',   label: 'Emergency',   icon: ShieldAlert  },
   ];
   const isActive = (path) => location.pathname === path;
   // The home screen gets the light, branded dashboard header (phones); every
@@ -106,6 +108,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <OfflineBanner />
 
       {/* ── SW Update Toast ──────────────────────────────────────────────── */}
       {showUpdate && (

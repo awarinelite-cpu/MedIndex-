@@ -40,6 +40,9 @@ import MorePage from './pages/MorePage';
 import AiClinicalConsultPage from './pages/AiClinicalConsultPage';
 import AiCreditsPage from './pages/AiCreditsPage';
 import NotInSystemPage from './pages/NotInSystemPage';
+import EmergencyPage from './pages/EmergencyPage';
+import EmergencyDetailPage from './pages/EmergencyDetailPage';
+import OfflinePage from './pages/OfflinePage';
 import AppLockGate from './components/AppLockGate';
 import BackButtonHandler from './components/BackButtonHandler';
 function App() {
@@ -55,6 +58,9 @@ function App() {
 {/* ── Auth pages (public — no login required) ──────────────────── */}
         <Route path="/login" element={<UserAuthPage />} />
         <Route path="/labs" element={<Layout><LabReferencePage /></Layout>} />
+        <Route path="/emergency" element={<Layout><EmergencyPage /></Layout>} />
+        <Route path="/emergency/:id" element={<Layout><EmergencyDetailPage /></Layout>} />
+        <Route path="/offline" element={<Layout><OfflinePage /></Layout>} />
 
         {/* ── User-protected public routes ─────────────────────────────── */}
         <Route path="/" element={

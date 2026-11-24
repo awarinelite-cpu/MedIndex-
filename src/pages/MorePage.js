@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Search, Home, Grid3X3, FlaskConical, Calculator, Download,
-  LogOut, User, UserCircle, Sun, Moon, ChevronRight, Sparkles, Coins, ClipboardList,
+  LogOut, User, UserCircle, Sun, Moon, ChevronRight, Sparkles, Coins, ClipboardList, ShieldAlert, CloudOff,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -18,6 +18,8 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
 
 const NAV_LINKS = [
+  { to: '/emergency',   label: 'Emergency Guides',  icon: ShieldAlert  },
+  { to: '/offline',     label: 'Offline Mode',      icon: CloudOff     },
   { to: '/profile',     label: 'My Profile',        icon: UserCircle   },
   { to: '/',            label: 'Home',              icon: Home         },
   { to: '/browse',      label: 'Browse',            icon: Grid3X3      },

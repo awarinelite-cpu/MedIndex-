@@ -2,7 +2,7 @@
 // Strategy: Network-first for HTML pages (always get latest),
 // Cache-first for static assets (JS/CSS/icons — these have hashed filenames from CRA build)
 
-const CACHE_VERSION = 'medindex-v5';
+const CACHE_VERSION = 'medindex-v6';
 const IMAGE_CACHE    = 'medindex-images-v1'; // long-lived, NOT wiped on deploy — see activate below
 const OFFLINE_URL   = '/offline.html';
 
@@ -109,8 +109,11 @@ self.addEventListener('fetch', event => {
         })
         .catch(async () => {
           // Offline — serve cached page or offline fallback
+          // Any app route (e.g. /emergency, /drug/xyz) is the same SPA shell,
+          // so fall back to the cached shell at '/' before the generic
+          // offline page. Firestore's local cache then supplies the data.
           const cached = await caches.match(event.request);
-          return cached || caches.match(OFFLINE_URL);
+          return cached || (await caches.match('/')) || caches.match(OFFLINE_URL);
         })
     );
     return;
