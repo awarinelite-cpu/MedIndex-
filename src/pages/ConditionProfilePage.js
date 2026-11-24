@@ -91,10 +91,10 @@ function DrugThumb({ drug }) {
   );
 }
 
-function CategoryGroup({ title, count, open, onToggle, onClose, canDoubleTap = true, extra = null, children }) {
+function CategoryGroup({ catKey, title, count, open, onToggle, onClose, canDoubleTap = true, extra = null, children }) {
   const onDoubleTap = useDoubleTapClose(open, onClose || (() => {}), canDoubleTap && !!onClose);
   return (
-    <div className={`cp-cat ${open ? 'is-open' : ''}`} onClickCapture={onDoubleTap}>
+    <div className={`cp-cat ${open ? 'is-open' : ''}`} data-cat-key={catKey} onClickCapture={onDoubleTap}>
       <button type="button" className="cp-cat-head" onClick={onToggle} aria-expanded={open}>
         <span className="cp-cat-icon">{categoryIcon(title)}</span>
         <span className="cp-cat-title">{title}</span>
@@ -326,6 +326,25 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
     setOpenCats(next);
   };
 
+  // Tapping anywhere outside an open dropdown closes it. Uses click (not
+  // pointerdown) so scrolling with a finger does not close anything. A tap
+  // inside a dropdown only keeps that one open.
+  const anyOpen = !!openCats && openCats.size > 0;
+  useEffect(() => {
+    if (!anyOpen || selectMode) return undefined;
+    const onClick = (e) => {
+      const inside = e.target.closest ? e.target.closest('.cp-cat[data-cat-key]') : null;
+      const keep = inside ? inside.getAttribute('data-cat-key') : null;
+      setOpenCats(prev => {
+        if (!prev || prev.size === 0) return prev;
+        const next = new Set([...prev].filter(k => k === keep));
+        return next.size === prev.size ? prev : next;
+      });
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, [anyOpen, selectMode]);
+
   // Small select icon, shown directly below the first category header.
   const selectIcon = isAdmin && !selectMode ? (
     <div className="cp-sel-icon-row">
@@ -374,7 +393,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
 
       <div className="cp-cats">
         {groups.map(([cat, items], gi) => (
-          <CategoryGroup key={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}
+          <CategoryGroup key={cat} catKey={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}
             onClose={() => closeCat(cat)} canDoubleTap={!selectMode} extra={gi === 0 ? selectIcon : null}>
             {items.map(({ drug, role, sub }, i) => (
               <React.Fragment key={drug.id}>
@@ -385,7 +404,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
           </CategoryGroup>
         ))}
         {regimens.length > 0 && (
-          <CategoryGroup title={REGIMENS} count={regimens.length} open={open.has(REGIMENS)} onToggle={() => toggle(REGIMENS)}
+          <CategoryGroup catKey={REGIMENS} title={REGIMENS} count={regimens.length} open={open.has(REGIMENS)} onToggle={() => toggle(REGIMENS)}
             onClose={() => closeCat(REGIMENS)} canDoubleTap={!selectMode} extra={groups.length === 0 ? selectIcon : null}>
             {regimens.map(r => <RegimenRow key={r.id} regimen={r} sel={sel} />)}
           </CategoryGroup>
