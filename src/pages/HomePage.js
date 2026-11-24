@@ -22,6 +22,7 @@ import { useExistingConditionMatch } from '../hooks/useExistingConditionMatch';
 import AddToFavoritesHeart from '../components/AddToFavoritesHeart';
 import { logSearch } from '../utils/logSearch';
 import ConditionThumb, { ORGAN_THUMBS } from '../components/ConditionThumb';
+import DrugOfTheDay from '../components/DrugOfTheDay';
 
 // ── Explore medical topics: six shortcut cards ────────────────────────────
 const TOPICS = [
@@ -384,6 +385,9 @@ export default function HomePage() {
           </span>
           <ChevronRight size={22} strokeWidth={2.4} />
         </Link>
+
+        {/* Drug of the Day + daily quiz */}
+        <DrugOfTheDay drugs={ALL_DRUGS} />
 
         {/* Explore medical topics */}
         <div className="mi-sec-head">
