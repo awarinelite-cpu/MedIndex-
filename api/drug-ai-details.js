@@ -746,6 +746,12 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
   let geminiRes;
   let attempts = 0;
   const MAX_RETRIES = 3;
+  // Free-tier fallback: Google Search grounding is a paid-tier feature on newer
+  // Gemini models, so a free key can get 400/403/429 on the tool. When that
+  // happens we retry ONCE immediately without the tool, handing the model
+  // openFDA/RxNorm reference data instead. Never used when grounding works.
+  let withSearch = true;
+  let fallbackPrompt = null;
 
   while (attempts <= MAX_RETRIES) {
     try {
@@ -758,7 +764,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
             'x-goog-api-key': apiKey,
           },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            contents: [{ role: 'user', parts: [{ text: withSearch ? prompt : fallbackPrompt }] }],
             generationConfig: { maxOutputTokens: mode === 'classify_condition' ? 700 : mode === 'condition_insight' ? 3200 : mode === 'condition_clinical_info' ? 6000 : mode === 'condition' ? 2000 : mode === 'clinical_plan' ? 5500 : (mode === 'class' || mode === 'system_conditions') ? 4000 : mode === 'brands' ? 500 : mode === 'procedure_suggestions' ? 400 : (mode === 'strength' || mode === 'pronunciation') ? 150 : mode === 'procedure' ? 4000 : mode === 'procedure_insight' ? 2200 : mode === 'procedure_categories' ? 700 : mode === 'consult' ? 900 : 4000, ...(mode === 'clinical_plan' ? { temperature: 0.15 } : {}) },
             // Google Search grounding — attached for every mode, including
             // classify_condition and clinical_plan as of 2026-08-22.
@@ -775,7 +781,7 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
             // clinical_plan output citing or reflecting non-formulary
             // dosing sources, this is why — consider reverting for this
             // mode specifically if that becomes a problem.
-            tools: [{ google_search: {} }],
+            ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
           }),
         }
       );
@@ -784,6 +790,19 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    if (withSearch && [400, 403, 429].includes(geminiRes.status)) {
+      console.warn('Gemini grounding refused (status', geminiRes.status, ') - retrying without Google Search.');
+      let ctx = '';
+      if (mode === 'drug' && genericName) {
+        try { ctx = await fetchExternalDrugContext(genericName); } catch {}
+      }
+      fallbackPrompt = ctx
+        ? `${prompt}\n\nVerified external reference data, fetched live from openFDA and RxNorm for this exact drug (Google Search is unavailable for this request, so rely on this and be conservative; where it does not cover something, write "Not well established / consult current prescribing information" instead of guessing):\n${ctx}`
+        : `${prompt}\n\nNote: Google Search is unavailable for this request. Be conservative: where you are not confident, write "Not well established / consult current prescribing information" instead of guessing.`;
+      withSearch = false;
+      continue;
     }
 
     if (geminiRes.status === 429 && attempts < MAX_RETRIES) {
@@ -865,7 +884,11 @@ Be precise, clinically accurate, and thorough within each section. Do not pad wi
   });
 
   return new Response(stream, {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' },
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Grounding': withSearch ? 'google-search' : 'off',
+    },
   });
 }
 
