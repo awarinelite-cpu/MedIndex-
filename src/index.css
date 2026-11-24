@@ -1014,6 +1014,10 @@ a[class*="bg-"][class*="px-"][class*="rounded"]:active {
 .cp-cat-head > svg:last-child { width: 20px; height: 20px; margin-left: auto; color: var(--cp-blue); }
 .dark .cp-cat-head > svg:last-child { color: #6fa8ff; }
 .cp-cat-body { background: var(--cp-card); }
+.cp-tools-body { padding: 14px 16px 16px; box-sizing: border-box; overflow-x: hidden; }
+.cp-tools-body .cp-paste { margin-top: 14px; }
+.cp-tools-body .cp-paste-list li { flex-wrap: wrap; }
+.cp-tools-body .cp-paste-st { flex-shrink: 1; min-width: 0; }
 
 .cp-drug { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--cp-line); color: var(--cp-ink); text-decoration: none; }
 .cp-cat-body .cp-drug:first-child { border-top: 0; }

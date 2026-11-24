@@ -166,7 +166,7 @@ function MedsToolsDropdown({ conditionId, conditionName }) {
         {open ? <ChevronUp size={22} strokeWidth={2.6} /> : <ChevronDown size={22} strokeWidth={2.6} />}
       </button>
       {open && (
-        <div className="cp-cat-body">
+        <div className="cp-cat-body cp-tools-body">
           <GoogleMedsButton name={conditionName} />
           <PasteMedicationsPanel conditionId={conditionId} conditionName={conditionName} />
           <div className="cp-note" role="note">
