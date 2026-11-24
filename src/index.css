@@ -1519,3 +1519,23 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .cp-sel-btn.is-ghost { background: transparent; border-color: transparent; color: var(--cp-sub); }
 .cp-sel-bar { align-items: center; justify-content: space-between; gap: 8px; padding: 8px; margin: 0 0 14px; border-radius: 18px; border: 1px solid var(--cp-line);
   background: linear-gradient(135deg, var(--cp-soft), var(--cp-card)); box-shadow: 0 10px 22px -16px rgba(10, 74, 158, .55); }
+
+/* About this Condition: warm amber card so it stands apart from the blue buttons and cards */
+.cp-screen .cp-card.cp-about {
+  --cp-ink: #4a2a05; --cp-blue: #b45309; --cp-sub: #8a5a1f;
+  background: linear-gradient(135deg, #fff8e8 0%, #ffecc7 100%) !important;
+  border: 1px solid #f3cf86 !important; border-left: 6px solid #f59e0b !important;
+  box-shadow: 0 10px 22px -14px rgba(180, 83, 9, .55) !important;
+}
+.cp-screen .cp-card.cp-about .cp-card-icon { color: #d97706; }
+.cp-screen .cp-card.cp-about .cp-card-title { color: #7c2d12; }
+.cp-screen .cp-card.cp-about .cp-about-chev { color: #b45309; }
+.cp-screen .cp-card.cp-about .cp-about-text, .cp-screen .cp-card.cp-about .cp-about-text * { color: #4a2a05; }
+.dark .cp-screen .cp-card.cp-about {
+  --cp-ink: #fde9c4; --cp-blue: #fbbf24; --cp-sub: #e2b872;
+  background: linear-gradient(135deg, #2b1d0a 0%, #3a2710 100%) !important;
+  border-color: #6b4a14 !important; border-left-color: #f59e0b !important;
+}
+.dark .cp-screen .cp-card.cp-about .cp-card-icon, .dark .cp-screen .cp-card.cp-about .cp-about-chev { color: #fbbf24; }
+.dark .cp-screen .cp-card.cp-about .cp-card-title { color: #fde9c4; }
+.dark .cp-screen .cp-card.cp-about .cp-about-text, .dark .cp-screen .cp-card.cp-about .cp-about-text * { color: #fde9c4; }
