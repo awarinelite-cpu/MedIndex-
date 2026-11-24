@@ -330,12 +330,12 @@ export default function Layout({ children }) {
       </header>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <main className={isHome ? '' : 'flex-1 pb-16 md:pb-0 mi-page'}>
+      <main className={isHome ? '' : 'flex-1 mi-page'}>
         {children}
       </main>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
-      <footer className="bg-white border-t border-drug-border py-6 pb-20 md:pb-6">
+      <footer className="bg-white border-t border-drug-border py-6 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-drug-muted">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Pill className="w-4 h-4" />

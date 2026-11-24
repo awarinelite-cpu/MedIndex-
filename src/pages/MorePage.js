@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { TEXT_SIZES, getTextSize, setTextSize } from '../utils/textSize';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import IosInstallModal from '../components/IosInstallModal';
 
@@ -30,6 +31,7 @@ const NAV_LINKS = [
 export default function MorePage() {
   const { user, isAdmin, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const [textSize, setTextSizeState] = useState(getTextSize());
   const {
     showInstall, isInstalled, platform, handleInstall,
     showIosInstructions, closeIosInstructions,
@@ -100,6 +102,25 @@ export default function MorePage() {
         {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         {isDark ? 'Light mode' : 'Dark mode'}
       </button>
+
+      <div className="mb-4 px-4 py-3 rounded-xl bg-drug-bg border border-drug-border">
+        <p className="text-sm font-semibold text-drug-text mb-2">Text size</p>
+        <div className="grid grid-cols-3 gap-2" role="group" aria-label="Text size">
+          {TEXT_SIZES.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              aria-pressed={textSize === s.id}
+              onClick={() => { setTextSize(s.id); setTextSizeState(s.id); }}
+              className={`min-h-[44px] rounded-lg border text-sm font-semibold transition-colors ${
+                textSize === s.id ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-drug-text border-drug-border'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {showInstall && !isInstalled && (
         <button

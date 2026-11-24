@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import './index.css';
 import App from './App';
+import { applyTextSize } from './utils/textSize';
+
+applyTextSize();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

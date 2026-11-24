@@ -327,12 +327,12 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
 
   return (
     <>
-    <div className="rounded-[10px] border border-violet-200 bg-violet-50/60 overflow-hidden mt-4">
+    <div className="rounded-[10px] border border-primary-200 bg-primary-50/60 overflow-hidden mt-4">
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
         className="w-full flex items-center gap-3 px-3 py-3 text-left">
-        <ClipboardPaste className="w-6 h-6 text-violet-600" />
-        <span className="flex-1 text-base sm:text-lg font-extrabold text-violet-900">Add {tab.label.toLowerCase()} information from Google</span>
-        <ChevronDown className={`w-5 h-5 text-violet-700 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ClipboardPaste className="w-6 h-6 text-primary-600" />
+        <span className="flex-1 text-base sm:text-lg font-extrabold text-primary-900">Add {tab.label.toLowerCase()} information from Google</span>
+        <ChevronDown className={`w-5 h-5 text-primary-700 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="px-3 pb-3 space-y-3">
@@ -341,11 +341,11 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={pasteFromClipboard}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-400 text-violet-700 font-semibold text-sm">
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-primary-400 text-primary-700 font-semibold text-sm">
               <ClipboardPaste className="w-4 h-4" /> Paste from Clipboard
             </button>
             <button type="button" onClick={() => fileRef.current?.click()}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-400 text-violet-700 font-semibold text-sm">
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-primary-400 text-primary-700 font-semibold text-sm">
               <Upload className="w-4 h-4" /> Upload CSV
             </button>
             <button type="button" onClick={downloadTemplate}
@@ -356,15 +356,15 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
           </div>
           <textarea value={text} onChange={e => preview(e.target.value)} onPaste={auto.arm} rows={5}
             placeholder={'generic_name,overview,adult_dose,...\nEpinephrine,"Overview text","Dose text",...'}
-            className="w-full rounded-lg border border-violet-200 bg-white p-2 text-sm font-mono" />
+            className="w-full rounded-lg border border-primary-200 bg-white p-2 text-sm font-mono" />
           {error && <p className="text-xs text-red-600">{error}</p>}
           {parsed && (
-            <div className="rounded-lg bg-white border border-violet-200 p-2 text-xs space-y-1">
-              <p className="font-semibold text-violet-900">Preview — {Object.keys(parsed.updates).length} field(s) will be saved to {drug.generic_name}:</p>
+            <div className="rounded-lg bg-white border border-primary-200 p-2 text-xs space-y-1">
+              <p className="font-semibold text-primary-900">Preview — {Object.keys(parsed.updates).length} field(s) will be saved to {drug.generic_name}:</p>
               <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                 {Object.entries(parsed.updates).map(([k, v]) => (
-                  <div key={k} className="rounded-md border border-violet-100 bg-violet-50/50 p-2">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-violet-700">{k.replace(/_/g, ' ')}</p>
+                  <div key={k} className="rounded-md border border-primary-100 bg-primary-50/50 p-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-primary-700">{k.replace(/_/g, ' ')}</p>
                     <p className="text-sm text-drug-text whitespace-pre-line break-words">{v}</p>
                   </div>
                 ))}
@@ -376,7 +376,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
           {state === 'saved' && <p className="text-sm font-semibold text-green-700">Saved to this drug.</p>}
           <div className="flex gap-2">
             <button type="button" onClick={save} disabled={!parsed || state === 'saving'}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-violet-600 text-white font-semibold text-sm disabled:opacity-50">
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold text-sm disabled:opacity-50">
               {state === 'saving' ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Save className="w-4 h-4" /> Save to this drug</>}
             </button>
             {(text || parsed) && (
@@ -389,7 +389,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
     </div>
     <div className="mt-3 mb-4">
       <a href={googleDrugInfoUrl(drug.generic_name || '', tabId, drug.drug_class || '', drug.brand_names || '', buildKnownDrugData(drug, 250, 2500, tabId === 'overview' ? ['overview'] : []))} target="_blank" rel="noopener noreferrer"
-        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-violet-600 text-white font-semibold text-sm">
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-full bg-primary-600 text-white font-semibold text-sm">
         <Search className="w-4 h-4" /> Get {drug.generic_name || 'drug'} {tab.label.toLowerCase()} on Google <ExternalLink className="w-4 h-4" />
       </a>
       <p className="mt-2 text-xs text-drug-muted">

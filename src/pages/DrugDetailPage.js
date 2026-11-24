@@ -730,7 +730,7 @@ function DrugImageGallery({ images, altBase }) {
           />
         ))}
       </div>
-      <p className="text-[11px] text-drug-muted text-center mt-1">
+      <p className="text-[0.6875rem] text-drug-muted text-center mt-1">
         Swipe to see more — {activeIndex + 1} of {images.length}
       </p>
     </div>
@@ -1078,7 +1078,7 @@ function DrugImageCard({ drug }) {
                 key={img.url + i}
                 onClick={() => handleDeleteImage(i)}
                 disabled={deleteState === 'deleting'}
-                className="inline-flex items-center gap-1 text-[11px] text-red-600 hover:text-red-800 disabled:opacity-60"
+                className="inline-flex items-center gap-1 text-[0.6875rem] text-red-600 hover:text-red-800 disabled:opacity-60"
                 title={`Remove picture ${i + 1}`}
               >
                 <Trash2 className="w-3 h-3" /> Remove #{i + 1}
@@ -1549,7 +1549,7 @@ function AddToListButton({ drug, bar = false }) {
       <button
         onClick={handleOpen}
         className={bar
-          ? 'flex items-center gap-1.5 px-4 py-2 rounded-full border border-white/70 text-white font-semibold text-sm hover:bg-white/10 transition-colors whitespace-nowrap'
+          ? 'flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-full border border-white/70 text-white font-semibold text-sm hover:bg-white/10 transition-colors whitespace-nowrap'
           : 'flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-300 bg-primary-50 text-primary-700 font-semibold text-sm hover:bg-primary-100 transition-colors'}
       >
         {bar ? <Plus className="w-4 h-4" /> : <ClipboardList className="w-4 h-4" />} Add to List
@@ -1652,7 +1652,7 @@ function ShareDrugButton({ drug, bar = false }) {
       disabled={state === 'working'}
       title="Share as PDF"
       className={bar
-        ? 'p-2.5 rounded-full text-white hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0'
+        ? 'min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full text-white hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0'
         : 'p-2.5 rounded-lg border border-drug-border bg-white hover:bg-gray-50 text-drug-muted hover:text-primary-600 transition-colors disabled:opacity-50 flex-shrink-0'}
     >
       {state === 'working'
@@ -1726,7 +1726,7 @@ function DrugHeroImage({ drug, onOpen }) {
       ) : (
         <div className="flex flex-col items-center gap-1 text-primary-400">
           <ImageIcon className="w-8 h-8" />
-          <span className="text-[11px] font-semibold">Add image</span>
+          <span className="text-[0.6875rem] font-semibold">Add image</span>
         </div>
       )}
       {images.length > 1 && (
@@ -1750,11 +1750,11 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
       <Icon className="w-7 h-7 mt-0.5 flex-shrink-0" style={{ color }} />
       <span className="min-w-0 flex-1">
         <span className="block text-base sm:text-lg font-extrabold leading-tight" style={{ color: NAVY }}>{title}</span>
-        <span className="line-clamp-2 text-[13px] sm:text-sm text-drug-text leading-snug mt-0.5">
+        <span className="line-clamp-2 text-[0.8125rem] sm:text-sm text-drug-text leading-snug mt-0.5">
           {preview || <span className="text-drug-muted">Tap to view</span>}
         </span>
         {preview && preview.length > 90 && (
-          <span className="block text-[12px] font-semibold text-primary-700 mt-0.5">Read more ›</span>
+          <span className="block text-[0.75rem] font-semibold text-primary-700 mt-0.5">Read more ›</span>
         )}
       </span>
     </div>
@@ -1796,7 +1796,7 @@ function PopulationTile({ emoji, label, onClick, flag }) {
         />
       )}
       <span className="text-2xl leading-none">{emoji}</span>
-      <span className="text-[13px] sm:text-sm font-semibold text-drug-text">{label}</span>
+      <span className="text-[0.8125rem] sm:text-sm font-semibold text-drug-text">{label}</span>
     </div>
   );
 }
@@ -1865,7 +1865,7 @@ function SubSection({ title, danger, children }) {
 export default function DrugDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { drugs, invalidateCache } = useDrugs();
+  const { drugs, loading: drugsLoading, invalidateCache } = useDrugs();
   const { isAdmin, user } = useAuth();
   const baseDrug = useMemo(() => drugs.find(d => d.id === id) || null, [drugs, id]);
   // Feed the home dashboard's "Recently Viewed" list once the drug has loaded.
@@ -1903,6 +1903,26 @@ export default function DrugDetailPage() {
     invalidateCache(); // next full load pulls the saved fields from Firestore
   };
 
+
+  if (!drug && drugsLoading) {
+    return (
+      <div className="max-w-3xl lg:max-w-6xl mx-auto px-2 sm:px-6 py-3 animate-pulse" aria-busy="true" aria-label="Loading drug">
+        <div className="h-12 rounded-[10px] mb-3" style={{ background: NAVY, opacity: 0.85 }} />
+        <div className="flex gap-3 mb-3">
+          <div className="w-28 h-28 rounded-xl bg-gray-200" />
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="h-7 w-3/4 rounded bg-gray-200" />
+            <div className="h-4 w-1/2 rounded bg-gray-200" />
+            <div className="h-4 w-2/3 rounded bg-gray-200" />
+          </div>
+        </div>
+        <div className="h-11 rounded-full bg-gray-200 mb-3" />
+        <div className="space-y-2.5">
+          {[0, 1, 2, 3, 4].map(i => <div key={i} className="h-16 rounded-[10px] bg-gray-200" />)}
+        </div>
+      </div>
+    );
+  }
 
   if (!drug) {
     return (
@@ -2269,20 +2289,24 @@ export default function DrugDetailPage() {
           {(hasBoxedWarning || pregCat || provenance) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {hasBoxedWarning && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                <span className="inline-flex items-center gap-1 text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                   <AlertTriangle className="w-3 h-3" /> Boxed warning
                 </span>
               )}
               {pregCat && (
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pink-100 text-pink-800">Pregnancy cat. {pregCat.toUpperCase()}</span>
+                <span className={`text-[0.6875rem] font-bold px-2 py-0.5 rounded-full ${
+                  pregCat.toUpperCase() === 'X' ? 'bg-red-100 text-red-700'
+                  : pregCat.toUpperCase() === 'D' ? 'bg-amber-100 text-amber-800'
+                  : 'bg-blue-100 text-blue-800'
+                }`}>Pregnancy cat. {pregCat.toUpperCase()}</span>
               )}
               {provenance && (
-                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${provenance.cls}`}>{provenance.label}</span>
+                <span className={`text-[0.6875rem] font-bold px-2 py-0.5 rounded-full ${provenance.cls}`}>{provenance.label}</span>
               )}
             </div>
           )}
           {drug.source && isAdmin && (
-            <p className="text-[10px] text-drug-muted mt-1 uppercase tracking-wide">Source: {drug.source}</p>
+            <p className="text-[0.625rem] text-drug-muted mt-1 uppercase tracking-wide">Source: {drug.source}</p>
           )}
         </div>
       </div>
@@ -2308,7 +2332,7 @@ export default function DrugDetailPage() {
           <button
             key={tab.id}
             onClick={() => goToTab(tab.id)}
-            className={`flex-1 flex-shrink-0 px-3 py-2 rounded-full text-[13px] sm:text-sm font-semibold whitespace-nowrap transition-colors ${
+            className={`flex-1 flex-shrink-0 min-h-[44px] px-3 py-2 rounded-full text-[0.8125rem] sm:text-sm font-semibold whitespace-nowrap transition-colors ${
               activeTab === tab.id ? 'text-white shadow' : 'text-primary-900 hover:bg-primary-100'
             }`}
             style={activeTab === tab.id ? { background: NAVY } : undefined}
@@ -2360,7 +2384,7 @@ export default function DrugDetailPage() {
                 <PopulationTile emoji="👴" label="Geriatric" flag={popFlags.geriatric} onClick={() => setSheet('geriatric')} />
               </div>
               {Object.values(popFlags).some(Boolean) && (
-                <div className="mt-2 flex items-center gap-3 text-[11px] text-drug-muted">
+                <div className="mt-2 flex items-center gap-3 text-[0.6875rem] text-drug-muted">
                   <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#DC2626' }} /> Avoid</span>
                   <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#D97706' }} /> Caution</span>
                   <span>Based on the record text. No dot does not mean safe.</span>
@@ -2495,7 +2519,7 @@ export default function DrugDetailPage() {
                     <li key={c.id} className="flex items-center justify-between gap-2 text-drug-text">
                       <span className="font-medium">{c.label}</span>
                       {c.role && (
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                        <span className={`text-[0.6875rem] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                           c.role === 'main' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                         }`}>
                           {c.role === 'main' ? 'Main indicated' : 'Adjunct'}
