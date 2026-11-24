@@ -56,6 +56,26 @@ function categoryIcon(title) {
   }
 }
 
+// Double-tap (two quick taps/clicks) anywhere inside an element closes it.
+// Use as onClickCapture. The window only starts when the element was open at
+// the first tap; the second tap is swallowed so a header button cannot re-open it.
+function useDoubleTapClose(isOpen, onClose, enabled = true) {
+  const last = useRef(0);
+  return (e) => {
+    if (!enabled) { last.current = 0; return; }
+    const now = Date.now();
+    if (last.current && now - last.current < 350) {
+      last.current = 0;
+      e.preventDefault();
+      e.stopPropagation();
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+      onClose();
+      return;
+    }
+    last.current = isOpen ? now : 0;
+  };
+}
+
 const sentenceCase = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 function DrugThumb({ drug }) {
@@ -70,15 +90,17 @@ function DrugThumb({ drug }) {
   );
 }
 
-function CategoryGroup({ title, count, open, onToggle, children }) {
+function CategoryGroup({ title, count, open, onToggle, onClose, canDoubleTap = true, extra = null, children }) {
+  const onDoubleTap = useDoubleTapClose(open, onClose || (() => {}), canDoubleTap && !!onClose);
   return (
-    <div className={`cp-cat ${open ? 'is-open' : ''}`}>
+    <div className={`cp-cat ${open ? 'is-open' : ''}`} onClickCapture={onDoubleTap}>
       <button type="button" className="cp-cat-head" onClick={onToggle} aria-expanded={open}>
         <span className="cp-cat-icon">{categoryIcon(title)}</span>
         <span className="cp-cat-title">{title}</span>
         <span className="cp-cat-count">{count}</span>
         {open ? <ChevronUp size={22} strokeWidth={2.6} /> : <ChevronDown size={22} strokeWidth={2.6} />}
       </button>
+      {extra}
       {open && <div className="cp-cat-body">{children}</div>}
     </div>
   );
@@ -288,13 +310,29 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
     }
   };
 
-  const open = selectMode ? new Set(allKeys) : (openCats || new Set(allKeys.slice(0, 1)));
+  // Every dropdown starts closed until it is tapped.
+  const open = selectMode ? new Set(allKeys) : (openCats || new Set());
   const toggle = (key) => {
     if (selectMode) return; // everything stays open while selecting
     const next = new Set(open);
     if (next.has(key)) next.delete(key); else next.add(key);
     setOpenCats(next);
   };
+  const closeCat = (key) => {
+    if (selectMode) return;
+    const next = new Set(open);
+    next.delete(key);
+    setOpenCats(next);
+  };
+
+  // Small select icon, shown directly below the first category header.
+  const selectIcon = isAdmin && !selectMode ? (
+    <div className="cp-sel-icon-row">
+      <button type="button" className="cp-sel-icon" onClick={() => setSelectMode(true)} aria-label="Select medications" title="Select">
+        <ListChecks size={16} strokeWidth={2.4} />
+      </button>
+    </div>
+  ) : null;
 
   if (allKeys.length === 0) {
     return (
@@ -314,16 +352,10 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
           <h2 className="cp-meds-title">Medications Used for this Condition</h2>
           <p className="cp-meds-sub">Organised by treatment category</p>
         </div>
-      </div>
-
-      <div className="cp-meds-strip">
-        <span className="cp-meds-chip"><i className="cp-dot is-a" /><b>{groups.reduce((n, [, items]) => n + items.length, 0) + regimens.length}</b> medications</span>
-        <span className="cp-meds-chip"><i className="cp-dot is-b" /><b>{groups.length}</b> {groups.length === 1 ? 'category' : 'categories'}</span>
-        {isAdmin && !selectMode && (
-          <button type="button" className="cp-sel-btn is-primary" onClick={() => setSelectMode(true)}>
-            <ListChecks size={16} strokeWidth={2.4} /> Select
-          </button>
-        )}
+        <div className="cp-meds-strip">
+          <span className="cp-meds-chip"><i className="cp-dot is-a" /><b>{groups.reduce((n, [, items]) => n + items.length, 0) + regimens.length}</b> medications</span>
+          <span className="cp-meds-chip"><i className="cp-dot is-b" /><b>{groups.length}</b> {groups.length === 1 ? 'category' : 'categories'}</span>
+        </div>
       </div>
 
       {isAdmin && selectMode && (
@@ -340,8 +372,9 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       )}
 
       <div className="cp-cats">
-        {groups.map(([cat, items]) => (
-          <CategoryGroup key={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}>
+        {groups.map(([cat, items], gi) => (
+          <CategoryGroup key={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}
+            onClose={() => closeCat(cat)} canDoubleTap={!selectMode} extra={gi === 0 ? selectIcon : null}>
             {items.map(({ drug, role, sub }, i) => (
               <React.Fragment key={drug.id}>
                 {sub !== (items[i - 1]?.sub || '') && (sub || items[i - 1]?.sub) && <div className="cp-sub-head">{sub || 'Other'}</div>}
@@ -351,7 +384,8 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
           </CategoryGroup>
         ))}
         {regimens.length > 0 && (
-          <CategoryGroup title={REGIMENS} count={regimens.length} open={open.has(REGIMENS)} onToggle={() => toggle(REGIMENS)}>
+          <CategoryGroup title={REGIMENS} count={regimens.length} open={open.has(REGIMENS)} onToggle={() => toggle(REGIMENS)}
+            onClose={() => closeCat(REGIMENS)} canDoubleTap={!selectMode} extra={groups.length === 0 ? selectIcon : null}>
             {regimens.map(r => <RegimenRow key={r.id} regimen={r} sel={sel} />)}
           </CategoryGroup>
         )}
@@ -400,6 +434,7 @@ export default function ConditionProfilePage() {
 
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutRef = useRef(null);
+  const aboutDoubleTap = useDoubleTapClose(aboutOpen, () => setAboutOpen(false));
 
   // Tapping anywhere outside the About card closes it. Uses click, not
   // pointerdown, so scrolling with a finger on the page does not close it.
@@ -489,7 +524,7 @@ export default function ConditionProfilePage() {
   } else {
     content = (
       <>
-        <section className="cp-card cp-about" ref={aboutRef}>
+        <section className="cp-card cp-about" ref={aboutRef} onClickCapture={aboutDoubleTap}>
           <button type="button" className="cp-about-head" onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen}>
             <span className="cp-about-main">
               <span className="cp-card-title"><span className="cp-card-icon"><Info size={30} strokeWidth={2.2} /></span>About this Condition</span>
