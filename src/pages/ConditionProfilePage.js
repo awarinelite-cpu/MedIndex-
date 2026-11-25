@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Activity, Boxes, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  ExternalLink, FileText, ListChecks, FlaskConical, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
+  ExternalLink, FileText, ListChecks, FlaskConical, ShieldCheck, Trash2, Heart, Home, Info, Pill, Search, Share2, Target, User,
 } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { useCustomConditions } from '../hooks/useCustomConditions';
@@ -17,6 +17,7 @@ import { useConditionClinicalInfo } from '../hooks/useConditionClinicalInfo';
 import ConditionImagesPanel from '../components/ConditionImagesPanel';
 import PasteMedicationsPanel from '../components/PasteMedicationsPanel';
 import ConditionGoogleInfo from '../components/ConditionGoogleInfo';
+import CrossCheckPanel from '../components/condition/CrossCheckPanel';
 import { useAuth } from '../context/AuthContext';
 import { recordRecentCondition } from '../hooks/useRecentlyViewed';
 import { deleteReviewedDrug } from '../utils/aiDrugSave';
@@ -91,7 +92,7 @@ function DrugThumb({ drug }) {
   );
 }
 
-function CategoryGroup({ catKey, title, count, open, onToggle, onClose, canDoubleTap = true, extra = null, children }) {
+function CategoryGroup({ catKey, title, count, open, onToggle, onClose, canDoubleTap = true, extra = null, bodyTop = null, children }) {
   const onDoubleTap = useDoubleTapClose(open, onClose || (() => {}), canDoubleTap && !!onClose);
   return (
     <div className={`cp-cat ${open ? 'is-open' : ''}`} data-cat-key={catKey} onClickCapture={onDoubleTap}>
@@ -102,7 +103,7 @@ function CategoryGroup({ catKey, title, count, open, onToggle, onClose, canDoubl
         {open ? <ChevronUp size={22} strokeWidth={2.6} /> : <ChevronDown size={22} strokeWidth={2.6} />}
       </button>
       {extra}
-      {open && <div className="cp-cat-body">{children}</div>}
+      {open && <div className="cp-cat-body">{bodyTop}{children}</div>}
     </div>
   );
 }
@@ -210,7 +211,7 @@ function GoogleMedsButton({ name }) {
 }
 
 // Admin-only dropdown that keeps the Google search, paste box and guideline note folded away.
-function MedsToolsDropdown({ conditionId, conditionName }) {
+function MedsToolsDropdown({ conditionId, conditionName, onCrossCheckAll }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={`cp-cat ${open ? 'is-open' : ''}`} style={{ marginTop: 14 }}>
@@ -222,6 +223,11 @@ function MedsToolsDropdown({ conditionId, conditionName }) {
       {open && (
         <div className="cp-cat-body cp-tools-body">
           <GoogleMedsButton name={conditionName} />
+          {onCrossCheckAll && (
+            <button type="button" className="cp-crosscheck-btn is-wide" onClick={onCrossCheckAll}>
+              <ShieldCheck size={18} strokeWidth={2.4} /> Cross-check all medications
+            </button>
+          )}
           <PasteMedicationsPanel conditionId={conditionId} conditionName={conditionName} />
           <div className="cp-note" role="note">
             <Info size={22} strokeWidth={2.2} />
@@ -233,9 +239,17 @@ function MedsToolsDropdown({ conditionId, conditionName }) {
   );
 }
 
-function MedicationsCard({ buckets, conditionName, conditionId }) {
+function MedicationsCard({ buckets, conditionName, conditionId, siblings }) {
   const { isAdmin } = useAuth();
-  const adminTools = isAdmin ? <MedsToolsDropdown conditionId={conditionId} conditionName={conditionName} /> : null;
+  const [crossCheck, setCrossCheck] = useState(null); // { title, drugs } while the cross-check panel is open
+  const allSingles = () => {
+    const seen = new Set();
+    return [...buckets.main, ...buckets.adjunct].filter(d => (seen.has(d.id) ? false : (seen.add(d.id), true)));
+  };
+  const adminTools = isAdmin
+    ? <MedsToolsDropdown conditionId={conditionId} conditionName={conditionName}
+        onCrossCheckAll={() => setCrossCheck({ title: conditionName || 'all medications', drugs: allSingles() })} />
+    : null;
   const [openCats, setOpenCats] = useState(null); // null = first group open by default
 
   const { groups, regimens, comboNames } = useMemo(() => {
@@ -333,6 +347,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
   useEffect(() => {
     if (!anyOpen || selectMode) return undefined;
     const onClick = (e) => {
+      if (e.target.closest && e.target.closest('[data-crosscheck-panel]')) return; // taps inside the cross-check panel
       const inside = e.target.closest ? e.target.closest('.cp-cat[data-cat-key]') : null;
       const keep = inside ? inside.getAttribute('data-cat-key') : null;
       setOpenCats(prev => {
@@ -394,7 +409,15 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       <div className="cp-cats">
         {groups.map(([cat, items], gi) => (
           <CategoryGroup key={cat} catKey={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}
-            onClose={() => closeCat(cat)} canDoubleTap={!selectMode} extra={gi === 0 ? selectIcon : null}>
+            onClose={() => closeCat(cat)} canDoubleTap={!selectMode} extra={gi === 0 ? selectIcon : null}
+            bodyTop={isAdmin && !selectMode ? (
+              <div className="cp-crosscheck-row">
+                <button type="button" className="cp-crosscheck-btn"
+                  onClick={() => setCrossCheck({ title: sentenceCase(cat), drugs: items.map(i => i.drug) })}>
+                  <ShieldCheck size={16} strokeWidth={2.4} /> Cross-check this class
+                </button>
+              </div>
+            ) : null}>
             {items.map(({ drug, role, sub }, i) => (
               <React.Fragment key={drug.id}>
                 {sub !== (items[i - 1]?.sub || '') && (sub || items[i - 1]?.sub) && <div className="cp-sub-head">{sub || 'Other'}</div>}
@@ -412,6 +435,17 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       </div>
 
       {adminTools}
+
+      {crossCheck && (
+        <CrossCheckPanel
+          title={crossCheck.title}
+          conditionId={conditionId}
+          conditionLabel={conditionName}
+          drugs={crossCheck.drugs}
+          siblings={siblings}
+          onClose={() => setCrossCheck(null)}
+        />
+      )}
 
       {!isAdmin && (
         <div className="cp-note" role="note">
@@ -474,15 +508,18 @@ export default function ConditionProfilePage() {
 
   const system = useMemo(() => ANATOMICAL_SYSTEMS.find(s => s.id === systemId) || null, [systemId]);
 
-  const entry = useMemo(() => {
-    const grouped = groupDrugsByCondition(
-      drugs || [], systemId,
-      customConditionsBySystem?.[systemId] || [],
-      hiddenConditionIdsBySystem?.[systemId] || [],
-      labelOverridesBySystem?.[systemId] || {},
-    );
-    return grouped.get(conditionId) || null;
-  }, [drugs, systemId, conditionId, customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem]);
+  const grouped = useMemo(() => groupDrugsByCondition(
+    drugs || [], systemId,
+    customConditionsBySystem?.[systemId] || [],
+    hiddenConditionIdsBySystem?.[systemId] || [],
+    labelOverridesBySystem?.[systemId] || {},
+  ), [drugs, systemId, customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem]);
+  const entry = useMemo(() => grouped.get(conditionId) || null, [grouped, conditionId]);
+  // Other classes in this system a drug can be moved into during a cross-check.
+  const siblings = useMemo(() => [...grouped.values()]
+    .map(e => e.condition)
+    .filter(c => c && c.id && c.id !== conditionId && c.id !== '_other' && c.label)
+    .map(c => ({ id: c.id, label: c.label })), [grouped, conditionId]);
 
   const buckets = useMemo(() => {
     if (!entry) return { main: [], adjunct: [], combination: [] };
@@ -573,7 +610,7 @@ export default function ConditionProfilePage() {
         </section>
         {/* Admin only (the component hides itself for everyone else) */}
         <ConditionGoogleInfo condition={entry.condition} systemName={systemName} existingInfo={info} className="mt-3" />
-        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} />
+        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} siblings={siblings} />
       </>
     );
   }
