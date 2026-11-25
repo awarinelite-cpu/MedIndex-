@@ -230,7 +230,7 @@ export default function CrossCheckPanel({ title, conditionId, conditionLabel, dr
   };
 
   return (
-    <div className="cc-overlay" data-crosscheck-panel role="dialog" aria-modal="true" aria-label="Cross-check drugs">
+    <div className="cc-overlay cp-vars" role="dialog" aria-modal="true" aria-label="Cross-check drugs">
       <div className="cc-sheet">
         <header className="cc-head">
           <div>
