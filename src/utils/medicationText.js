@@ -14,7 +14,7 @@ const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|fai
 const DRUG_WORD_RE = /\b[A-Za-z]{3,}(?:profen|oxicam|olol|pril|sartan|statin|azole|mycin|cillin|floxacin|cycline|prazole|tidine|dipine|thiazide|sone|solone|olone|formin|gliptin|gliflozin|glutide|parin|xaban|afil|triptan|setron|zolam|azepam|barbital|caine|terol|tropium|navir|vudine)\b|\b(?:naproxen|diclofenac|aspirin|paracetamol|acetaminophen|codeine|morphine|tramadol|colchicine|warfarin|heparin|insulin|metformin|ibuprofen|indomethacin|celecoxib|oxycodone|fentanyl|furosemide|spironolactone|amiodarone|digoxin|atenolol)\b/gi;
 const BAD_START_RE = /^(the|a|an|many|some|these|those|various|several|specific|both|certain|most|each|any|all|this|that|such|your|their)\b/i;
 const CLASS_RE = /(agonists?|antagonists?|anticholinergics?|corticosteroids?|steroids?|antibiotics?|antibacterials?|antifungals?|antivirals?|antitubercular|anti-?tb|drugs?|medications?|medicines?|vaccines?|immunizations?|mucolytics?|bronchodilators?|inhibitors?|blockers?|diuretics?|analgesics?|inhalers?|therapies|therapy|agents?|supplements?|antihistamines?|expectorants?|antitussives?|regimens?|sabas?|labas?|samas?|lamas?|anti[a-z-]+)$/i;
-const CLASS_EXTRA_RE = /(modulators?|relaxants?|spasmodics?|depressants?|sedatives?|anxiolytics?|nitrates?|laxatives?|stimulants?|prokinetics?|antacids?|stabili[sz]ers?|chelators?|binders?|alkaloids?)$/i;
+const CLASS_EXTRA_RE = /(modulators?|relaxants?|spasmodics?|depressants?|sedatives?|anxiolytics?|nitrates?|laxatives?|stimulants?|prokinetics?|antacids?|stabili[sz]ers?|chelators?|binders?|alkaloids?|anesthetics?|anaesthetics?|relievers?|softeners?|emollients?|lubricants?|protectants?|astringents?|decongestants?|antiseptics?|thinners?|vitamins?|electrolytes?|hormones?|[a-z]{3,}ics|[a-z]{4,}ants)$/i;
 const isClassLabel = (t) => {
   const s = String(t || '').trim();
   const test = x => CLASS_RE.test(x.trim()) || CLASS_EXTRA_RE.test(x.trim());
@@ -114,11 +114,24 @@ export function parseMedicationEntries(text, fallback) {
   const bulletRe = /^[\u2022\u00b7*-]\s*/;
   const hasDescription = l => bulletRe.test(l) && /[.:]\s+\S/.test(l.replace(bulletRe, '').replace(/\([^)]*\)/g, ''));
   const rich = lines.some(l => l.length > 100 || hasDescription(l));
-  const plain = () => (fallback ? fallback(text) : []).map(n => ({ type: 'drug', text: n }));
+  // One name per line. A line that is a drug class / group (e.g. "Anesthetics",
+  // "Pain Relievers") is a subheading and the names after it belong under it.
+  const plain = () => {
+    const names = fallback ? fallback(text) : [];
+    const out = [];
+    let sub = null, found = false;
+    names.forEach(n => {
+      const t = String(n || '').trim();
+      if (t.split(/\s+/).length <= 5 && looksLikeClassInList(t)) { found = true; sub = t; out.push({ type: 'sub', text: t }); return; }
+      out.push({ type: 'drug', text: n, underSub: !!sub, heading: '', sub: sub || '', hOrder: 0, order: out.length });
+    });
+    return found ? out : names.map(n => ({ type: 'drug', text: n }));
+  };
   if (!rich) return plain();
 
   const entries = [], seen = new Set();
   let sub = null, heading = '', hOrder = -1;
+  let sticky = false; // a bare group label ("Anesthetics") keeps the plain bullets after it
   const addDrug = (n, underSub) => {
     const k = key(n);
     if (!k || seen.has(k)) return;
@@ -130,7 +143,7 @@ export function parseMedicationEntries(text, fallback) {
     const isBullet = bulletRe.test(line);
     if (!isBullet) {
       const h = headingText(line);
-      if (h) { entries.push({ type: 'heading', text: h }); heading = h; hOrder += 1; sub = null; }
+      if (h) { entries.push({ type: 'heading', text: h }); heading = h; hOrder += 1; sub = null; sticky = false; }
       continue; // prose lines hold no drugs
     }
     const body = line.replace(bulletRe, '').trim();
@@ -142,11 +155,14 @@ export function parseMedicationEntries(text, fallback) {
     const isLabelOnly = !isClass && !!desc && terms.length > 0 && terms.every(t => !cleanTerm(t));
     if (isClass || isLabelOnly) {
       sub = lead;
+      sticky = !desc;
       entries.push({ type: 'sub', text: lead });
       terms.filter(t => !isClassLabel(t)).forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, true); });
     } else {
-      sub = null;
-      terms.forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, false); });
+      // Plain drug bullets right after a bare group label stay under that label.
+      if (!(sticky && sub && !desc)) { sub = null; sticky = false; }
+      const nest = !!sub;
+      terms.forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, nest); });
     }
     const nested = !!sub;
     let inGroup = nested;
