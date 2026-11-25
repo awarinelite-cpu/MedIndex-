@@ -2,15 +2,61 @@
 import React, { useState, useMemo } from 'react';
 import { markDeleted } from '../utils/deltaCollection';
 import { doc, getDoc, setDoc, writeBatch, arrayUnion, serverTimestamp } from 'firebase/firestore';
-import { Copy, ChevronDown, ChevronRight, AlertTriangle, Check, Trash2, RefreshCw, X } from 'lucide-react';
+import { Copy, ChevronDown, ChevronRight, AlertTriangle, Check, GitMerge, RefreshCw, X } from 'lucide-react';
 import { db } from '../firebase';
 import { findDuplicateDrugGroups } from '../utils/findDuplicateDrugs';
 
+// ── Merge helpers ─────────────────────────────────────────────────────────
+// Merging keeps the most complete record and folds the other record(s) into it:
+//   - the duplicate's name (and any brand names it had) become brand names on
+//     the keeper, so they show on its brand buttons and still find the drug;
+//   - fields the keeper has empty are filled from the duplicate;
+//   - condition / subclass links are carried over (as before).
+const squash = (v) => String(v || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '');
+const toBrandList = (v) => (Array.isArray(v) ? v : String(v || '').split(/[,;]/)).map(b => String(b).trim()).filter(Boolean);
+const isEmptyVal = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+// Never copied from a duplicate: identity/bookkeeping fields, or fields handled explicitly.
+const NO_FILL_KEYS = new Set([
+  'id', 'firestoreId', 'generic_name', 'brand_names', 'extra_subclasses', 'excluded_subclasses',
+  'condition_tags', 'pending_condition_tags', 'condition_excluded',
+  'last_updated', 'created_at', 'updated_at', 'createdAt', 'updatedAt',
+]);
+
+export function buildMergePatch(keeper, losers) {
+  const patch = {};
+
+  // Brand names: keeper's own, then each duplicate's name and brands (deduped; a
+  // duplicate that is just the keeper's name again adds nothing).
+  const brands = toBrandList(keeper.brand_names);
+  const seen = new Set([squash(keeper.generic_name), ...brands.map(squash)]);
+  let brandsChanged = false;
+  for (const l of losers) {
+    for (const raw of [l.generic_name, ...toBrandList(l.brand_names)]) {
+      const name = String(raw || '').replace(/\s*,\s*/g, ' ').trim(); // brand_names is comma-separated
+      const k = squash(name);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      brands.push(name);
+      brandsChanged = true;
+    }
+  }
+  if (brandsChanged) patch.brand_names = brands.join(', ');
+
+  // Fill empty fields on the keeper from the duplicates (best-first), never overwrite.
+  for (const l of losers) {
+    for (const key of Object.keys(l)) {
+      if (key.startsWith('_') || NO_FILL_KEYS.has(key) || key in patch) continue;
+      if (isEmptyVal(keeper[key]) && !isEmptyVal(l[key])) patch[key] = l[key];
+    }
+  }
+  return patch;
+}
+
 // One row inside a duplicate group: a radio to mark it the keeper, or a
-// checkbox to mark it for deletion when it isn't the keeper.
+// checkbox to merge it into the keeper when it isn't the keeper.
 function DrugRow({ drug, isKeeper, willDelete, onMakeKeeper, onToggleDelete }) {
   return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${isKeeper ? 'bg-green-50' : willDelete ? 'bg-red-50' : 'bg-gray-50'}`}>
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${isKeeper ? 'bg-green-50' : willDelete ? 'bg-purple-50' : 'bg-gray-50'}`}>
       <button
         onClick={onMakeKeeper}
         title="Keep this record"
@@ -32,7 +78,7 @@ function DrugRow({ drug, isKeeper, willDelete, onMakeKeeper, onToggleDelete }) {
       ) : (
         <label className="flex-shrink-0 flex items-center gap-1.5 text-xs cursor-pointer select-none">
           <input type="checkbox" checked={willDelete} onChange={onToggleDelete} className="rounded" />
-          <span className={willDelete ? 'text-red-700 font-medium' : 'text-drug-muted'}>Delete</span>
+          <span className={willDelete ? 'text-purple-700 font-medium' : 'text-drug-muted'}>Merge</span>
         </label>
       )}
     </div>
@@ -64,7 +110,7 @@ function GroupCard({ group, tier, selection, setSelection, onDismiss }) {
           {open ? <ChevronDown className="w-4 h-4 text-drug-muted flex-shrink-0" /> : <ChevronRight className="w-4 h-4 text-drug-muted flex-shrink-0" />}
           <span className="font-medium text-drug-text truncate">{group.drugs[0].generic_name}</span>
           <span className="text-xs text-drug-muted flex-shrink-0">{group.drugs.length} records</span>
-          {deleteCount > 0 && <span className="text-xs font-semibold text-red-600 flex-shrink-0">−{deleteCount}</span>}
+          {deleteCount > 0 && <span className="text-xs font-semibold text-purple-600 flex-shrink-0">merge {deleteCount}</span>}
         </button>
         {tier === 'review' && onDismiss && (
           <button
@@ -79,7 +125,7 @@ function GroupCard({ group, tier, selection, setSelection, onDismiss }) {
       {open && (
         <div className="p-2 space-y-1.5 border-t border-drug-border bg-gray-50/50">
           {tier === 'review' && group.reason && (
-            <p className="text-xs text-amber-700 px-1 pb-1">⚠ {group.reason} — confirm these are really the same drug before deleting either.</p>
+            <p className="text-xs text-amber-700 px-1 pb-1">⚠ {group.reason} — confirm these are really the same drug before merging.</p>
           )}
           {group.drugs.map(d => (
             <DrugRow
@@ -154,21 +200,25 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
     setApplying(true);
     try {
       const ops = []; // { type: 'update'|'delete', id, data? }
+      const mergedPatches = new Map(); // keeperId -> plain field changes, for the local list
       const allGroups = [...exact, ...review];
       for (const g of allGroups) {
         const sel = selection[g.key];
         if (!sel || sel.deleteIds.size === 0) continue;
+        const keeper = g.drugs.find(d => d.firestoreId === sel.keeperId);
         const losers = g.drugs.filter(d => sel.deleteIds.has(d.firestoreId));
-        // Carry forward any taxonomy/condition links the losers had onto the keeper,
-        // so deleting a duplicate never silently drops a manual classification.
+        if (!keeper || losers.length === 0) continue;
+        // Fold the duplicates into the keeper: their names become brand names, empty
+        // fields are filled in, and manual taxonomy/condition links are carried over so
+        // merging never silently drops a classification.
+        const patch = buildMergePatch(keeper, losers);
         const extraSubclasses = losers.flatMap(d => Array.isArray(d.extra_subclasses) ? d.extra_subclasses : []);
         const conditionTags = losers.flatMap(d => Array.isArray(d.condition_tags) ? d.condition_tags : []);
-        if (extraSubclasses.length || conditionTags.length) {
-          const data = { last_updated: serverTimestamp() };
-          if (extraSubclasses.length) data.extra_subclasses = arrayUnion(...extraSubclasses);
-          if (conditionTags.length) data.condition_tags = arrayUnion(...conditionTags);
-          ops.push({ type: 'update', id: sel.keeperId, data });
-        }
+        const data = { ...patch, last_updated: serverTimestamp() };
+        if (extraSubclasses.length) data.extra_subclasses = arrayUnion(...extraSubclasses);
+        if (conditionTags.length) data.condition_tags = arrayUnion(...conditionTags);
+        ops.push({ type: 'update', id: sel.keeperId, data });
+        mergedPatches.set(sel.keeperId, { ...(mergedPatches.get(sel.keeperId) || {}), ...patch });
         for (const loser of losers) ops.push({ type: 'delete', id: loser.firestoreId });
       }
 
@@ -185,8 +235,8 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
 
       const deletedIds = new Set(ops.filter(o => o.type === 'delete').map(o => o.id));
       deletedIds.forEach(id => markDeleted('drugs', id));
-      onCleaned && onCleaned(deletedIds);
-      showToast && showToast(`Removed ${deletedIds.size} duplicate record${deletedIds.size === 1 ? '' : 's'}.`);
+      onCleaned && onCleaned(deletedIds, mergedPatches);
+      showToast && showToast(`Merged ${deletedIds.size} duplicate record${deletedIds.size === 1 ? '' : 's'} — their names are saved as brand names.`);
       setScanned(false);
       setExact([]);
       setReview([]);
@@ -213,9 +263,10 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
             Scans every drug record for the same drug saved more than once. This only
             looks at duplicate <em>records</em>, not classes or subclasses — a drug
             correctly appearing under several classes/subclasses from a single record
-            is left alone. Exact name matches are pre-selected for cleanup; anything
-            just similar (possible typo or a different formulation) is flagged for you
-            to confirm before anything is deleted.
+            is left alone. Exact name matches are pre-selected; the most complete
+            record is kept and the others are merged into it — their names are saved as
+            brand names and any missing details are filled in. Anything just similar
+            (possible typo or a different formulation) is flagged for you to confirm first.
           </p>
         </div>
       </button>
@@ -255,10 +306,10 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
                 <button
                   onClick={apply}
                   disabled={applying || totalToDelete === 0}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg flex items-center gap-2"
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg flex items-center gap-2"
                 >
-                  {applying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  Delete {totalToDelete} selected record{totalToDelete === 1 ? '' : 's'}
+                  {applying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <GitMerge className="w-4 h-4" />}
+                  Merge {totalToDelete} selected record{totalToDelete === 1 ? '' : 's'}
                 </button>
                 <button onClick={() => { setScanned(false); setExact([]); setReview([]); setSelection({}); }} className="text-sm text-drug-muted hover:text-drug-text">
                   Cancel

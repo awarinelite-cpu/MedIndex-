@@ -1297,8 +1297,10 @@ export default function AdminPage() {
             <DuplicateDrugsPanel
               drugs={drugs}
               showToast={showToast}
-              onCleaned={(deletedIds) => {
-                setDrugs(prev => prev.filter(d => !deletedIds.has(d.firestoreId)));
+              onCleaned={(deletedIds, mergedPatches) => {
+                setDrugs(prev => prev
+                  .filter(d => !deletedIds.has(d.firestoreId))
+                  .map(d => (mergedPatches && mergedPatches.has(d.firestoreId) ? { ...d, ...mergedPatches.get(d.firestoreId) } : d)));
                 setSelectedIds(prev => {
                   const n = new Set(prev);
                   deletedIds.forEach(id => n.delete(id));
