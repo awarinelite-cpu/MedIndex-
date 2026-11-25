@@ -679,7 +679,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
       for (let i = 0; i < targets.length; i += 400) {
         const batch = writeBatch(db);
         targets.slice(i, i + 400).forEach(([d, role]) => {
-          batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), role);
+          batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), role, 'last_updated', serverTimestamp());
         });
         await batch.commit();
       }
@@ -713,7 +713,7 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
     setReviewBusy(true);
     try {
       const batch = writeBatch(db);
-      list.forEach(d => batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), 'adjunct'));
+      list.forEach(d => batch.update(doc(db, 'drugs', d.id), new FieldPath('condition_roles', condition.id), 'adjunct', 'last_updated', serverTimestamp()));
       await batch.commit();
     } catch (err) { console.error('Keep failed:', err); } finally { setReviewBusy(false); }
   };

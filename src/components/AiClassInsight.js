@@ -11,7 +11,7 @@
 // top filter dropdown.
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { Pill, ChevronRight, ChevronDown, ChevronUp, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -106,6 +106,7 @@ function AiClassFallback({ className, existingDrugs, parentClassName, databaseDr
     const docId = existing.id || existing.firestoreId || slugifyDrugName(existing.generic_name);
     await updateDoc(doc(db, 'drugs', docId), {
       extra_subclasses: arrayUnion(`${targetClassId}::${targetSubclassId}`),
+      last_updated: serverTimestamp(),
     });
   };
 

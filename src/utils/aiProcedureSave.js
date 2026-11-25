@@ -1,4 +1,5 @@
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { markDeleted } from './deltaCollection';
 import { db, auth } from '../firebase';
 import { parseAiProcedureDetail, isProcedureNotFoundText } from './parseAiProcedureDetail';
 import { apiUrl } from '../config/apiBase';
@@ -254,6 +255,7 @@ export async function approveProcedureReview({ id }) {
     needs_review: false,
     reviewed_by: email,
     reviewed_at: serverTimestamp(),
+    last_updated: serverTimestamp(),
     previous_version: null,
   });
 }
@@ -286,6 +288,7 @@ export async function saveReviewedProcedureEdits({ id, edits }) {
 export async function deleteReviewedProcedure({ id }) {
   await getAuthUser();
   await deleteDoc(doc(db, 'procedures', id));
+  markDeleted('procedures', id);
 }
 
 // ── Admin-only direct edit (used from the procedure detail page, not the
@@ -336,6 +339,7 @@ export async function moveDrugToProcedure({ drugId, name, fields }) {
   }, { merge: false });
 
   await deleteDoc(doc(db, 'drugs', drugId));
+  markDeleted('drugs', drugId);
 
   return { status: 'moved', id: docId };
 }
@@ -344,7 +348,7 @@ export async function moveDrugToProcedure({ drugId, name, fields }) {
 // heuristic stops flagging it in future admin sessions.
 export async function dismissProcedureCandidate({ drugId }) {
   await getAuthUser();
-  await updateDoc(doc(db, 'drugs', drugId), { procedure_check_dismissed: true });
+  await updateDoc(doc(db, 'drugs', drugId), { procedure_check_dismissed: true, last_updated: serverTimestamp() });
 }
 
 // Admin-only manual create (no AI) — e.g. adding a procedure the AI

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { markDeleted } from '../utils/deltaCollection';
 import { useDrugs } from '../hooks/useDrugs';
 import { Link, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -498,7 +499,7 @@ export default function AdminPage() {
         const batch = writeBatch(db);
         seedDrugs.slice(i, i + BATCH_SIZE).forEach(drug => {
           const ref = doc(collection(db, 'drugs'), drug.id);
-          batch.set(ref, { ...drug, seeded_at: serverTimestamp() });
+          batch.set(ref, { ...drug, seeded_at: serverTimestamp(), last_updated: serverTimestamp() });
         });
         await batch.commit();
       }
@@ -961,6 +962,7 @@ export default function AdminPage() {
   async function confirmSingleDelete() {
     try {
       await deleteDoc(doc(db, 'drugs', deleteTarget));
+      markDeleted('drugs', deleteTarget);
       setDrugs(prev => prev.filter(d => d.firestoreId !== deleteTarget));
       setSelectedIds(prev => { const n = new Set(prev); n.delete(deleteTarget); return n; });
       showToast('Drug deleted.');
@@ -973,8 +975,9 @@ export default function AdminPage() {
       const BATCH = 499;
       for (let i = 0; i < ids.length; i += BATCH) {
         const batch = writeBatch(db);
-        ids.slice(i, i + BATCH).forEach(id => batch.delete(doc(db, 'drugs', id)));
+        ids.slice(i, i + BATCH).forEach(id => { batch.delete(doc(db, 'drugs', id)); });
         await batch.commit();
+        ids.slice(i, i + BATCH).forEach(id => markDeleted('drugs', id));
       }
       setDrugs(prev => prev.filter(d => !selectedIds.has(d.firestoreId)));
       setSelectedIds(new Set());

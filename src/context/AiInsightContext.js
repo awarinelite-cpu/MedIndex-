@@ -4,7 +4,9 @@
 // lives above the router, so it keeps running (and the floating widget stays
 // visible) no matter which page the admin navigates to.
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { getStoreDocs } from '../utils/deltaCollection';
+import '../hooks/useDrugs';
+import { doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
 import { generateDrugOnce, saveParsedDrug, getMissingGroups, fetchAiDrugText, saveAiDrugToDatabase, slugifyDrugName, fetchConditionDrugList, fetchClassDrugList, fetchConditionClinicalInfo } from '../utils/aiDrugSave';
 import { parseAiDrugList } from '../utils/parseAiDrugList';
@@ -121,8 +123,8 @@ export function AiInsightProvider({ children }) {
 
     let list = drugsArg;
     if (!list) {
-      const snap = await getDocs(collection(db, 'drugs'));
-      const all = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+      // Reuse the synced drug list instead of re-reading the whole collection.
+      const all = ((await getStoreDocs('drugs')) || []).map(d => ({ ...d, firestoreId: d.id }));
       list = all.filter(isIncomplete);
     }
     if (list.length === 0) return;
@@ -268,7 +270,7 @@ export function AiInsightProvider({ children }) {
               // system's conditions — this just guarantees it's tagged onto
               // THIS specific condition even if keyword matching missed it
               // (e.g. the AI listed it here but its indications text is vague).
-              await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), { condition_tags: arrayUnion(conditionId) });
+              await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), { condition_tags: arrayUnion(conditionId), last_updated: serverTimestamp() });
             } catch { /* tag is best-effort */ }
           }
         } catch (e) {

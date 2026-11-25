@@ -1,4 +1,5 @@
 import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, FieldPath } from 'firebase/firestore';
+import { markDeleted } from './deltaCollection';
 import { db, auth } from '../firebase';
 import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
@@ -67,6 +68,7 @@ export async function approveDrugReview({ id }) {
     needs_review: false,
     reviewed_by: email,
     reviewed_at: serverTimestamp(),
+    last_updated: serverTimestamp(),
     previous_version: null,
   });
 }
@@ -105,6 +107,7 @@ export async function deleteReviewedDrug({ id }) {
   const { isAdmin } = await getContributorInfo();
   if (!isAdmin) throw new Error('Only an admin can delete drugs.');
   await deleteDoc(doc(db, 'drugs', id));
+  markDeleted('drugs', id);
 }
 
 // Used by DrugDetailPage's non-admin "per-tab AI insight" background save —
@@ -653,7 +656,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
     // already there, so there's nothing to snapshot — but a non-admin patch
     // still gets flagged so the newly-added fields get a look before they're
     // trusted the same as verified content.
-    await updateDoc(ref, { ...patch, ...buildReviewMeta(contributor, 'update') });
+    await updateDoc(ref, { ...patch, ...buildReviewMeta(contributor, 'update'), last_updated: serverTimestamp() });
   } else {
     // Brand-new drug — full write
     await setDoc(ref, {
@@ -905,6 +908,7 @@ export async function silentSaveConditionItems({ items, conditionId, conditionKe
         if (result.status === 'saved') {
           await updateDoc(doc(db, 'drugs', result.id || slugifyDrugName(item.name)), {
             condition_tags: arrayUnion(conditionId),
+            last_updated: serverTimestamp(),
           }).catch(() => {});
         }
       }
@@ -993,7 +997,7 @@ export async function addMedicationsToCondition({ names, items, conditionId, exi
         });
       }
       if (group && (status === 'linked' || existing)) {
-        await updateDoc(ref, new FieldPath('condition_groups', conditionId), group);
+        await updateDoc(ref, new FieldPath('condition_groups', conditionId), group, 'last_updated', serverTimestamp());
       }
       results.push({ name, status });
       onProgress?.(name, status);

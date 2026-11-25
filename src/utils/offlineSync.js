@@ -1,10 +1,13 @@
 // src/utils/offlineSync.js
-// "Download for offline": pulls every collection the app reads straight from
-// the server so Firestore's persistent (IndexedDB) cache holds a complete,
-// fresh copy, then optionally warms the image cache through the service
-// worker. The live onSnapshot listeners keep working as before.
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+// "Download for offline": makes sure the drug, procedure and condition-note
+// lists are synced on the device (only items that changed since the last sync
+// are downloaded — see utils/deltaCollection.js), then optionally warms the
+// image cache through the service worker.
+import { getStoreDocs } from './deltaCollection';
+// Importing the hooks registers their delta stores.
+import '../hooks/useDrugs';
+import '../hooks/useProcedures';
+import '../hooks/useConditionClinicalInfo';
 
 const LAST_SYNC_KEY = 'mi_offline_last_sync_v1';
 
@@ -74,10 +77,10 @@ export async function downloadForOffline({ includeImages = true, onProgress = ()
   for (const { path, label } of COLLECTIONS) {
     if (shouldCancel()) throw new Error('Cancelled');
     onProgress({ phase: 'data', label: `Saving ${label.toLowerCase()}…`, done: step, total: totalSteps, percent: Math.round((step / totalSteps) * 100) });
-    const snap = await getDocs(collection(db, path));
-    counts[path] = snap.size;
+    const docs = (await getStoreDocs(path)) || [];
+    counts[path] = docs.length;
     if (path === 'drugs') {
-      snap.forEach(d => { const u = d.data().image_url; if (u) imageUrls.add(u); });
+      docs.forEach(d => { if (d.image_url) imageUrls.add(d.image_url); });
     }
     step += 1;
   }

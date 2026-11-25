@@ -26,6 +26,7 @@
 // primary/duplicate selection; every step is idempotent.
 
 import { writeBatch, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { markDeleted } from './deltaCollection';
 import { db, auth } from '../firebase';
 import { removeCondition } from '../hooks/useCustomConditions';
 
@@ -79,7 +80,7 @@ export async function mergeConditions(systemId, primaryId, duplicateIds, allDrug
     // from every duplicate are added to the primary's (deduped by URL).
     const primaryRef = doc(db, CLINICAL_INFO_COLLECTION, primaryId);
     const primarySnap = await getDoc(primaryRef);
-    const { images: primaryImagesRaw, ...primaryText } = primarySnap.exists() ? primarySnap.data() : {};
+    const { images: primaryImagesRaw, updatedAt: _pStamp, ...primaryText } = primarySnap.exists() ? primarySnap.data() : {};
     const primaryImages = Array.isArray(primaryImagesRaw) ? primaryImagesRaw : [];
     const primaryNeedsText = Object.keys(primaryText).length === 0;
 
@@ -88,7 +89,7 @@ export async function mergeConditions(systemId, primaryId, duplicateIds, allDrug
     for (const dupId of dupSet) {
       const dupSnap = await getDoc(doc(db, CLINICAL_INFO_COLLECTION, dupId));
       if (!dupSnap.exists()) continue;
-      const { images: dupImages, ...dupText } = dupSnap.data();
+      const { images: dupImages, updatedAt: _dStamp, ...dupText } = dupSnap.data();
       // First one found wins — good enough, admin can regenerate if needed.
       if (primaryNeedsText && !textToCopy && Object.keys(dupText).length > 0) textToCopy = dupText;
       if (Array.isArray(dupImages)) {
@@ -98,13 +99,13 @@ export async function mergeConditions(systemId, primaryId, duplicateIds, allDrug
       }
     }
 
-    const patch = {};
+    const patch = { updatedAt: serverTimestamp() };
     if (textToCopy) Object.assign(patch, textToCopy, { generatedAt: serverTimestamp() });
     if (mergedImages.length > primaryImages.length) patch.images = mergedImages;
-    if (Object.keys(patch).length > 0) await setDoc(primaryRef, patch, { merge: true });
+    if (textToCopy || patch.images) await setDoc(primaryRef, patch, { merge: true });
 
     for (const dupId of dupSet) {
-      try { await deleteDoc(doc(db, CLINICAL_INFO_COLLECTION, dupId)); } catch { /* no-op if missing */ }
+      try { await deleteDoc(doc(db, CLINICAL_INFO_COLLECTION, dupId)); markDeleted(CLINICAL_INFO_COLLECTION, dupId); } catch { /* no-op if missing */ }
     }
   } catch (err) {
     console.warn('[mergeConditions] clinical info consolidation skipped:', err.message);

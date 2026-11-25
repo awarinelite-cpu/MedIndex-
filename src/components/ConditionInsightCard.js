@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Pill, Sparkles, RefreshCw, AlertTriangle, Save, CheckCircle, Zap, ChevronDown, ChevronUp } from 'lucide-react';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useAiProvider } from '../context/AiProviderContext';
@@ -245,6 +245,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
   const linkExistingDrug = async (existing, conditionId) => {
     await updateDoc(doc(db, 'drugs', existing.id || existing.firestoreId || slugifyDrugNameUtil(existing.generic_name)), {
       condition_tags: arrayUnion(conditionId),
+      last_updated: serverTimestamp(),
     });
   };
 
@@ -256,7 +257,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
       const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
       const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
       try {
-        await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId) });
+        await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId), last_updated: serverTimestamp() });
       } catch { /* tag is best-effort */ }
       setItemState(s => ({ ...s, [item.name]: 'saved' }));
     } catch (e) {
@@ -304,7 +305,7 @@ export default function ConditionInsightCard({ searchQuery, existingDrugs, aiExt
         const itemText = await fetchAiDrugText({ genericName: item.name, drugClass: item.subclass, endpoint: provider.endpoint });
         const result = await saveAiDrugToDatabase({ genericName: item.name, drugClass: item.subclass, text: itemText, overwrite: true });
         try {
-          await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId) });
+          await updateDoc(doc(db, 'drugs', result.id || slugifyDrugNameUtil(item.name)), { condition_tags: arrayUnion(target.conditionId), last_updated: serverTimestamp() });
         } catch { /* tag is best-effort */ }
         setItemState(s => ({ ...s, [item.name]: 'saved' }));
         saved++;

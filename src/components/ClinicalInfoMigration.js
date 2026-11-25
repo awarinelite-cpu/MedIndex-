@@ -63,7 +63,7 @@ export default function ClinicalInfoMigration({ showToast }) {
       for (let i = 0; i < entries.length; i += BATCH) {
         const batch = writeBatch(db);
         for (const [conditionId, info] of entries.slice(i, i + BATCH)) {
-          batch.set(doc(db, NEW_COLLECTION, conditionId), { ...info, migratedAt: serverTimestamp() });
+          batch.set(doc(db, NEW_COLLECTION, conditionId), { ...info, migratedAt: serverTimestamp(), updatedAt: serverTimestamp() });
         }
         await batch.commit();
       }

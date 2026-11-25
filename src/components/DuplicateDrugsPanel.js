@@ -1,6 +1,7 @@
 // src/components/DuplicateDrugsPanel.js
 import React, { useState, useMemo } from 'react';
-import { doc, getDoc, setDoc, writeBatch, arrayUnion } from 'firebase/firestore';
+import { markDeleted } from '../utils/deltaCollection';
+import { doc, getDoc, setDoc, writeBatch, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { Copy, ChevronDown, ChevronRight, AlertTriangle, Check, Trash2, RefreshCw, X } from 'lucide-react';
 import { db } from '../firebase';
 import { findDuplicateDrugGroups } from '../utils/findDuplicateDrugs';
@@ -163,7 +164,7 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
         const extraSubclasses = losers.flatMap(d => Array.isArray(d.extra_subclasses) ? d.extra_subclasses : []);
         const conditionTags = losers.flatMap(d => Array.isArray(d.condition_tags) ? d.condition_tags : []);
         if (extraSubclasses.length || conditionTags.length) {
-          const data = {};
+          const data = { last_updated: serverTimestamp() };
           if (extraSubclasses.length) data.extra_subclasses = arrayUnion(...extraSubclasses);
           if (conditionTags.length) data.condition_tags = arrayUnion(...conditionTags);
           ops.push({ type: 'update', id: sel.keeperId, data });
@@ -183,6 +184,7 @@ export default function DuplicateDrugsPanel({ drugs, onCleaned, showToast }) {
       }
 
       const deletedIds = new Set(ops.filter(o => o.type === 'delete').map(o => o.id));
+      deletedIds.forEach(id => markDeleted('drugs', id));
       onCleaned && onCleaned(deletedIds);
       showToast && showToast(`Removed ${deletedIds.size} duplicate record${deletedIds.size === 1 ? '' : 's'}.`);
       setScanned(false);

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { normalizeImageUrl } from '../utils/generateDrugImage';
+import { createDeltaStore, markDeleted } from '../utils/deltaCollection';
 
 // One document per condition (doc ID = conditionId), NOT one giant document
 // holding every condition as a map field. The old shape — a single
@@ -21,41 +22,32 @@ import { normalizeImageUrl } from '../utils/generateDrugImage';
 const COLLECTION_PATH = 'condition_clinical_info';
 export const LEGACY_DOC_REF_PATH = ['app_config', 'condition_clinical_info'];
 
-// Live-listener singleton, same pattern as useCustomConditions.js — one
-// admin generating clinical info on one device shows up for everyone else
-// within about a second, no reload needed.
-let liveData    = null; // { info: {[id]: fields}, images: {[id]: [{url}]} }
-let unsubscribe = null;
-const subscribers = new Set();
+// Delta-synced store (utils/deltaCollection.js): the notes come from the device
+// first and only conditions whose `updatedAt` changed since the last sync are
+// downloaded, so one admin generating clinical info on one device still shows
+// up for everyone else within about a second without every app start
+// re-reading every condition. Every write below must set `updatedAt`.
+const store = createDeltaStore({
+  path: COLLECTION_PATH,
+  field: 'updatedAt',
+  requireField: false, // notes saved before this change have no `updatedAt`
+  sort: false,
+});
 
-function notifyAll(data) {
-  liveData = data;
-  subscribers.forEach(fn => fn(data));
-}
+let liveData = null; // { info: {[id]: fields}, images: {[id]: [{url}]} }
 
 function hasInfoFields(fields) {
   return Object.keys(fields).length > 0;
 }
 
-function ensureListener() {
-  if (unsubscribe) return;
-  unsubscribe = onSnapshot(
-    collection(db, COLLECTION_PATH),
-    (snap) => {
-      const info = {};
-      const images = {};
-      snap.forEach(d => {
-        const { images: imgs, ...fields } = d.data();
-        if (Array.isArray(imgs) && imgs.length > 0) images[d.id] = imgs;
-        if (hasInfoFields(fields)) info[d.id] = fields;
-      });
-      notifyAll({ info, images });
-    },
-    (err) => {
-      console.error('[useConditionClinicalInfo] listen error:', err.code, err.message);
-      notifyAll(liveData || { info: {}, images: {} });
-    }
-  );
+function toLiveData(docs) {
+  const info = {};
+  const images = {};
+  (docs || []).forEach(({ id, images: imgs, updatedAt: _u, ...fields }) => {
+    if (Array.isArray(imgs) && imgs.length > 0) images[id] = imgs;
+    if (hasInfoFields(fields)) info[id] = fields;
+  });
+  return { info, images };
 }
 
 // Returns { clinicalInfoByCondition: { [conditionId]: {introduction, types,
@@ -67,20 +59,13 @@ export function useConditionClinicalInfo() {
   const [loading, setLoading] = useState(!liveData);
 
   useEffect(() => {
-    ensureListener();
-    if (liveData) setLoading(false);
-
-    const setter = (d) => { setData(d); setLoading(false); };
-    subscribers.add(setter);
-
-    return () => {
-      subscribers.delete(setter);
-      if (subscribers.size === 0 && unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
-        liveData = null;
-      }
-    };
+    return store.subscribe((docs, err) => {
+      if (err) console.error('[useConditionClinicalInfo] sync error:', err.message);
+      const next = docs ? toLiveData(docs) : (liveData || { info: {}, images: {} });
+      liveData = next;
+      setData(next);
+      setLoading(false);
+    });
   }, []);
 
   return { clinicalInfoByCondition: data.info, imagesByCondition: data.images, loading };
@@ -101,7 +86,7 @@ export async function saveConditionClinicalInfo(conditionId, info) {
   await requireSignedIn();
 
   const ref = doc(db, COLLECTION_PATH, conditionId);
-  await setDoc(ref, { ...info, generatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(ref, { ...info, generatedAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
 }
 
 // Removes clinical info for one condition — best-effort; a no-op if the
@@ -116,9 +101,10 @@ export async function removeConditionClinicalInfo(conditionId) {
     if (!snap.exists()) return;
     const images = snap.data().images;
     if (Array.isArray(images) && images.length > 0) {
-      await setDoc(ref, { images }); // no merge: drops every other field
+      await setDoc(ref, { images, updatedAt: serverTimestamp() }); // no merge: drops every other field
     } else {
       await deleteDoc(ref);
+      markDeleted(COLLECTION_PATH, conditionId);
     }
   } catch {
     // Doc doesn't exist yet — nothing to remove.
@@ -136,12 +122,12 @@ export async function setConditionImages(conditionId, images) {
   if (list.length === 0) {
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
-    const { images: _drop, ...rest } = snap.data();
-    if (!hasInfoFields(rest)) { await deleteDoc(ref); return; }
-    await setDoc(ref, { images: [] }, { merge: true });
+    const { images: _drop, updatedAt: _stamp, ...rest } = snap.data();
+    if (!hasInfoFields(rest)) { await deleteDoc(ref); markDeleted(COLLECTION_PATH, conditionId); return; }
+    await setDoc(ref, { images: [], updatedAt: serverTimestamp() }, { merge: true });
     return;
   }
-  await setDoc(ref, { images: list }, { merge: true });
+  await setDoc(ref, { images: list, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 // Appends an already-hosted image link (e.g. the ImgChest URL returned for a

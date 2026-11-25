@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { SYSTEM_CONDITIONS, suggestConditionTagsForDrug } from '../data/systemConditions';
 
@@ -32,6 +32,7 @@ export async function autoTagDrugConditions(docId, drug) {
     if (matchedTags.size > 0) {
       await updateDoc(doc(db, 'drugs', docId), {
         condition_tags: arrayUnion(...matchedTags),
+        last_updated: serverTimestamp(),
       });
     }
     return [...matchedTags];

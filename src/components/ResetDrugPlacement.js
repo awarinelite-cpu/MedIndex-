@@ -13,7 +13,7 @@
 //    seed-only drugs and tags for conditions that no longer exist are left
 //    exactly as they are.
 import React, { useMemo, useState } from 'react';
-import { doc, writeBatch, deleteField } from 'firebase/firestore';
+import { doc, writeBatch, deleteField, serverTimestamp } from 'firebase/firestore';
 import { RotateCcw, AlertTriangle, Undo2, Eye } from 'lucide-react';
 import { db } from '../firebase';
 import { useDrugs } from '../hooks/useDrugs';
@@ -118,7 +118,7 @@ export default function ResetDrugPlacement({ showToast }) {
   const runBatches = async (items, apply) => {
     for (let i = 0; i < items.length; i += 400) {
       const batch = writeBatch(db);
-      items.slice(i, i + 400).forEach(it => batch.update(doc(db, 'drugs', it.id), apply(it)));
+      items.slice(i, i + 400).forEach(it => batch.update(doc(db, 'drugs', it.id), { ...apply(it), last_updated: serverTimestamp() }));
       await batch.commit();
     }
   };
