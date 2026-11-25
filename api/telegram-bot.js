@@ -146,18 +146,32 @@ function fmtDrugSummary(d) {
   return lines.join('\n');
 }
 
+// Firestore bills one read per document, so scanning the whole drugs
+// collection for every search used up thousands of reads each time and
+// helped exhaust the free daily quota. The scan result is now kept in memory
+// for a few minutes and reused by every search handled by the same warm
+// serverless instance.
+const DRUG_SCAN_TTL_MS = 10 * 60 * 1000;
+let drugScanCache = null; // { at, docs: [{ id, data }] }
+
+async function loadDrugScan() {
+  if (drugScanCache && Date.now() - drugScanCache.at < DRUG_SCAN_TTL_MS) return drugScanCache.docs;
+  const snap = await adminDb().collection('drugs').limit(3000).get();
+  const docs = snap.docs.map((doc) => ({ id: doc.id, data: doc.data() }));
+  drugScanCache = { at: Date.now(), docs };
+  return docs;
+}
+
 async function searchDrugs(term) {
   const needle = term.trim().toLowerCase();
-  // Firestore has no native substring search; the drug set is small enough
-  // for a reference app that a bounded full scan + in-memory filter is
-  // fine here (same ceiling reasoning as src/hooks/useDrugs.js — no
-  // artificial page limit that would silently hide matches).
-  const snap = await adminDb().collection('drugs').limit(3000).get();
+  // Firestore has no native substring search, so we scan (cached, see above)
+  // and filter in memory — no artificial page limit that would silently hide
+  // matches (same reasoning as src/hooks/useDrugs.js).
+  const scan = await loadDrugScan();
   const results = [];
-  for (const doc of snap.docs) {
-    const d = doc.data();
+  for (const { id, data: d } of scan) {
     const hay = `${d.generic_name || ''} ${d.brand_names || ''} ${d.drug_class || ''} ${d.indications || ''}`.toLowerCase();
-    if (hay.includes(needle)) results.push({ id: doc.id, ...d });
+    if (hay.includes(needle)) results.push({ id, ...d });
     if (results.length >= 30) break;
   }
   return results;
@@ -509,7 +523,9 @@ async function handlePending(chatId) {
   // Firestore can't query "array field is non-empty" directly, so scan
   // (bounded, same reasoning as searchDrugs) and filter in-memory —
   // matches how ConditionSection.js finds these client-side too.
-  const snap = await adminDb().collection('drugs').limit(3000).get();
+  // `!= []` only returns documents whose array is non-empty, so this reads just
+  // the pending drugs instead of the whole collection.
+  const snap = await adminDb().collection('drugs').where('pending_condition_tags', '!=', []).limit(200).get();
   const pending = snap.docs.filter(d => Array.isArray(d.data().pending_condition_tags) && d.data().pending_condition_tags.length > 0);
   if (!pending.length) { await sendMessage(chatId, '✅ Nothing pending review.'); return; }
   const text = pending.slice(0, 10).map((d, i) => {

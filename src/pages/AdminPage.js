@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useDrugs } from '../hooks/useDrugs';
 import { Link, useNavigate } from 'react-router-dom';
 import Papa from 'papaparse';
 import {
@@ -261,6 +262,9 @@ export default function AdminPage() {
 
   // ── Drug list state ────────────────────────────────────────────────────
   const [drugs,            setDrugs]            = useState([]);
+  const { drugs: liveDrugs, loading: liveLoading } = useDrugs();
+  const liveDrugsRef = useRef(liveDrugs);
+  liveDrugsRef.current = liveDrugs;
   const [loading,          setLoading]          = useState(true);
   const [seeding,          setSeeding]          = useState(false);
   const [searchQuery,      setSearchQuery]      = useState('');
@@ -420,6 +424,16 @@ export default function AdminPage() {
   const loadDrugs = useCallback(async () => {
     setLoading(true);
     try {
+      // The app already streams every drug live (useDrugs), so reuse that
+      // instead of paying for a second full read of the collection.
+      const live = liveDrugsRef.current;
+      if (live && live.length && !live[0]._seed) {
+        const fromLive = live.map(d => ({ ...d, firestoreId: d.id }));
+        fromLive.sort((a, b) => (a.generic_name || '').localeCompare(b.generic_name || ''));
+        setDrugs(fromLive);
+        setLoading(false);
+        return;
+      }
       const snap = await getDocs(collection(db, 'drugs'));
       if (snap.empty) { await seedFirestore(); return; }
       const data = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
@@ -429,7 +443,12 @@ export default function AdminPage() {
     setLoading(false);
   }, []); // eslint-disable-line
 
-  useEffect(() => { loadDrugs(); }, [loadDrugs]);
+  // Wait for the shared live list, then show it; only fall back to a direct
+  // read (or seeding) if the live list turned out empty.
+  useEffect(() => {
+    if (liveLoading) return;
+    loadDrugs();
+  }, [liveLoading, liveDrugs, loadDrugs]);
 
   // Refresh the table once the background General AI Insight run finishes,
   // since it writes to Firestore independently of this page's local state.
