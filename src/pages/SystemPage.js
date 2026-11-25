@@ -1119,6 +1119,14 @@ export default function SystemPage() {
     return [...counts.entries()].sort((a, b) => (a[0] === '#') - (b[0] === '#') || a[0].localeCompare(b[0]));
   }, [conditionGroups]);
 
+  // Every class in this system, for "move to another class" in the admin cross-check.
+  const siblingConditions = useMemo(
+    () => [...conditionGroups.values()]
+      .map(e => e.condition)
+      .filter(c => c && c.id && c.id !== '_other' && c.label)
+      .map(c => ({ id: c.id, label: c.label })),
+    [conditionGroups]
+  );
 
   const filteredConditions = useMemo(() => {
     const q = nameSearch.trim().toLowerCase();
@@ -1450,6 +1458,7 @@ export default function SystemPage() {
                   viewMode={viewMode}
                   isOpen={false}
                   onToggle={() => navigate(`/condition/${systemId}/${entry.condition.id}`)}
+                  siblingConditions={siblingConditions}
                   systemName={system.name}
                   systemId={systemId}
                   onDrugRemoved={handleDrugRemoved}
