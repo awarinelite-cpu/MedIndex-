@@ -5,7 +5,7 @@
 // a matching drug/condition exists.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, where, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, limit, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { SearchX, RefreshCw, Pill, Stethoscope, X, Users, Clock, Search as SearchIcon } from 'lucide-react';
 import { db } from '../firebase';
 import { useDrugs } from '../hooks/useDrugs';
@@ -41,7 +41,7 @@ export default function AdminMissingSearchesPage() {
   const load = useCallback(async () => {
     setState('loading'); setError('');
     try {
-      const snap = await getDocs(query(collection(db, 'search_logs'), where('resultCount', '==', 0)));
+      const snap = await getDocs(query(collection(db, 'search_logs'), where('resultCount', '==', 0), limit(1000)));
       const byKey = new Map();
       snap.docs.forEach(d => {
         const x = d.data();

@@ -6,9 +6,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  collection, addDoc, getDocs, doc,
-  deleteDoc, updateDoc, serverTimestamp, orderBy, query,
+  collection, addDoc, doc,
+  deleteDoc, updateDoc, serverTimestamp,
 } from 'firebase/firestore';
+import { loadUserLists } from '../utils/userListsCache';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -25,10 +26,7 @@ function useUserLists(uid) {
   const load = useCallback(async () => {
     if (!uid) { setLoading(false); return; }
     try {
-      const snap = await getDocs(
-        query(collection(db, 'users', uid, 'lists'), orderBy('createdAt', 'desc'))
-      );
-      setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLists(await loadUserLists(uid, { force: true }));
     } catch (e) {
       console.error('Load lists error:', e);
     }

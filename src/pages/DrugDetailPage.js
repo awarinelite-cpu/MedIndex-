@@ -31,9 +31,10 @@ import {
   uploadClipboardImageToImgChest, getDrugImages, deleteDrugImage, normalizeImageUrl,
 } from '../utils/generateDrugImage';
 import {
-  collection, getDocs, doc, updateDoc, addDoc,
-  serverTimestamp, query, orderBy, Timestamp,
+  collection, doc, updateDoc, addDoc,
+  serverTimestamp, Timestamp,
 } from 'firebase/firestore';
+import { loadUserLists, invalidateUserLists } from '../utils/userListsCache';
 import { db } from '../firebase';
 import { getDisplayDrugClass } from '../utils/drugCategory';
 
@@ -1474,10 +1475,7 @@ function AddToListButton({ drug, bar = false }) {
     if (!user?.uid) return;
     setLoading(true);
     try {
-      const snap = await getDocs(
-        query(collection(db, 'users', user.uid, 'lists'), orderBy('createdAt', 'desc'))
-      );
-      setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLists(await loadUserLists(user.uid));
     } catch (e) { console.error('Load lists for picker:', e); setError('Could not load your lists.'); }
     setLoading(false);
   };
@@ -1505,6 +1503,7 @@ function AddToListButton({ drug, bar = false }) {
           addedAt:   Timestamp.now(),
         },
       ];
+      invalidateUserLists(user.uid);
       await updateDoc(doc(db, 'users', user.uid, 'lists', list.id), {
         drugs: updatedDrugs,
         last_updated: serverTimestamp(),
@@ -1521,6 +1520,7 @@ function AddToListButton({ drug, bar = false }) {
     setLoading(true);
     setError(null);
     try {
+      invalidateUserLists(user.uid);
       const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
         title:     `New List`,
         createdAt: serverTimestamp(),

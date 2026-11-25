@@ -7,9 +7,10 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  collection, addDoc, getDocs, doc,
-  updateDoc, serverTimestamp, orderBy, query, Timestamp,
+  collection, addDoc, doc,
+  updateDoc, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
+import { loadUserLists, invalidateUserLists } from '../utils/userListsCache';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { slugifyDrugName } from '../utils/aiDrugSave';
@@ -40,10 +41,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
     setLoading(true);
     setError(null);
     try {
-      const snap = await getDocs(
-        query(collection(db, 'users', user.uid, 'lists'), orderBy('createdAt', 'desc'))
-      );
-      setLists(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLists(await loadUserLists(user.uid));
     } catch (e) {
       console.error('Load favorite folders error:', e);
       setError("Couldn't load your folders. Check your connection and try again.");
@@ -83,6 +81,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
           addedAt:   Timestamp.now(),
         },
       ];
+      invalidateUserLists(user.uid);
       await updateDoc(doc(db, 'users', user.uid, 'lists', list.id), {
         drugs: updatedDrugs,
         last_updated: serverTimestamp(),
@@ -101,6 +100,7 @@ export default function AddToFavoritesHeart({ drug, className = '', variant = 'i
     setLoading(true);
     setError(null);
     try {
+      invalidateUserLists(user.uid);
       const ref = await addDoc(collection(db, 'users', user.uid, 'lists'), {
         title,
         createdAt: serverTimestamp(),
