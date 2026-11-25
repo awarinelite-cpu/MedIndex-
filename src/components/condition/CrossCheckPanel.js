@@ -43,7 +43,11 @@ async function callCheck({ drugs, conditionLabel, keywords, candidates }) {
   return data.results || [];
 }
 
-export default function CrossCheckPanel({ title, conditionId, conditionLabel, drugs, siblings, onClose }) {
+// `taxonomy` ({ classId, subclassId }) switches the panel to subclass mode (used on
+// the drug class page): conditionId / sibling ids are "classId::subclassId" keys and
+// Remove / Move write `excluded_subclasses` / `extra_subclasses` on the drug instead
+// of condition tags.
+export default function CrossCheckPanel({ title, conditionId, conditionLabel, drugs, siblings, onClose, taxonomy }) {
   const [phase, setPhase] = useState('setup'); // setup | running | review | applying | done
   const [extra, setExtra] = useState('');
   const [progress, setProgress] = useState(0);
@@ -141,19 +145,34 @@ export default function CrossCheckPanel({ title, conditionId, conditionLabel, dr
         if (c.action === 'delete') {
           await deleteReviewedDrug({ id });
         } else {
-          if (c.action === 'move') {
+          if (taxonomy) {
+            if (c.action === 'move') {
+              await updateDoc(doc(db, 'drugs', id), {
+                extra_subclasses: arrayUnion(c.target),
+                excluded_subclasses: arrayRemove(c.target),
+                last_updated: serverTimestamp(),
+              });
+            }
             await updateDoc(doc(db, 'drugs', id), {
-              condition_tags: arrayUnion(c.target),
-              condition_excluded: arrayRemove(c.target),
+              extra_subclasses: arrayRemove(conditionId),
+              excluded_subclasses: arrayUnion(conditionId),
+              last_updated: serverTimestamp(),
+            });
+          } else {
+            if (c.action === 'move') {
+              await updateDoc(doc(db, 'drugs', id), {
+                condition_tags: arrayUnion(c.target),
+                condition_excluded: arrayRemove(c.target),
+                last_updated: serverTimestamp(),
+              });
+            }
+            await updateDoc(doc(db, 'drugs', id), {
+              condition_tags: arrayRemove(conditionId),
+              pending_condition_tags: arrayRemove(conditionId),
+              condition_excluded: arrayUnion(conditionId),
               last_updated: serverTimestamp(),
             });
           }
-          await updateDoc(doc(db, 'drugs', id), {
-            condition_tags: arrayRemove(conditionId),
-            pending_condition_tags: arrayRemove(conditionId),
-            condition_excluded: arrayUnion(conditionId),
-            last_updated: serverTimestamp(),
-          });
         }
         done += 1;
       } catch (e) {

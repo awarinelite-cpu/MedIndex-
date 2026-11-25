@@ -5,18 +5,23 @@
 // has a collapsed "Find more drugs" dropdown (AI + Google search).
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Pill, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Search, Pill, ChevronRight, SlidersHorizontal, ShieldCheck } from 'lucide-react';
 import { useDrugs } from '../hooks/useDrugs';
 import { findClassById } from '../data/drugClassTaxonomy';
 import { classifyDrugTaxonomyAll } from '../utils/classifyDrugTaxonomy';
 import { DrugRow, classVisual } from '../components/TaxonomyBrowser';
 import { subclassIcon } from '../utils/subclassIcons';
 import ClassMoreDrugs from '../components/ClassMoreDrugs';
+import CrossCheckPanel from '../components/condition/CrossCheckPanel';
+import { useAuth } from '../context/AuthContext';
 
 export default function DrugClassPage() {
   const { classId } = useParams();
   const navigate = useNavigate();
   const { drugs: ALL_DRUGS, loading } = useDrugs();
+  const { isAdmin } = useAuth();
+  // Subclass whose admin cross-check panel is open (null = closed).
+  const [crossCheckSub, setCrossCheckSub] = useState(null);
   const [query, setQuery] = useState('');
   // Single-open accordion: opening one subclass closes the one that was open.
   const [openSubId, setOpenSubId] = useState(null);
@@ -138,6 +143,19 @@ export default function DrugClassPage() {
               >
                 <span className="cp-row-icon"><SubIcon className="w-7 h-7" /></span>
                 <span className="cp-row-name">{subclass.name}</span>
+                {isAdmin && drugs.length > 0 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Cross-check drugs in ${subclass.name}`}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCrossCheckSub(subclass); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setCrossCheckSub(subclass); } }}
+                    className="w-9 h-9 flex-shrink-0 rounded-full bg-[#EDE9FE] flex items-center justify-center hover:bg-[#ddd6fe]"
+                    title="Cross-check this class's drugs (label data + Google)"
+                  >
+                    <ShieldCheck className="w-[18px] h-[18px] text-violet-700" />
+                  </span>
+                )}
                 <span className="cp-row-count">{count} drug{count === 1 ? '' : 's'}</span>
                 <ChevronRight className={`cp-row-chev ${isOpen ? 'is-open' : ''}`} />
               </button>
@@ -186,6 +204,24 @@ export default function DrugClassPage() {
           />
         </section>
       )}
+      {crossCheckSub && (() => {
+        const sub = crossCheckSub;
+        const subDrugs = groups.find(g => g.subclass.id === sub.id)?.drugs || [];
+        return (
+          <CrossCheckPanel
+            key={sub.id}
+            title={sub.name}
+            conditionId={`${classDef.id}::${sub.id}`}
+            conditionLabel={sub.name}
+            drugs={subDrugs}
+            siblings={classDef.subclasses
+              .filter(x => x.id !== sub.id)
+              .map(x => ({ id: `${classDef.id}::${x.id}`, label: x.name }))}
+            taxonomy={{ classId: classDef.id, subclassId: sub.id }}
+            onClose={() => setCrossCheckSub(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

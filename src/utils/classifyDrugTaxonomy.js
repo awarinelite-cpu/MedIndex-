@@ -325,5 +325,17 @@ export function classifyDrugTaxonomyAll(drug) {
     }
   }
 
+  // `excluded_subclasses` ("classId::subclassId" strings) is written by the
+  // admin Cross-check on a subclass page when a drug is removed from, or
+  // moved out of, a subclass. It hides a placement that the keyword rules or
+  // the drug's indications would otherwise keep producing. A drug left with no
+  // placement at all falls back to the unclassified bucket so it never vanishes.
+  if (Array.isArray(drug.excluded_subclasses) && drug.excluded_subclasses.length) {
+    const excluded = new Set(drug.excluded_subclasses.filter(e => typeof e === 'string'));
+    const kept = all.filter(h => !excluded.has(`${h.classId}::${h.subclassId}`));
+    if (kept.length) return kept;
+    return [{ classId: UNCLASSIFIED_BUCKET.id, subclassId: UNCLASSIFIED_BUCKET.subclasses[0].id }];
+  }
+
   return all;
 }

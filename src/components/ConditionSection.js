@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pill, ChevronRight, ChevronDown, ChevronUp,
-  Sparkles, RefreshCw, Save, FileText, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info, ShieldCheck,
+  Sparkles, RefreshCw, Save, FileText, AlertTriangle, X, BookOpen, Trash2, Pencil, Check, Share2, ShieldAlert, Bookmark, LayoutGrid, Search, ExternalLink, Info,
 } from 'lucide-react';
 import { useFavourites, conditionFavKey } from '../hooks/useFavourites';
 import { useDrugs } from '../hooks/useDrugs';
@@ -27,7 +27,6 @@ import { shareConditionNoteDocx } from '../utils/exportConditionNoteDocx';
 import AiClassFallback from './AiClassInsight';
 import ConditionImagesPanel from './ConditionImagesPanel';
 import ConditionMedicationsView from './condition/ConditionMedicationsView';
-import CrossCheckPanel from './condition/CrossCheckPanel';
 
 export function RxBadge({ status }) {
   const cls =
@@ -541,11 +540,10 @@ export function ClinicalInfoSection({ title, body }) {
 }
 
 /* ── Collapsible condition section ──────────────────────────────────────── */
-export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, images, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect, siblingConditions }) {
+export default function ConditionSection({ condition, drugs, viewMode, classFilter, nameSearch, isOpen, onToggle, systemName, systemId, onDrugRemoved, clinicalInfo, images, onDeleteCondition, isDeleting, onRenameCondition, isRenaming, mergeMode, isSelectedForMerge, onToggleMergeSelect, classMergeMode, selectedClassesForMerge, onToggleClassMergeSelect }) {
   const open = isOpen;
   const { isAdmin } = useAuth();
   // Admin cross-check of this class's drugs (system page only: it needs the sibling classes to offer "move to").
-  const [crossCheckOpen, setCrossCheckOpen] = useState(false);
   const { drugs: allDrugs } = useDrugs();
   const [removingId, setRemovingId] = useState(null);
   const [isEditingLabel, setIsEditingLabel] = useState(false);
@@ -1045,19 +1043,6 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
               <Bookmark className="w-[18px] h-[18px] text-blue-600" fill={conditionSaved ? 'currentColor' : 'none'} />
             </span>
           )}
-          {!mergeMode && !classMergeMode && isAdmin && siblingConditions && condition.id !== '_other' && !isEditingLabel && !isEmpty && (
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label={`Cross-check drugs in ${condition.label}`}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCrossCheckOpen(true); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setCrossCheckOpen(true); } }}
-              className="w-9 h-9 rounded-full bg-[#EDE9FE] flex items-center justify-center hover:bg-[#ddd6fe]"
-              title="Cross-check this class's drugs (label data + Google)"
-            >
-              <ShieldCheck className="w-[18px] h-[18px] text-violet-700" />
-            </span>
-          )}
           {!mergeMode && !classMergeMode && isAdmin && onRenameCondition && condition.id !== '_other' && !isEditingLabel && (
             <span
               role="button"
@@ -1092,17 +1077,6 @@ export default function ConditionSection({ condition, drugs, viewMode, classFilt
           )}
         </div>
       </div>
-
-      {crossCheckOpen && (
-        <CrossCheckPanel
-          title={condition.label}
-          conditionId={condition.id}
-          conditionLabel={condition.label}
-          drugs={(drugs || []).filter(d => !d.is_combination_therapy)}
-          siblings={(siblingConditions || []).filter(c => c.id !== condition.id)}
-          onClose={() => setCrossCheckOpen(false)}
-        />
-      )}
 
       {open && !mergeMode && (
         <div>
