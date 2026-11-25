@@ -6,6 +6,15 @@ import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
 import { apiUrl } from '../config/apiBase';
 import { drugMatchesConditionKeywords } from '../data/systemConditions';
+import { isClassRecord } from './classRecords';
+
+// A drug class ("NSAIDs (e.g., Ibuprofen)") is a heading, not a drug. Refuse to
+// create a drugs/ document for one so class names can't leak into drug lists.
+function assertNotClassName(name) {
+  if (isClassRecord({ generic_name: name })) {
+    throw new Error(`"${name}" looks like a drug class, not a single drug — nothing was saved.`);
+  }
+}
 
 // Wait for Firebase Auth session to restore, then verify sign-in
 async function getAuthUser() {
@@ -607,6 +616,7 @@ export async function generateDrugOnce({ genericName, drugClass, endpoint = '/ap
 // saveParsedDrug: patches ONLY missing fields into the existing Firestore doc.
 // Existing populated fields are NEVER overwritten — this is a surgical patch.
 export async function saveParsedDrug({ genericName, drugClass, parsed, existingDrug = null }) {
+  assertNotClassName(genericName);
   const contributor = await getContributorInfo();
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
@@ -702,6 +712,7 @@ export async function saveParsedDrug({ genericName, drugClass, parsed, existingD
 const GEMINI_ENDPOINT = '/api/drug-ai-details';
 
 export async function forceRegenerateDrug({ genericName, drugClass }) {
+  assertNotClassName(genericName);
   const contributor = await getContributorInfo();
   const docId = slugifyDrugName(genericName);
   const ref   = doc(db, 'drugs', docId);
@@ -794,6 +805,7 @@ export async function ensureDrugComplete({ drug, endpoint = '/api/drug-ai-detail
 // AiDrugPage and BrowsePage call this directly with pre-fetched text.
 // We parse and validate here — only save if complete.
 export async function saveAiDrugToDatabase({ genericName, drugClass, text, overwrite = true }) {
+  assertNotClassName(genericName);
   const contributor = await getContributorInfo();
 
   // Reject outright refusals ("not a recognized drug", "not available",
@@ -1010,6 +1022,7 @@ export async function addMedicationsToCondition({ names, items, conditionId, exi
 // Creates a name-only drug (no AI) for the admin to fill in later. Returns its id.
 // If a drug with that id already exists it is left untouched.
 export async function createPlaceholderDrug(name, extraTags = []) {
+  assertNotClassName(name);
   const contributor = await getContributorInfo();
   const id = slugifyDrugName(name);
   const ref = doc(db, 'drugs', id);

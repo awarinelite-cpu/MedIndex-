@@ -21,6 +21,7 @@ import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { SYSTEM_CONDITIONS } from '../data/systemConditions';
 import { generateDrugOnce, saveParsedDrug, forceRegenerateDrug, isDrugComplete, getMissingGroups, REQUIRED_FIELD_GROUPS } from '../utils/aiDrugSave';
 import DuplicateDrugsPanel from '../components/DuplicateDrugsPanel';
+import ClassRecordsPanel from '../components/ClassRecordsPanel';
 import ClinicalInfoMigration from '../components/ClinicalInfoMigration';
 import ResetDrugPlacement from '../components/ResetDrugPlacement';
 import { useAiInsight } from '../context/AiInsightContext';
@@ -263,7 +264,7 @@ export default function AdminPage() {
 
   // ── Drug list state ────────────────────────────────────────────────────
   const [drugs,            setDrugs]            = useState([]);
-  const { drugs: liveDrugs, loading: liveLoading } = useDrugs();
+  const { drugs: liveDrugs, loading: liveLoading } = useDrugs({ includeClasses: true });
   const liveDrugsRef = useRef(liveDrugs);
   liveDrugsRef.current = liveDrugs;
   const [loading,          setLoading]          = useState(true);
@@ -1293,6 +1294,9 @@ export default function AdminPage() {
       {/* ═══════════════════════ DRUG LIST TAB ════════════════════════════ */}
       {activeTab === 'drugs' && (
         <>
+          <div className="mb-4">
+            <ClassRecordsPanel drugs={drugs} showToast={showToast} />
+          </div>
           <div className="mb-4">
             <DuplicateDrugsPanel
               drugs={drugs}

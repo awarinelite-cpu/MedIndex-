@@ -12,9 +12,10 @@
 // One shared store backs every component that calls useDrugs() — Home,
 // Browse, System, and Drug Detail all stay in sync off the same data.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import SEED_DRUGS from '../data/seedDrugs.json';
 import { createDeltaStore } from '../utils/deltaCollection';
+import { splitDrugRecords } from '../utils/classRecords';
 
 // Pre-process seed data once — give each drug a stable id
 const SEED_WITH_IDS = SEED_DRUGS.map(d => ({
@@ -34,8 +35,13 @@ const store = createDeltaStore({ path: 'drugs', field: 'last_updated' });
 
 let liveDrugs = null; // most recent data, so later mounts start with it
 
-export function useDrugs() {
-  const [drugs,   setDrugs]   = useState(liveDrugs || []);
+// useDrugs()                         -> real drugs only. Class records (NSAIDs (e.g., ...))
+//                                       are headings, never drugs, so every screen is
+//                                       protected from them by default.
+// useDrugs({ includeClasses: true }) -> raw list, for admin clean-up screens only.
+// `classRecords` is always returned so a screen can still read them if needed.
+export function useDrugs({ includeClasses = false } = {}) {
+  const [records, setRecords] = useState(liveDrugs || []);
   const [loading, setLoading] = useState(!liveDrugs);
 
   useEffect(() => {
@@ -49,10 +55,17 @@ export function useDrugs() {
         next = arr;
       }
       liveDrugs = next;
-      setDrugs(next);
+      setRecords(next);
       setLoading(false);
     });
   }, []);
 
-  return { drugs, loading };
+  // Memoised so consumers get a stable array reference between renders.
+  const split = useMemo(() => splitDrugRecords(records), [records]);
+
+  return {
+    drugs: includeClasses ? records : split.drugs,
+    classRecords: split.classes,
+    loading,
+  };
 }

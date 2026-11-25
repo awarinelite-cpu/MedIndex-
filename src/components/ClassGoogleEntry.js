@@ -10,6 +10,7 @@ import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { doc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { isClassRecord } from '../utils/classRecords';
 import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2, Search, ExternalLink } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -169,6 +170,8 @@ export default function ClassGoogleEntry({
       await auth.authStateReady();
       if (!auth.currentUser) throw new Error('You must be signed in as admin to save.');
       for (const item of items) {
+        // A class / group name is a heading, not a drug — never save it as one.
+        if (isClassRecord({ generic_name: item.name })) { failed.push(`${item.name}: is a drug class, not a drug (skipped)`); continue; }
         const targetSub = targetFor(item);
         if (!targetSub) { failed.push(`${item.name}: no matching subclass`); continue; }
         const tag = `${classId}::${targetSub}`;

@@ -15,6 +15,7 @@ import { quickSearch, searchDrugs } from '../utils/searchDrugs';
 import { ANATOMICAL_SYSTEMS } from '../data/anatomicalSystems';
 import { drugMatchesSystem } from '../utils/systemMatch';
 import { getDisplayDrugClass } from '../utils/drugCategory';
+import { groupByClass } from '../utils/classRecords';
 import ConditionInsightCard, { normalizeConditionDrugName } from '../components/ConditionInsightCard';
 import AiSearchFallback from '../components/AiSearchFallback';
 import NewConditionGoogleSearch from '../components/NewConditionGoogleSearch';
@@ -282,25 +283,30 @@ export default function HomePage() {
           {/* Instant dropdown */}
           {showDropdown && searchResults.length > 0 && (
             <div className="mi-dropdown">
-              {searchResults.map(drug => (
-                <Link
-                  key={drug.id}
-                  to={`/drug/${drug.id}`}
-                  onClick={() => { setSearchQuery(''); setShowDropdown(false); }}
-                  className="mi-dropdown-row"
-                >
-                  <Pill className="mi-dropdown-pill" size={18} />
-                  <div className="mi-dropdown-main">
-                    <div className="mi-dropdown-name">{drug.generic_name}</div>
-                    {drug._matchType === 'indication' && drug._matchSnippet ? (
-                      <div className="mi-dropdown-sub mi-dropdown-match">✓ {drug._matchSnippet}</div>
-                    ) : (
-                      <div className="mi-dropdown-sub">{getDisplayDrugClass(drug)}</div>
-                    )}
-                  </div>
-                  <AddToFavoritesHeart drug={drug} />
-                  <RxBadge status={drug.prescription_status} />
-                </Link>
+              {groupByClass(searchResults, getDisplayDrugClass).map(group => (
+                <React.Fragment key={group.heading}>
+                  <div className="mi-class-head" role="presentation">{group.heading}</div>
+                  {group.drugs.map(drug => (
+                    <Link
+                      key={drug.id}
+                      to={`/drug/${drug.id}`}
+                      onClick={() => { setSearchQuery(''); setShowDropdown(false); }}
+                      className="mi-dropdown-row"
+                    >
+                      <Pill className="mi-dropdown-pill" size={18} />
+                      <div className="mi-dropdown-main">
+                        <div className="mi-dropdown-name">{drug.generic_name}</div>
+                        {drug._matchType === 'indication' && drug._matchSnippet ? (
+                          <div className="mi-dropdown-sub mi-dropdown-match">✓ {drug._matchSnippet}</div>
+                        ) : (
+                          <div className="mi-dropdown-sub">{drug.drug_subclass || 'Drug'}</div>
+                        )}
+                      </div>
+                      <AddToFavoritesHeart drug={drug} />
+                      <RxBadge status={drug.prescription_status} />
+                    </Link>
+                  ))}
+                </React.Fragment>
               ))}
               <span
                 role="button"
@@ -340,20 +346,25 @@ export default function HomePage() {
                 <div className="mi-matches-head">
                   {allMatchingDrugs.length} matching medication{allMatchingDrugs.length === 1 ? '' : 's'}
                 </div>
-                {allMatchingDrugs.map(drug => (
-                  <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-dropdown-row mi-match-row">
-                    <Pill className="mi-dropdown-pill" size={18} />
-                    <div className="mi-dropdown-main">
-                      <div className="mi-dropdown-name">{drug.generic_name}</div>
-                      {drug._matchType === 'indication' && drug._matchSnippet ? (
-                        <div className="mi-dropdown-sub mi-dropdown-match">✓ {drug._matchSnippet}</div>
-                      ) : (
-                        <div className="mi-dropdown-sub">{getDisplayDrugClass(drug)}</div>
-                      )}
-                    </div>
-                    <AddToFavoritesHeart drug={drug} />
-                    <RxBadge status={drug.prescription_status} />
-                  </Link>
+                {groupByClass(allMatchingDrugs, getDisplayDrugClass).map(group => (
+                  <React.Fragment key={group.heading}>
+                    <div className="mi-class-head" role="presentation">{group.heading}</div>
+                    {group.drugs.map(drug => (
+                      <Link key={drug.id} to={`/drug/${drug.id}`} className="mi-dropdown-row mi-match-row">
+                        <Pill className="mi-dropdown-pill" size={18} />
+                        <div className="mi-dropdown-main">
+                          <div className="mi-dropdown-name">{drug.generic_name}</div>
+                          {drug._matchType === 'indication' && drug._matchSnippet ? (
+                            <div className="mi-dropdown-sub mi-dropdown-match">✓ {drug._matchSnippet}</div>
+                          ) : (
+                            <div className="mi-dropdown-sub">{drug.drug_subclass || 'Drug'}</div>
+                          )}
+                        </div>
+                        <AddToFavoritesHeart drug={drug} />
+                        <RxBadge status={drug.prescription_status} />
+                      </Link>
+                    ))}
+                  </React.Fragment>
                 ))}
               </div>
             )}

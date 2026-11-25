@@ -2,6 +2,7 @@
 // For when the searched term is a DRUG, not a condition: search Google with the
 // same prompt the drug Overview tab uses, paste the answer, and save it as a
 // new drug record (same fields/parser as ManualDrugInfoEntry).
+import { isClassRecord } from '../utils/classRecords';
 import useAutoSaveOnPaste from '../utils/useAutoSaveOnPaste';
 import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -53,6 +54,7 @@ export default function NewDrugGoogleSearch({ label }) {
       if (!auth.currentUser) throw new Error('You must be signed in as admin to save.');
       const id = drugIdFor(drugName);
       if (!id) throw new Error('Drug name is empty.');
+      if (isClassRecord({ generic_name: drugName })) throw new Error('This looks like a drug class, not a single drug, so it was not saved.');
       await setDoc(doc(db, 'drugs', id), {
         ...parsed.updates,
         generic_name: drugName,

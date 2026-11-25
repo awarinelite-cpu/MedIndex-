@@ -433,7 +433,7 @@ function MigrationReviewCard({ drug, selected, onToggleSelect, onHandled }) {
 }
 
 export default function AdminReviewPage() {
-  const { drugs } = useDrugs();
+  const { drugs } = useDrugs({ includeClasses: true });
   const { customConditionsBySystem } = useCustomConditions();
   const { procedures } = useProcedures();
   const [tab, setTab] = useState('drugs');

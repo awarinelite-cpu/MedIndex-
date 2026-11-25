@@ -1628,3 +1628,16 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
 .dark .cc-sheet { background: #111c31; color: #e9f1ff; }
 .dark .cc-row { background: #16233c; border-color: #22314d; }
 .dark .cc-select, .dark .cc-input { background: #0f1a2e; border-color: #27406b; color: #e9f1ff; }
+
+
+/* Drug class shown as a subheading above its drugs (never as a drug row) */
+.mi-class-head {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #5b6b86;
+  background: rgba(15, 42, 85, .04);
+  pointer-events: none;
+}

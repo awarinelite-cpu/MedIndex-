@@ -18,6 +18,18 @@
 //   _matchSnippet : short excerpt showing WHERE the match was found
 // ──────────────────────────────────────────────────────────────────────────
 
+import { drugIdentityKey } from './drugNameKey';
+
+// How filled-in a record is — used only to pick which of two duplicate records
+// to show. Kept local (no Firebase imports) so search stays a pure utility.
+function filledFields(d) {
+  let n = 0;
+  for (const v of Object.values(d)) {
+    if (typeof v === 'string' ? v.trim() : (Array.isArray(v) ? v.length : v)) n += 1;
+  }
+  return d._seed ? n - 100 : n;
+}
+
 // Fields that describe what a drug treats / is indicated for
 const INDICATION_FIELDS = ['indications', 'primary_indications'];
 
@@ -134,17 +146,18 @@ function scoreAndAnnotate(drug, q, variants) {
   const cls   = ((drug.drug_class   || '') + ' ' + (drug.drug_subclass || '')).toLowerCase().trim();
 
   let score        = 0;
+  let nameHit      = false;
   let matchType    = null;
   let matchSnippet = null;
 
   // ── 1. Drug name ─────────────────────────────────────────────────────────
   // Only the literal query is used for name matching — synonyms are for
   // conditions, not drug names.
-  if (name === q)              { score += 120; matchType = 'name'; }
-  else if (name.startsWith(q)) { score +=  90; matchType = 'name'; }
-  else if (name.includes(q))   { score +=  70; matchType = 'name'; }
+  if (name === q)              { score += 120; matchType = 'name'; nameHit = true; }
+  else if (name.startsWith(q)) { score +=  90; matchType = 'name'; nameHit = true; }
+  else if (name.includes(q))   { score +=  70; matchType = 'name'; nameHit = true; }
   else if (q.split(' ').filter(Boolean).every(w => name.includes(w))) {
-                                 score +=  60; matchType = 'name'; }
+                                 score +=  60; matchType = 'name'; nameHit = true; }
 
   // ── 2. Indications / Uses ─────────────────────────────────────────────────
   // The core of condition search: any drug listing the searched condition
@@ -231,7 +244,12 @@ function scoreAndAnnotate(drug, q, variants) {
     }
   }
 
-  return { score, matchType, matchSnippet };
+  // A drug found by its NAME is a name match, even if its indications also
+  // contain the query — otherwise the row shows an unrelated indication
+  // snippet (e.g. "PDA: Intravenous…") instead of the drug's class.
+  if (nameHit) { matchType = 'name'; matchSnippet = null; }
+
+  return { score, matchType, matchSnippet, nameHit };
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -244,17 +262,35 @@ export function searchDrugs(drugs, query) {
 
   const variants = expandQuery(q);
 
-  return drugs
+  const scored = drugs
     .map(drug => {
-      const { score, matchType, matchSnippet } = scoreAndAnnotate(drug, q, variants);
-      return { ...drug, _score: score, _matchType: matchType, _matchSnippet: matchSnippet };
+      const { score, matchType, matchSnippet, nameHit } = scoreAndAnnotate(drug, q, variants);
+      return { ...drug, _score: score, _matchType: matchType, _matchSnippet: matchSnippet, _nameHit: nameHit };
     })
-    .filter(d => d._score > 0)
-    .sort((a, b) => b._score - a._score);
+    .filter(d => d._score > 0);
+
+  // Same drug saved twice (different doc ids) -> show it once, keeping the
+  // most complete record.
+  const best = new Map();
+  const unkeyed = [];
+  for (const d of scored) {
+    const key = drugIdentityKey(d.generic_name);
+    if (!key) { unkeyed.push(d); continue; }
+    const cur = best.get(key);
+    if (!cur || filledFields(d) > filledFields(cur)) best.set(key, d);
+  }
+
+  return [...best.values(), ...unkeyed].sort((a, b) => b._score - a._score);
 }
 
-// Quick search — top N results for autocomplete dropdowns.
-// Used by HomePage.
+// Quick search — top N results for autocomplete dropdowns. Used by HomePage.
+// When the person typed a drug NAME and at least one drug matches by name,
+// ONLY name matches are shown: drugs that merely mention the word in their
+// notes or overview are left for "View all results". If nothing matches by
+// name (a condition search like "diarrhea"), the normal indication / class /
+// overview matches are shown.
 export function quickSearch(drugs, query, limit = 8) {
-  return searchDrugs(drugs, query).slice(0, limit);
+  const all = searchDrugs(drugs, query);
+  const nameMatches = all.filter(d => d._nameHit);
+  return (nameMatches.length ? nameMatches : all).slice(0, limit);
 }
