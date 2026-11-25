@@ -15,8 +15,8 @@
 // `candidates` are other conditions the drug could be moved to; any whose
 // concepts match the drug's reference text come back as `suggestions`.
 //
-// Requires the caller's Firebase ID token (`Authorization: Bearer …`) and an
-// entry in the `admins` collection. Nothing here writes to the database.
+// Requires a valid signed-in Firebase ID token (`Authorization: Bearer …`).
+// Nothing here reads or writes Firestore.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { buildConcepts, findMatch, stripSalt } from './_lib/indicationMatch.js';
@@ -134,10 +134,22 @@ export default async function handler(req, res) {
       res.status(500).json({ error: 'Failed to load the Admin SDK module: ' + (e?.message || String(e)) });
       return;
     }
+    // Only the sign-in token is verified here (no Firestore read), so this keeps
+    // working when the project's daily Firestore quota is used up. The endpoint
+    // returns public drug-label data and writes nothing; the button is admin-only
+    // in the app and every change is still enforced by the Firestore rules.
     try {
-      await firebaseAdmin.requireAdmin(req);
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+      if (!token) { res.status(401).json({ error: 'Missing Authorization header — please sign in.' }); return; }
+      try {
+        await firebaseAdmin.adminAuth().verifyIdToken(token);
+      } catch {
+        res.status(401).json({ error: 'Invalid or expired session — please sign in again.' });
+        return;
+      }
     } catch (e) {
-      res.status(e.status || 401).json({ error: e.message });
+      res.status(e.status || 500).json({ error: e.message });
       return;
     }
 
