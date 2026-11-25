@@ -233,8 +233,33 @@ function MedsToolsDropdown({ conditionId, conditionName }) {
   );
 }
 
-function MedicationsCard({ buckets, conditionName, conditionId }) {
+// A drug class shown as a subheading with its write-up (never as a drug row).
+const noteText = (c) => [c.overview, c.therapeutic_note, c.indications, c.primary_indications]
+  .map(t => String(t || '').trim()).find(Boolean) || '';
+function ClassNote({ cls }) {
+  const text = noteText(cls);
+  return (
+    <div className="cp-class-note">
+      <div className="cp-class-note-head">{cls.generic_name}</div>
+      {text && <p>{text}</p>}
+    </div>
+  );
+}
+
+// Class records tagged to this condition whose example drugs are not in the
+// system yet: they are shown as heading + write-up. (When the examples exist
+// they are listed as drugs instead — see splitDrugRecords.)
+function classNotesFor(classRecords, conditionId) {
+  if (!conditionId) return [];
+  return (classRecords || []).filter(c =>
+    Array.isArray(c.condition_tags) && c.condition_tags.includes(conditionId)
+    && !(Array.isArray(c.condition_excluded) && c.condition_excluded.includes(conditionId))
+    && !(c._memberIds && c._memberIds.length));
+}
+
+function MedicationsCard({ buckets, conditionName, conditionId, classRecords }) {
   const { isAdmin } = useAuth();
+  const classNotes = useMemo(() => classNotesFor(classRecords, conditionId), [classRecords, conditionId]);
   const adminTools = isAdmin ? <MedsToolsDropdown conditionId={conditionId} conditionName={conditionName} /> : null;
   const [openCats, setOpenCats] = useState(null); // null = first group open by default
 
@@ -250,6 +275,15 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
     };
     buckets.main.forEach(d => add(d, 'main'));
     buckets.adjunct.forEach(d => add(d, 'adjunct'));
+    // A drug class with no drugs of its own listed here is shown as a heading
+    // with its write-up, never as a drug row.
+    classNotes.forEach(c => {
+      const g = c.condition_groups?.[conditionId];
+      const cat = g?.heading || (getDisplayDrugClass(c) || '').trim() || OTHER;
+      if (g?.heading) saved.set(cat, Math.min(saved.get(cat) ?? Infinity, g.hOrder || 0));
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat).push({ drug: null, note: c, role: 'note', sub: g?.sub || '', order: g?.order ?? Infinity });
+    });
 
     const rank = (c) => {
       if (saved.has(c)) return -1000 + saved.get(c); // pasted headings first, in pasted order
@@ -259,7 +293,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
       .map(([cat, items]) => [cat, items.sort((a, b) =>
         (a.order - b.order || 0) ||
         (a.role === b.role ? 0 : a.role === 'main' ? -1 : 1) ||
-        (a.drug.generic_name || '').localeCompare(b.drug.generic_name || '', 'en', { sensitivity: 'base' }))])
+        ((a.drug || a.note).generic_name || '').localeCompare((b.drug || b.note).generic_name || '', 'en', { sensitivity: 'base' }))])
       .sort((a, b) => (rank(a[0]) - rank(b[0])) || ((a[0] === OTHER) - (b[0] === OTHER)) || a[0].localeCompare(b[0]));
 
     const names = new Set();
@@ -269,7 +303,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
         .forEach(n => names.add(norm(n)));
     });
     return { groups: sorted, regimens: buckets.combination || [], comboNames: names };
-  }, [buckets, conditionId]);
+  }, [buckets, conditionId, classNotes]);
 
   const allKeys = [...groups.map(([c]) => c), ...(regimens.length ? [REGIMENS] : [])];
   // Admin-only bulk select / delete.
@@ -279,7 +313,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
   const [delProgress, setDelProgress] = useState('');
   const selectable = useMemo(() => {
     const byId = new Map();
-    groups.forEach(([, items]) => items.forEach(({ drug }) => byId.set(drug.id, drug)));
+    groups.forEach(([, items]) => items.forEach(({ drug }) => { if (drug) byId.set(drug.id, drug); }));
     regimens.forEach(r => byId.set(r.id, r));
     return [...byId.values()].filter(d => !d._seed);
   }, [groups, regimens]);
@@ -373,7 +407,7 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
           <p className="cp-meds-sub">Organised by treatment category</p>
         </div>
         <div className="cp-meds-strip">
-          <span className="cp-meds-chip"><i className="cp-dot is-a" /><b>{groups.reduce((n, [, items]) => n + items.length, 0) + regimens.length}</b> medications</span>
+          <span className="cp-meds-chip"><i className="cp-dot is-a" /><b>{groups.reduce((n, [, items]) => n + items.filter(x => !x.note).length, 0) + regimens.length}</b> medications</span>
           <span className="cp-meds-chip"><i className="cp-dot is-b" /><b>{groups.length}</b> {groups.length === 1 ? 'category' : 'categories'}</span>
         </div>
       </div>
@@ -393,12 +427,14 @@ function MedicationsCard({ buckets, conditionName, conditionId }) {
 
       <div className="cp-cats">
         {groups.map(([cat, items], gi) => (
-          <CategoryGroup key={cat} catKey={cat} title={sentenceCase(cat)} count={items.length} open={open.has(cat)} onToggle={() => toggle(cat)}
+          <CategoryGroup key={cat} catKey={cat} title={sentenceCase(cat)} count={items.filter(x => !x.note).length} open={open.has(cat)} onToggle={() => toggle(cat)}
             onClose={() => closeCat(cat)} canDoubleTap={!selectMode} extra={gi === 0 ? selectIcon : null}>
-            {items.map(({ drug, role, sub }, i) => (
-              <React.Fragment key={drug.id}>
+            {items.map(({ drug, note, role, sub }, i) => (
+              <React.Fragment key={drug ? drug.id : `note-${note.id}`}>
                 {sub !== (items[i - 1]?.sub || '') && (sub || items[i - 1]?.sub) && <div className="cp-sub-head">{sub || 'Other'}</div>}
-                <DrugRow drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} sel={sel} />
+                {note ? <ClassNote cls={note} /> : (
+                  <DrugRow drug={drug} role={role} inCombination={comboNames.has(norm(drug.generic_name))} sel={sel} />
+                )}
               </React.Fragment>
             ))}
           </CategoryGroup>
@@ -448,7 +484,7 @@ function isApplicable(key, body) {
 export default function ConditionProfilePage() {
   const { systemId, conditionId } = useParams();
   const navigate = useNavigate();
-  const { drugs } = useDrugs();
+  const { drugs, classRecords } = useDrugs();
   const { customConditionsBySystem, hiddenConditionIdsBySystem, labelOverridesBySystem, loading: condLoading } = useCustomConditions();
   const { clinicalInfoByCondition, imagesByCondition } = useConditionClinicalInfo();
 
@@ -572,7 +608,7 @@ export default function ConditionProfilePage() {
         </section>
         {/* Admin only (the component hides itself for everyone else) */}
         <ConditionGoogleInfo condition={entry.condition} systemName={systemName} existingInfo={info} className="mt-3" />
-        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} />
+        <MedicationsCard buckets={buckets} conditionName={entry?.condition?.label} conditionId={entry?.condition?.id} classRecords={classRecords} />
       </>
     );
   }

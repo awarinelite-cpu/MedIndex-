@@ -3,12 +3,18 @@
 // "NSAIDs (e.g., Ibuprofen, Naproxen)") and lets the admin confirm each one.
 //   Mark as class   -> record_type: 'class'  (hidden from every drug list/search)
 //   Keep as drug    -> record_type: 'drug'   (never treated as a class again)
+// Marking a class also moves its example drugs into the same conditions: e.g.
+// "ARBs" (sub-heading "…(e.g., Losartan, Valsartan)") makes Losartan and
+// Valsartan appear in the conditions that listed ARBs — existing drugs get the
+// condition + heading, missing ones are created as name-only drugs.
 // Nothing is deleted. Works on a phone — no terminal needed.
 import React, { useMemo, useState } from 'react';
-import { writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { writeBatch, doc, serverTimestamp, arrayUnion, FieldPath } from 'firebase/firestore';
 import { Layers, Check, X } from 'lucide-react';
 import { db } from '../firebase';
-import { isClassRecord } from '../utils/classRecords';
+import { isClassRecord, classExampleNames } from '../utils/classRecords';
+import { drugMatchKey } from '../utils/drugNameKey';
+import { slugifyDrugName } from '../utils/aiDrugSave';
 
 const docIdOf = (d) => d.firestoreId || d.id;
 
@@ -28,10 +34,50 @@ export default function ClassRecordsPanel({ drugs, showToast }) {
     [drugs]
   );
 
+  // Real drugs by name, so a class's example drugs can be matched.
+  const realByKey = useMemo(() => {
+    const m = new Map();
+    (drugs || []).forEach(d => { if (!isClassRecord(d)) { const k = drugMatchKey(d.generic_name); if (k && !m.has(k)) m.set(k, d); } });
+    return m;
+  }, [drugs]);
+
+  async function expandClass(d) {
+    const tags = Array.isArray(d.condition_tags) ? d.condition_tags : [];
+    const groups = d.condition_groups || {};
+    const roles = d.condition_roles || {};
+    if (!tags.length) return 0;
+    const batch = writeBatch(db);
+    let created = 0;
+    for (const ex of classExampleNames(d)) {
+      const existing = realByKey.get(drugMatchKey(ex));
+      if (existing) {
+        const ref = doc(db, 'drugs', docIdOf(existing));
+        batch.update(ref, { condition_tags: arrayUnion(...tags), last_updated: serverTimestamp() });
+        for (const [cid, g] of Object.entries(groups)) {
+          if (!existing.condition_groups?.[cid]) batch.update(ref, new FieldPath('condition_groups', cid), g, 'last_updated', serverTimestamp());
+        }
+      } else {
+        batch.set(doc(db, 'drugs', slugifyDrugName(ex)), {
+          generic_name: ex, drug_class: 'Unknown', prescription_status: 'Prescription',
+          source: 'Class expansion', status: 'Active', info_pending: true,
+          condition_tags: tags, condition_groups: groups, condition_roles: roles,
+          created_at: serverTimestamp(), last_updated: serverTimestamp(),
+        }, { merge: true });
+        created += 1;
+      }
+    }
+    await batch.commit();
+    return created;
+  }
+
   async function apply(items, recordType) {
     if (!items.length || busy) return;
     setBusy(true);
     try {
+      let created = 0;
+      for (const d of items) {
+        if (recordType === 'class') created += await expandClass(d);
+      }
       for (let i = 0; i < items.length; i += 400) {
         const batch = writeBatch(db);
         items.slice(i, i + 400).forEach(d =>
@@ -40,7 +86,7 @@ export default function ClassRecordsPanel({ drugs, showToast }) {
       }
       setHandled(prev => { const n = new Set(prev); items.forEach(d => n.add(docIdOf(d))); return n; });
       showToast?.(recordType === 'class'
-        ? `${items.length} record${items.length === 1 ? '' : 's'} marked as drug classes`
+        ? `${items.length} marked as class${items.length === 1 ? '' : 'es'}${created ? `, ${created} example drug${created === 1 ? '' : 's'} added` : ''}`
         : 'Kept as drug');
     } catch (e) {
       showToast?.(e.message || 'Could not save', 'error');

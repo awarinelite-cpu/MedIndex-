@@ -6,7 +6,7 @@ import { parseAiDrugDetail } from './parseAiDrugDetail';
 import { autoTagDrugConditions } from './autoTagConditions';
 import { apiUrl } from '../config/apiBase';
 import { drugMatchesConditionKeywords } from '../data/systemConditions';
-import { isClassRecord } from './classRecords';
+import { isClassRecord, extractExampleNames } from './classRecords';
 
 // A drug class ("NSAIDs (e.g., Ibuprofen)") is a heading, not a drug. Refuse to
 // create a drugs/ document for one so class names can't leak into drug lists.
@@ -960,6 +960,23 @@ export function parseMedicationList(text) {
 export async function addMedicationsToCondition({ names, items, conditionId, existingDrugs, onProgress }) {
   // items (optional) carry the pasted heading / subheading each drug sits under.
   const groupOf = new Map((items || []).map(i => [i.name, i]));
+  // A pasted line that is a drug CLASS ("ARBs", "Smoking Cessation Aids",
+  // "NSAIDs (e.g., Ibuprofen)") is not a drug: it is never saved as one. When
+  // it lists example drugs (here or in the sub-heading it sits under), those
+  // examples are added in its place under the same heading.
+  const expanded = [];
+  for (const name of names) {
+    const g = groupOf.get(name);
+    const asRecord = { generic_name: name, condition_groups: g ? { x: { sub: g.sub, heading: g.heading } } : undefined };
+    if (!isClassRecord(asRecord)) { expanded.push(name); continue; }
+    for (const ex of extractExampleNames([name, g?.sub].filter(Boolean).join(' '))) {
+      if (!isClassRecord({ generic_name: ex })) {
+        expanded.push(ex);
+        if (!groupOf.has(ex)) groupOf.set(ex, { ...(g || {}), name: ex });
+      }
+    }
+  }
+  names = [...new Set(expanded)];
   const contributor = await getContributorInfo(); // throws if not signed in
   const byName = new Map();
   (existingDrugs || []).forEach(d => {

@@ -1641,3 +1641,8 @@ button.mi-recent-row.mi-cond-card { width: 100%; text-align: left; cursor: point
   background: rgba(15, 42, 85, .04);
   pointer-events: none;
 }
+
+/* Drug class inside a condition's medication list: heading + write-up, not a drug row */
+.cp-class-note { padding: 10px 14px 12px; border-top: 1px solid var(--cp-line); }
+.cp-class-note-head { font-size: 15px; font-weight: 800; color: var(--cp-title, #0f2a55); }
+.cp-class-note p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--cp-sub); }
