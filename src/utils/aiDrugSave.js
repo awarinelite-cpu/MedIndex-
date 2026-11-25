@@ -1,3 +1,4 @@
+import { drugMatchKey, drugLookupKeys } from './drugNameKey';
 import { doc, collection, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove, FieldPath } from 'firebase/firestore';
 import { markDeleted } from './deltaCollection';
 import { db, auth } from '../firebase';
@@ -862,15 +863,7 @@ export async function saveAiDrugToDatabase({ genericName, drugClass, text, overw
 // duplicated here rather than imported so this util doesn't depend on any
 // component — matches the pattern already established elsewhere in this app.
 export function normalizeDrugNameForMatch(name) {
-  let n = (name || '').trim().toLowerCase();
-  n = n.replace(/[\s/.+-]+/g, ' ').trim();
-  n = n.replace(/\bco (\w)/g, 'co$1');
-  n = n
-    .replace(/\bclavulanic acid\b/g, 'clavulanate')
-    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return n;
+  return drugMatchKey(name);
 }
 
 // ── Quiet, background save of a condition's AI drug list ───────────────────
@@ -960,11 +953,15 @@ export async function addMedicationsToCondition({ names, items, conditionId, exi
   (existingDrugs || []).forEach(d => {
     if (d && !d._seed && d.generic_name) byName.set(normalizeDrugNameForMatch(d.generic_name), d);
   });
+  // Also find a drug by its brand names (e.g. pasting "Xylocaine" finds Lidocaine).
+  (existingDrugs || []).forEach(d => {
+    if (d && !d._seed && d.generic_name) drugLookupKeys(d).forEach(k => { if (!byName.has(k)) byName.set(k, d); });
+  });
   const results = [];
   for (const name of names) {
     try {
       const existing = byName.get(normalizeDrugNameForMatch(name));
-      let id = existing ? (existing.id || slugifyDrugName(existing.generic_name)) : slugifyDrugName(name);
+      let id = existing ? (existing.id || slugifyDrugName(existing.generic_name)) : slugifyDrugName(drugMatchKey(name) || name);
       const ref = doc(db, 'drugs', id);
       let status = 'linked';
       const g = groupOf.get(name);

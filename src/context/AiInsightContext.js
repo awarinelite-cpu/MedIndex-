@@ -3,6 +3,7 @@
 // Runs the "complete all incomplete drugs" job as a background process that
 // lives above the router, so it keeps running (and the floating widget stays
 // visible) no matter which page the admin navigates to.
+import { drugMatchKey } from '../utils/drugNameKey';
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { getStoreDocs } from '../utils/deltaCollection';
 import '../hooks/useDrugs';
@@ -72,15 +73,7 @@ function clearClinicalSweepCheckpoint() {
 // Same name-normalisation used by SystemPage's condition matching, duplicated
 // here (rather than imported) so this context has no dependency on any page.
 function normalizeDrugName(name) {
-  let n = (name || '').trim().toLowerCase();
-  n = n.replace(/[\s/.+-]+/g, ' ').trim();
-  n = n.replace(/\bco (\w)/g, 'co$1');
-  n = n
-    .replace(/\bclavulanic acid\b/g, 'clavulanate')
-    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return n;
+  return drugMatchKey(name);
 }
 
 const CONCURRENCY = 8; // paid Gemini tier — safe to run 8 in parallel

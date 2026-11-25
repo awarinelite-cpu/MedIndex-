@@ -1,3 +1,4 @@
+import { drugMatchKey } from '../utils/drugNameKey';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -42,21 +43,7 @@ export function RxBadge({ status }) {
 }
 
 export function normalizeDrugName(name) {
-  let n = (name || '').trim().toLowerCase();
-  // Collapse punctuation/spacing differences: "co-trimoxazole" == "cotrimoxazole",
-  // "amoxicillin / clavulanate" == "amoxicillin/clavulanate".
-  n = n.replace(/[\s/.+-]+/g, ' ').trim();
-  // "co trimoxazole" (from "co-trimoxazole") == "cotrimoxazole"
-  n = n.replace(/\bco (\w)/g, 'co$1');
-  // Treat common salt-name variants as equivalent so an existing drug is
-  // recognised even if the AI lists a slightly different salt spelling
-  // (e.g. "clavulanic acid" vs "clavulanate", "sodium"/"hydrochloride" suffixes).
-  n = n
-    .replace(/\bclavulanic acid\b/g, 'clavulanate')
-    .replace(/\b(hydrochloride|hcl|sodium|potassium|sulfate|sulphate|phosphate|maleate|mesylate|besylate|succinate|tartrate|dihydrate|monohydrate)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return n;
+  return drugMatchKey(name);
 }
 
 /* ── Drop-down button used to tuck the admin drug tools away ───────────── */

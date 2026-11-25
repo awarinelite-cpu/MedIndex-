@@ -19,11 +19,12 @@
 //     genuinely different salt/formulation). Never pre-selected — an
 //     admin has to look at each one and decide.
 import { getMissingGroups, REQUIRED_FIELD_GROUPS } from './aiDrugSave';
+import { drugIdentityKey } from './drugNameKey';
 
 // Conservative: only formatting noise, never anything that could change
 // clinical meaning (so no stripping of salts, strengths, or dosage forms).
 export function normalizeDrugKey(name) {
-  return (name || '')
+  return drugIdentityKey(name) || (name || '')
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '') // strip accents
     .replace(/[®™©]/g, '')
     .replace(/[\u2018\u2019\u201c\u201d]/g, "'") // curly quotes -> straight
