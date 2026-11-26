@@ -73,3 +73,27 @@ export function drugLookupKeys(drug) {
   brands.forEach(b => { const k = drugMatchKey(b); if (k) keys.push(k); });
   return keys.filter(Boolean);
 }
+
+// ── Manufacturer-branded records ─────────────────────────────────────────
+// "Emzor Paracetamol", "Fidson Amoxicillin Capsules" are one maker's product of
+// a generic drug, not a different drug. splitManufacturer() returns the maker
+// and the rest of the name so the duplicate finder can offer to merge the
+// record into the generic. Only well-known makers are listed, so an ordinary
+// drug name that merely starts like a company never matches.
+const MANUFACTURERS = [
+  'may and baker', 'may baker', 'emzor', 'fidson', 'neimeth', 'swipha', 'bioraj', 'greenlife',
+  'drugfield', 'mopson', 'juhel', 'evans', 'pfizer', 'gsk', 'glaxosmithkline', 'sanofi', 'novartis',
+  'roche', 'bayer', 'abbott', 'cipla', 'ranbaxy', 'lupin', 'glenmark', 'teva', 'mylan', 'merck',
+  'astrazeneca', 'novo nordisk', 'micro labs', 'ajanta',
+].sort((a, b) => b.length - a.length);
+const FORM_TAIL_RE = /\b(tablets?|tabs?|capsules?|caps|syrup|suspension|injection|cream|ointment|drops|oral)$/;
+
+export function splitManufacturer(name) {
+  const c = clean(String(name || '').replace(/[([][^)\]]*[)\]]/g, ' '));
+  for (const m of MANUFACTURERS) {
+    if (!c.startsWith(m + ' ')) continue;
+    const rest = c.slice(m.length + 1).replace(FORM_TAIL_RE, '').trim();
+    if (rest.length >= 3) return { manufacturer: m, rest };
+  }
+  return null;
+}

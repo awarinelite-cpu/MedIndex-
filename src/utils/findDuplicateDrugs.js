@@ -19,7 +19,7 @@
 //     genuinely different salt/formulation). Never pre-selected — an
 //     admin has to look at each one and decide.
 import { getMissingGroups, REQUIRED_FIELD_GROUPS } from './aiDrugSave';
-import { drugIdentityKey } from './drugNameKey';
+import { drugIdentityKey, drugMatchKey, splitManufacturer } from './drugNameKey';
 
 // Conservative: only formatting noise, never anything that could change
 // clinical meaning (so no stripping of salts, strengths, or dosage forms).
@@ -102,9 +102,41 @@ export function findDuplicateDrugGroups(drugs) {
   //   - names longer than 16 characters are only compared as exact-tier;
   //     at that length, similar-but-different text is far more likely a
   //     different brand/combination product than a typo of the same one.
-  const singles = list.filter(d => byKey.get(normalizeDrugKey(d.generic_name))?.length === 1);
-  const reviewed = new Set();
+  let singles = list.filter(d => byKey.get(normalizeDrugKey(d.generic_name))?.length === 1);
   const review = [];
+
+  // ── Manufacturer products ─────────────────────────────────────────────
+  // "Emzor Paracetamol" is one maker's product of Paracetamol. When the plain
+  // generic record exists, offer to merge the maker's record into it (its name
+  // then becomes a brand name of the generic). The generic is listed first so
+  // it is the pre-selected keeper. Only records that are not already part of an
+  // exact-match group are used, so no record ever appears in two groups.
+  const idOf = (d) => d.firestoreId || d.id;
+  const genericByKey = new Map();
+  for (const d of singles) if (!splitManufacturer(d.generic_name)) genericByKey.set(drugMatchKey(d.generic_name), d);
+  const mfrGroups = new Map(); // generic key -> { generic, makers[] }
+  for (const d of singles) {
+    const sp = splitManufacturer(d.generic_name);
+    if (!sp) continue;
+    const gKey = drugMatchKey(sp.rest);
+    const generic = gKey && genericByKey.get(gKey);
+    if (!generic || idOf(generic) === idOf(d)) continue;
+    if (!mfrGroups.has(gKey)) mfrGroups.set(gKey, { generic, makers: [] });
+    mfrGroups.get(gKey).makers.push(d);
+  }
+  const usedByMfr = new Set();
+  for (const [gKey, { generic, makers }] of mfrGroups) {
+    const groupDrugs = [generic, ...sortByKeepPriority(makers)];
+    groupDrugs.forEach(d => usedByMfr.add(idOf(d)));
+    review.push({
+      key: `mfr:${gKey}`,
+      drugs: groupDrugs,
+      reason: `Manufacturer product of ${generic.generic_name}`,
+      dismissKey: groupDrugs.map(idOf).sort().join('|'),
+    });
+  }
+  singles = singles.filter(d => !usedByMfr.has(idOf(d)));
+  const reviewed = new Set();
   for (let i = 0; i < singles.length; i++) {
     if (reviewed.has(i)) continue;
     const a = singles[i];

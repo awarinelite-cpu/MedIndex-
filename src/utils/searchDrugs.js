@@ -18,7 +18,15 @@
 //   _matchSnippet : short excerpt showing WHERE the match was found
 // ──────────────────────────────────────────────────────────────────────────
 
-import { drugIdentityKey } from './drugNameKey';
+import { drugIdentityKey, drugMatchKey, drugLookupKeys } from './drugNameKey';
+
+// Keys a record can be found by (its name + each brand name), computed once per record.
+const lookupKeyCache = new WeakMap();
+function lookupKeys(drug) {
+  let k = lookupKeyCache.get(drug);
+  if (!k) { k = drugLookupKeys(drug); lookupKeyCache.set(drug, k); }
+  return k;
+}
 
 // How filled-in a record is — used only to pick which of two duplicate records
 // to show. Kept local (no Firebase imports) so search stays a pure utility.
@@ -141,7 +149,7 @@ function textIncludes(text, variant) {
   return normaliseSpelling(text).includes(normaliseSpelling(variant));
 }
 
-function scoreAndAnnotate(drug, q, variants) {
+function scoreAndAnnotate(drug, q, variants, qKey) {
   const name  = (drug.generic_name  || '').toLowerCase();
   const cls   = ((drug.drug_class   || '') + ' ' + (drug.drug_subclass || '')).toLowerCase().trim();
 
@@ -158,6 +166,18 @@ function scoreAndAnnotate(drug, q, variants) {
   else if (name.includes(q))   { score +=  70; matchType = 'name'; nameHit = true; }
   else if (q.split(' ').filter(Boolean).every(w => name.includes(w))) {
                                  score +=  60; matchType = 'name'; nameHit = true; }
+
+  // ── 1b. Brand names and alternative names ───────────────────────────────
+  // "Acetaminophen" finds Paracetamol, "Xylocaine" finds Lidocaine (when it is
+  // one of that drug's brand names). Exact brand/alias match ranks like a name
+  // match; a brand that merely starts with the query ranks a little lower.
+  if (!nameHit && qKey && qKey.length >= 3) {
+    const keys = lookupKeys(drug);
+    if (keys.includes(qKey))                                   { score += 115; nameHit = true; }
+    else if (keys.some(k => k.startsWith(qKey + ' ')))         { score +=  80; nameHit = true; }
+    else if (qKey.length >= 4 && keys.slice(1).some(k => k.startsWith(qKey))) { score += 75; nameHit = true; }
+    if (nameHit) matchType = 'name';
+  }
 
   // ── 2. Indications / Uses ─────────────────────────────────────────────────
   // The core of condition search: any drug listing the searched condition
@@ -261,10 +281,11 @@ export function searchDrugs(drugs, query) {
   if (!q) return drugs;
 
   const variants = expandQuery(q);
+  const qKey = drugMatchKey(q);
 
   const scored = drugs
     .map(drug => {
-      const { score, matchType, matchSnippet, nameHit } = scoreAndAnnotate(drug, q, variants);
+      const { score, matchType, matchSnippet, nameHit } = scoreAndAnnotate(drug, q, variants, qKey);
       return { ...drug, _score: score, _matchType: matchType, _matchSnippet: matchSnippet, _nameHit: nameHit };
     })
     .filter(d => d._score > 0);
