@@ -15,7 +15,7 @@ import {
   Pill, Trash2, ArrowLeft, ChevronRight, Calendar,
   Check, X, StickyNote, BookMarked, Share2, Loader2, Pencil,
 } from 'lucide-react';
-import { CapsuleBadge, ListsBackdrop, ShieldDecor, LISTS_NAVY, LISTS_BLUE } from '../components/ListsUi';
+import { CapsuleBadge, ListsBackdrop, ShieldDecor, LISTS_BLUE } from '../components/ListsUi';
 
 function ShareListButton({ list, allDrugs }) {
   const [state, setState] = useState('idle'); // idle | working | error
@@ -150,7 +150,7 @@ export default function DrugListDetailPage() {
           <Link
             to="/lists"
             className="inline-flex items-center gap-2 pl-3 pr-4 py-2 rounded-full border border-white bg-white/70 shadow-sm font-bold text-[15px]"
-            style={{ color: LISTS_BLUE }}
+            style={{ color: 'var(--lists-blue-text)' }}
           >
             <ArrowLeft className="w-5 h-5" /> My Lists
           </Link>
@@ -162,7 +162,7 @@ export default function DrugListDetailPage() {
           <ShieldDecor className="absolute -right-1 top-1/2 -translate-y-1/2 opacity-90" />
           <div className="relative flex items-center gap-4 pr-20">
             <div className="w-[68px] h-[68px] rounded-2xl bg-[#DCE9FF] flex items-center justify-center flex-shrink-0">
-              <BookMarked className="w-8 h-8" style={{ color: LISTS_BLUE }} />
+              <BookMarked className="w-8 h-8" style={{ color: 'var(--lists-blue-text)' }} />
             </div>
             <div className="min-w-0 flex-1">
               {editingTitle ? (
@@ -177,7 +177,7 @@ export default function DrugListDetailPage() {
                     }}
                     maxLength={60}
                     className="min-w-0 flex-1 text-xl font-extrabold border border-primary-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-400"
-                    style={{ color: LISTS_NAVY }}
+                    style={{ color: 'var(--lists-navy-text)' }}
                   />
                   <button
                     onClick={saveTitle}
@@ -197,7 +197,7 @@ export default function DrugListDetailPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  <h1 className="text-[28px] leading-tight font-extrabold truncate" style={{ color: LISTS_NAVY }}>{list.title}</h1>
+                  <h1 className="text-[28px] leading-tight font-extrabold truncate" style={{ color: 'var(--lists-navy-text)' }}>{list.title}</h1>
                   <button
                     onClick={() => { setTitleText(list.title || ''); setEditingTitle(true); }}
                     title="Rename list"
@@ -209,14 +209,14 @@ export default function DrugListDetailPage() {
               )}
               <div className="mt-1 flex items-center flex-wrap gap-x-3 gap-y-1 text-[15px] font-semibold text-slate-600">
                 <span className="inline-flex items-center gap-1.5">
-                  <Pill className="w-4 h-4" style={{ color: LISTS_BLUE }} />
+                  <Pill className="w-4 h-4" style={{ color: 'var(--lists-blue-text)' }} />
                   {drugs.length} drug{drugs.length !== 1 ? 's' : ''}
                 </span>
                 {createdLabel && (
                   <>
                     <span className="h-4 w-px bg-slate-300" />
                     <span className="inline-flex items-center gap-1.5">
-                      <Calendar className="w-4 h-4" style={{ color: LISTS_BLUE }} />
+                      <Calendar className="w-4 h-4" style={{ color: 'var(--lists-blue-text)' }} />
                       Created {createdLabel}
                     </span>
                   </>
@@ -230,7 +230,7 @@ export default function DrugListDetailPage() {
         {drugs.length === 0 && (
           <div className="text-center py-14 bg-white/80 border border-white rounded-[22px] shadow-sm">
             <Pill className="w-14 h-14 text-blue-200 mx-auto mb-4" />
-            <h3 className="text-lg font-extrabold mb-2" style={{ color: LISTS_NAVY }}>No drugs yet</h3>
+            <h3 className="text-lg font-extrabold mb-2" style={{ color: 'var(--lists-navy-text)' }}>No drugs yet</h3>
             <p className="text-slate-500 text-sm mb-6 px-4">
               Open any drug page and tap <strong>"Add to List"</strong> to add it here.
             </p>
@@ -263,7 +263,7 @@ export default function DrugListDetailPage() {
 
                     <div className="flex-1 min-w-0">
                       {isAi ? (
-                        <span className="text-[18px] leading-tight font-extrabold inline-flex items-center gap-1.5 flex-wrap" style={{ color: LISTS_NAVY }}>
+                        <span className="text-[18px] leading-tight font-extrabold inline-flex items-center gap-1.5 flex-wrap" style={{ color: 'var(--lists-navy-text)' }}>
                           {drug.drugName}
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">AI</span>
                         </span>
@@ -271,17 +271,17 @@ export default function DrugListDetailPage() {
                         <Link
                           to={`/drug/${drug.drugId}`}
                           className="block text-[18px] leading-tight font-extrabold"
-                          style={{ color: LISTS_NAVY }}
+                          style={{ color: 'var(--lists-navy-text)' }}
                         >
                           {drug.drugName}
                         </Link>
                       )}
                       {drug.drugClass && (
-                        <p className="text-[15px] font-medium leading-snug mt-0.5" style={{ color: LISTS_BLUE }}>{drug.drugClass}</p>
+                        <p className="text-[15px] font-medium leading-snug mt-0.5" style={{ color: 'var(--lists-blue-text)' }}>{drug.drugClass}</p>
                       )}
                       {addedLabel && (
                         <p className="text-sm text-slate-500 mt-1 inline-flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} /> Added {addedLabel}
+                          <Calendar className="w-3.5 h-3.5" style={{ color: 'var(--lists-blue-text)' }} /> Added {addedLabel}
                         </p>
                       )}
                     </div>
@@ -295,7 +295,7 @@ export default function DrugListDetailPage() {
                         }}
                         title="Add/edit note"
                         className="w-10 h-10 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff] transition-colors"
-                        style={{ color: LISTS_BLUE }}
+                        style={{ color: 'var(--lists-blue-text)' }}
                       >
                         <StickyNote className="w-[18px] h-[18px]" />
                       </button>
@@ -313,7 +313,7 @@ export default function DrugListDetailPage() {
                             to={`/drug/${drug.drugId}`}
                             aria-label={`Open ${drug.drugName}`}
                             className="p-1 -mr-1"
-                            style={{ color: LISTS_BLUE }}
+                            style={{ color: 'var(--lists-blue-text)' }}
                           >
                             <ChevronRight className="w-6 h-6" />
                           </Link>

@@ -16,7 +16,7 @@ import {
   BookMarked, Plus, Trash2, ChevronRight,
   Edit2, Check, X, Pill, ClipboardList, Calendar,
 } from 'lucide-react';
-import { ListsBackdrop, LISTS_NAVY, LISTS_BLUE } from '../components/ListsUi';
+import { ListsBackdrop, LISTS_BLUE } from '../components/ListsUi';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function useUserLists(uid) {
@@ -133,8 +133,8 @@ export default function DrugListsPage() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <ClipboardList className="w-7 h-7 flex-shrink-0" style={{ color: LISTS_BLUE }} />
-            <h1 className="text-[28px] leading-tight font-extrabold" style={{ color: LISTS_NAVY }}>My Drug Lists</h1>
+            <ClipboardList className="w-7 h-7 flex-shrink-0" style={{ color: 'var(--lists-blue-text)' }} />
+            <h1 className="text-[28px] leading-tight font-extrabold" style={{ color: 'var(--lists-navy-text)' }}>My Drug Lists</h1>
           </div>
           <p className="text-slate-500 text-sm">
             Create custom lists — ICU protocols, ward rounds, study sets, etc.
@@ -162,7 +162,7 @@ export default function DrugListsPage() {
       {/* Create form */}
       {creating && (
         <div className="bg-white/80 border border-white shadow-sm rounded-[22px] p-4 mb-6 flex items-center gap-3">
-          <BookMarked className="w-5 h-5 flex-shrink-0" style={{ color: LISTS_BLUE }} />
+          <BookMarked className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--lists-blue-text)' }} />
           <input
             autoFocus
             type="text"
@@ -230,7 +230,7 @@ export default function DrugListsPage() {
               >
                 {/* Icon */}
                 <div className="w-14 h-14 rounded-2xl bg-[#DCE9FF] flex items-center justify-center flex-shrink-0">
-                  <BookMarked className="w-7 h-7" style={{ color: LISTS_BLUE }} />
+                  <BookMarked className="w-7 h-7" style={{ color: 'var(--lists-blue-text)' }} />
                 </div>
 
                 {/* Title + rename */}
@@ -243,15 +243,15 @@ export default function DrugListsPage() {
                     />
                   ) : (
                     <>
-                      <div className="text-[18px] leading-tight font-extrabold truncate" style={{ color: LISTS_NAVY }}>{list.title}</div>
+                      <div className="text-[18px] leading-tight font-extrabold truncate" style={{ color: 'var(--lists-navy-text)' }}>{list.title}</div>
                       <div className="text-sm text-slate-500 mt-1 flex items-center flex-wrap gap-x-3 gap-y-0.5">
                         <span className="inline-flex items-center gap-1.5">
-                          <Pill className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} />
+                          <Pill className="w-3.5 h-3.5" style={{ color: 'var(--lists-blue-text)' }} />
                           {drugCount} drug{drugCount !== 1 ? 's' : ''}
                         </span>
                         {list.createdAt?.toDate && (
                           <span className="inline-flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5" style={{ color: LISTS_BLUE }} />
+                            <Calendar className="w-3.5 h-3.5" style={{ color: 'var(--lists-blue-text)' }} />
                             {list.createdAt.toDate().toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </span>
                         )}
@@ -270,7 +270,7 @@ export default function DrugListsPage() {
                       onClick={() => setRenamingId(list.id)}
                       title="Rename"
                       className="w-9 h-9 rounded-full bg-[#E3EEFF] flex items-center justify-center hover:bg-[#d3e3ff]"
-                      style={{ color: LISTS_BLUE }}
+                      style={{ color: 'var(--lists-blue-text)' }}
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
@@ -290,7 +290,7 @@ export default function DrugListsPage() {
                   <button
                     onClick={e => { e.stopPropagation(); navigate(`/lists/${list.id}`); }}
                     className="p-1 flex-shrink-0"
-                    style={{ color: LISTS_BLUE }}
+                    style={{ color: 'var(--lists-blue-text)' }}
                     aria-label={`Open ${list.title}`}
                   >
                     <ChevronRight className="w-6 h-6" />

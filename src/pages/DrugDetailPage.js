@@ -159,7 +159,7 @@ function NursingActionList({ value }) {
     <div className="space-y-4">
       {sections.map((s, i) => (
         <div key={i}>
-          {s.title && <h3 className="text-base font-bold mb-1.5" style={{ color: NAVY }}>{s.title}</h3>}
+          {s.title && <h3 className="text-base font-bold mb-1.5" style={{ color: 'var(--navy-text)' }}>{s.title}</h3>}
           <ul className="space-y-1.5">
             {toBullets(s.body).map((b, j) => (
               <li key={j} className="flex items-start gap-2 text-drug-text leading-relaxed">
@@ -1777,7 +1777,7 @@ function InfoRow({ icon: Icon, color, title, preview, onClick }) {
     >
       <Icon className="w-7 h-7 mt-0.5 flex-shrink-0" style={{ color }} />
       <span className="min-w-0 flex-1">
-        <span className="block text-base sm:text-lg font-extrabold leading-tight" style={{ color: NAVY }}>{title}</span>
+        <span className="block text-base sm:text-lg font-extrabold leading-tight" style={{ color: 'var(--navy-text)' }}>{title}</span>
         <span className="line-clamp-2 text-[0.8125rem] sm:text-sm text-drug-text leading-snug mt-0.5">
           {preview || <span className="text-drug-muted">Tap to view</span>}
         </span>
@@ -2274,7 +2274,7 @@ export default function DrugDetailPage() {
         <DrugHeroImage drug={drug} onOpen={() => setSheet('images')} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-            <h1 className="text-2xl sm:text-4xl font-extrabold leading-tight break-words" style={{ color: NAVY }}>{drug.generic_name}</h1>
+            <h1 className="text-2xl sm:text-4xl font-extrabold leading-tight break-words" style={{ color: 'var(--navy-text)' }}>{drug.generic_name}</h1>
             <span className={`inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full ${
               drug.prescription_status === 'Controlled' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
             }`}>
@@ -2286,9 +2286,9 @@ export default function DrugDetailPage() {
           <div className="mt-1.5"><BrandsButton drug={drug} onFilled={handleSectionFilled} drugs={drugs} /></div>
 
           <div className="flex items-start gap-2 mt-2">
-            <FlaskConical className="w-6 h-6 flex-shrink-0" style={{ color: NAVY }} />
+            <FlaskConical className="w-6 h-6 flex-shrink-0" style={{ color: 'var(--navy-text)' }} />
             <div className="min-w-0">
-              <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="block text-base sm:text-xl font-extrabold leading-tight hover:underline" style={{ color: NAVY }}>
+              <Link to={`/browse?class=${encodeURIComponent(drug.drug_class || '')}`} className="block text-base sm:text-xl font-extrabold leading-tight hover:underline" style={{ color: 'var(--navy-text)' }}>
                 {getDisplayDrugClass(drug)}
               </Link>
               {drug.drug_subclass && drug.drug_subclass !== drug.drug_class && (
@@ -2349,7 +2349,7 @@ export default function DrugDetailPage() {
             className="min-w-0 flex-1 text-left"
             aria-label="Back to top"
           >
-            <span className="block text-base font-extrabold leading-tight truncate" style={{ color: NAVY }}>{drug.generic_name}</span>
+            <span className="block text-base font-extrabold leading-tight truncate" style={{ color: 'var(--navy-text)' }}>{drug.generic_name}</span>
             <span className="block text-xs text-drug-muted leading-tight truncate">{getDisplayDrugClass(drug)}</span>
           </button>
           <FavouriteHeart item={{ type: 'drug', refId: drug.id, name: drug.generic_name, subtitle: getDisplayDrugClass(drug) }} />
@@ -2402,8 +2402,8 @@ export default function DrugDetailPage() {
 
             <div className="bg-white border border-primary-100 rounded-[10px] px-3 py-2.5 shadow-sm">
               <div className="flex items-center gap-3 mb-2">
-                <Users className="w-7 h-7" style={{ color: '#1D4ED8' }} />
-                <h2 className="text-base sm:text-lg font-extrabold" style={{ color: NAVY }}>Special Populations</h2>
+                <Users className="w-7 h-7" style={{ color: 'var(--blue-text)' }} />
+                <h2 className="text-base sm:text-lg font-extrabold" style={{ color: 'var(--navy-text)' }}>Special Populations</h2>
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <PopulationTile emoji="🤰" label="Pregnancy" flag={popFlags.pregnancy} onClick={() => setSheet('pregnancy')} />
@@ -2427,7 +2427,7 @@ export default function DrugDetailPage() {
                 className="cursor-pointer w-full flex items-center gap-3 px-3 py-3 text-left"
               >
                 <Sparkles className="w-6 h-6 text-primary-600" />
-                <span className="flex-1 text-base sm:text-lg font-extrabold" style={{ color: NAVY }}>AI-assisted information</span>
+                <span className="flex-1 text-base sm:text-lg font-extrabold" style={{ color: 'var(--navy-text)' }}>AI-assisted information</span>
                 <ChevronDown className={`w-5 h-5 text-primary-700 transition-transform ${aiOpen ? 'rotate-180' : ''}`} />
               </div>
               {aiOpen && (

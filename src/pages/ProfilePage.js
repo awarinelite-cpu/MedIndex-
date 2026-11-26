@@ -12,7 +12,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { uploadClipboardImageToImgChest } from '../utils/generateDrugImage';
-import { ListsBackdrop, LISTS_NAVY, LISTS_BLUE } from '../components/ListsUi';
+import { ListsBackdrop, LISTS_BLUE } from '../components/ListsUi';
 
 const ROLES = ['Student nurse', 'Nurse / Midwife', 'Doctor', 'Pharmacist', 'Other health worker', 'Other'];
 
@@ -40,7 +40,7 @@ function Field({ icon: Icon, label, children }) {
   return (
     <label className="block">
       <span className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">
-        <Icon className="w-4 h-4" style={{ color: LISTS_BLUE }} /> {label}
+        <Icon className="w-4 h-4" style={{ color: 'var(--lists-blue-text)' }} /> {label}
       </span>
       {children}
     </label>
@@ -136,12 +136,12 @@ export default function ProfilePage() {
         <Link
           to="/more"
           className="inline-flex items-center gap-2 pl-3 pr-4 py-2 rounded-full border border-white bg-white/70 shadow-sm font-bold text-[15px] mb-3"
-          style={{ color: LISTS_BLUE }}
+          style={{ color: 'var(--lists-blue-text)' }}
         >
           <ArrowLeft className="w-5 h-5" /> More
         </Link>
 
-        <h1 className="text-[28px] leading-tight font-extrabold mb-4" style={{ color: LISTS_NAVY }}>My Profile</h1>
+        <h1 className="text-[28px] leading-tight font-extrabold mb-4" style={{ color: 'var(--lists-navy-text)' }}>My Profile</h1>
 
         {/* Picture */}
         <div className="rounded-3xl border border-white bg-white/70 backdrop-blur shadow-[0_8px_28px_rgba(40,90,200,0.10)] px-4 py-6 mb-4 flex flex-col items-center">
@@ -149,10 +149,10 @@ export default function ProfilePage() {
             <div className="w-28 h-28 rounded-full overflow-hidden bg-[#DCE9FF] flex items-center justify-center shadow-md border-4 border-white">
               {user.photoURL
                 ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
-                : <span className="text-4xl font-extrabold" style={{ color: LISTS_BLUE }}>{initials}</span>}
+                : <span className="text-4xl font-extrabold" style={{ color: 'var(--lists-blue-text)' }}>{initials}</span>}
               {photoBusy && (
                 <div className="absolute inset-0 rounded-full bg-white/70 flex items-center justify-center">
-                  <Loader2 className="w-7 h-7 animate-spin" style={{ color: LISTS_BLUE }} />
+                  <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--lists-blue-text)' }} />
                 </div>
               )}
             </div>
@@ -168,7 +168,7 @@ export default function ProfilePage() {
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
           </div>
-          <p className="mt-3 text-[18px] font-extrabold" style={{ color: LISTS_NAVY }}>{user.displayName || 'Your name'}</p>
+          <p className="mt-3 text-[18px] font-extrabold" style={{ color: 'var(--lists-navy-text)' }}>{user.displayName || 'Your name'}</p>
           <p className="text-sm text-slate-500">{user.email}</p>
           {user.photoURL && (
             <button

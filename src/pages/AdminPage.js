@@ -1379,7 +1379,7 @@ export default function AdminPage() {
                   {forceRegenCompleted.map(d=>(
                     <Link key={d.firestoreId} to={`/drug/${d.id}`} target="_blank" rel="noopener noreferrer"
                       style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'8px 12px',borderTop:'1px solid #FEE2E2',textDecoration:'none'}}>
-                      <span style={{fontSize:13,fontWeight:600,color:'#1e40af'}}>{d.generic_name}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:'var(--blue-text)'}}>{d.generic_name}</span>
                       <span style={{fontSize:11,fontWeight:700,color:d.status==='regenerated'?'#059669':d.status==='not_found'?'#B45309':'#DC2626',whiteSpace:'nowrap'}}>
                         {d.status==='regenerated'?'✓ updated':d.status==='not_found'?'not recognized':'failed'}
                       </span>
