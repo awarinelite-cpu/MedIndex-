@@ -1714,25 +1714,53 @@ function findDrugConditions(drug) {
 
 function DrugHeroImage({ drug, onOpen }) {
   const images = useMemo(() => getDrugImages(drug), [drug]);
-  const img = images[0];
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
+
+  const handleScroll = (e) => {
+    const el = e.currentTarget;
+    if (!el.clientWidth) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== active) setActive(i);
+  };
+
   return (
     <div
-      {...tap(onOpen)}
       aria-label={`Pictures of ${drug.generic_name}`}
-      className="cursor-pointer relative w-[30%] max-w-[190px] aspect-square lg:w-[36%] lg:max-w-[360px] lg:aspect-[4/3] flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-gradient-to-br from-primary-50 to-white flex items-center justify-center"
+      className="relative w-[44%] max-w-[280px] aspect-square lg:w-[36%] lg:max-w-[360px] lg:aspect-[4/3] flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-white"
     >
-      {img ? (
-        <img src={img.url} alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`} className="w-full h-full object-cover lg:object-contain" draggable={false} />
+      {images.length > 0 ? (
+        <div
+          ref={trackRef}
+          onScroll={handleScroll}
+          data-swipe-gallery="true"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          className="flex h-full overflow-x-auto snap-x snap-mandatory scroll-smooth"
+          style={{ scrollbarWidth: 'none', touchAction: 'pan-x' }}
+        >
+          {images.map((img, i) => (
+            <div key={img.url + i} {...tap(onOpen)} className="cursor-pointer w-full h-full flex-shrink-0 snap-center flex items-center justify-center">
+              <img
+                src={img.url}
+                alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`}
+                className="max-w-full max-h-full object-contain"
+                draggable={false}
+              />
+            </div>
+          ))}
+        </div>
       ) : (
-        <div className="flex flex-col items-center gap-1 text-primary-400">
+        <div {...tap(onOpen)} className="cursor-pointer w-full h-full flex flex-col items-center justify-center gap-1 text-primary-400 bg-gradient-to-br from-primary-50 to-white">
           <ImageIcon className="w-8 h-8" />
           <span className="text-[0.6875rem] font-semibold">Add image</span>
         </div>
       )}
       {images.length > 1 && (
-        <span className="absolute bottom-1.5 left-0 right-0 flex justify-center gap-1.5">
-          {images.slice(0, 5).map((_, i) => (
-            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-primary-700' : 'bg-primary-300'}`} />
+        <span className="pointer-events-none absolute bottom-1.5 left-0 right-0 flex justify-center gap-1.5">
+          {images.slice(0, 8).map((_, i) => (
+            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === active ? 'bg-primary-700' : 'bg-primary-300'}`} />
           ))}
         </span>
       )}
@@ -2458,7 +2486,6 @@ export default function DrugDetailPage() {
       {/* Sheets: full content behind each row / tile */}
       {sheet === 'images' && (
         <Sheet title="Pictures" onClose={() => setSheet(null)}>
-          {getDrugImages(drug).length > 0 && <DrugImageGallery images={getDrugImages(drug)} altBase={drug.generic_name} />}
           <DrugImageCard drug={drug} />
         </Sheet>
       )}
