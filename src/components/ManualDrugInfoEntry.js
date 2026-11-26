@@ -8,7 +8,7 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ClipboardPaste, Upload, Download, ChevronDown, Save, Loader2, Search, ExternalLink } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { TAB_SECTIONS } from '../utils/aiSectionFill';
-import { parseAiDrugDetail, stripCitations, normalizePlainHeadings } from '../utils/parseAiDrugDetail';
+import { parseAiDrugDetail, stripCitations, normalizePlainHeadings, stripFollowUpOffer } from '../utils/parseAiDrugDetail';
 
 const FIELDS = [
   'drug_class', 'drug_subclass', 'prescription_status', 'nafdac_no', 'pronunciation', 'brand_names',
@@ -196,12 +196,14 @@ export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
     .replace(/^\s*csv\s*\n/i, '')
     .trim();
   // Answer in the AI's markdown format ("## Header" sections): same parser the AI buttons use.
-  const sectioned = normalizePlainHeadings(stripCitations(cleaned));
+  const sectioned = stripFollowUpOffer(normalizePlainHeadings(stripCitations(cleaned)));
   if (/^\s*#{1,6}\s+\S/m.test(sectioned)) {
     const md = parseAiDrugDetail(sectioned);
     const mdUpdates = {};
+    // Every known section is saved, whichever tab it was pasted on: pasting the
+    // whole Google answer on Overview also fills Dosage, Safety, Pharmacology...
     for (const [k, v] of Object.entries(md)) {
-      if (allowed.includes(k) && String(v || '').trim()) mdUpdates[k] = k === 'prescription_status' ? normalizeStatus(v) : String(v).trim();
+      if (FIELDS.includes(k) && String(v || '').trim()) mdUpdates[k] = k === 'prescription_status' ? normalizeStatus(v) : String(v).trim();
     }
     if (Object.keys(mdUpdates).length === 0) {
       throw new Error(`No ${tabLabel || 'matching'} sections found in the pasted text. Make sure the section titles (e.g. "Adult Dose") are included.`);
@@ -237,13 +239,13 @@ export function parseManualDrugCsv(text, allowed = FIELDS, tabLabel = '') {
   for (const [k, v] of pairs) {
     const val = String(v ?? '').trim();
     if (k === 'generic_name') { csvName = val; continue; }
-    if (!allowed.includes(k)) { if (k) ignored.push(k); continue; }
+    if (!FIELDS.includes(k)) { if (k) ignored.push(k); continue; }
     if (!val) continue;
     updates[k] = k === 'prescription_status' ? normalizeStatus(val) : val;
   }
   if (Object.keys(updates).length === 0) {
     throw new Error(ignored.length
-      ? `None of these columns belong to ${tabLabel || 'this'} information (found: ${ignored.join(', ')}). Use the search on the tab they belong to.`
+      ? `None of these columns are drug information fields (found: ${ignored.join(', ')}). Download the template to see the column names.`
       : 'No recognised fields with content. Download the template to see the column names.');
   }
   return { updates, ignored, csvName };
@@ -322,6 +324,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
 
   auto.saveRef.current = save;
 
+  const otherTabCount = parsed ? Object.keys(parsed.updates).filter(k => !tab.fields.includes(k)).length : 0;
   const nameMismatch = parsed?.csvName &&
     parsed.csvName.toLowerCase() !== String(drug.generic_name || '').toLowerCase();
 
@@ -337,7 +340,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
       {open && (
         <div className="px-3 pb-3 space-y-3">
           <p className="text-xs text-drug-muted">
-            Paste Google's answer as it is (section titles like Adult Dose with their text), or a CSV, or upload a file. Citation links are removed automatically. Only filled fields are saved to <strong>{drug.generic_name}</strong>; empty ones are left as they are.
+            Paste Google's answer as it is (section titles like Adult Dose with their text), or a CSV, or upload a file. Citation links are removed automatically. Every section found is saved to <strong>{drug.generic_name}</strong>, whichever tab you paste on; sections not in the paste are left as they are.
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={pasteFromClipboard}
@@ -360,7 +363,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
           {error && <p className="text-xs text-red-600">{error}</p>}
           {parsed && (
             <div className="rounded-lg bg-white border border-primary-200 p-2 text-xs space-y-1">
-              <p className="font-semibold text-primary-900">Preview — {Object.keys(parsed.updates).length} field(s) will be saved to {drug.generic_name}:</p>
+              <p className="font-semibold text-primary-900">Preview — {Object.keys(parsed.updates).length} field(s) will be saved to {drug.generic_name}{otherTabCount > 0 ? ` (${otherTabCount} from other tabs)` : ''}:</p>
               <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                 {Object.entries(parsed.updates).map(([k, v]) => (
                   <div key={k} className="rounded-md border border-primary-100 bg-primary-50/50 p-2">
@@ -370,7 +373,7 @@ export default function ManualDrugInfoEntry({ drug, onSaved, tabId = 'overview' 
                 ))}
               </div>
               {nameMismatch && <p className="text-amber-700">CSV generic_name “{parsed.csvName}” differs from this drug — it is ignored; data saves to {drug.generic_name}.</p>}
-              {parsed.ignored.length > 0 && <p className="text-amber-700">Ignored columns (not part of this tab): {parsed.ignored.join(', ')}</p>}
+              {parsed.ignored.length > 0 && <p className="text-amber-700">Ignored columns (not recognised): {parsed.ignored.join(', ')}</p>}
             </div>
           )}
           {state === 'saved' && <p className="text-sm font-semibold text-green-700">Saved to this drug.</p>}

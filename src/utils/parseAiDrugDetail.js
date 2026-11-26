@@ -119,3 +119,18 @@ export function parseAiDrugDetail(text) {
 
   return fields;
 }
+
+
+// Google/AI answers often end with an offer such as
+//   "Would you like to review: • Safer alternatives ... • A comparison ..."
+// That is chat, not drug information, and must never be saved into the last
+// section (e.g. Prescription Status or Nursing Action). Cut it off, but only
+// when it sits in the last few lines so a real sentence is never lost.
+export function stripFollowUpOffer(text) {
+  const lines = String(text || '').split('\n');
+  const OFFER = /^\s*(?:would you like|do you want|let me know if|i can also|shall i|want me to|if you(?:'d| would) like)\b/i;
+  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 10; i--) {
+    if (OFFER.test(lines[i])) return lines.slice(0, i).join('\n').trimEnd();
+  }
+  return String(text || '');
+}
