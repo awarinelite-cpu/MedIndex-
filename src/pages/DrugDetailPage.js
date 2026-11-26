@@ -1716,6 +1716,9 @@ function DrugHeroImage({ drug, onOpen }) {
   const images = useMemo(() => getDrugImages(drug), [drug]);
   const trackRef = useRef(null);
   const [active, setActive] = useState(0);
+  // Natural width/height of each picture, so the frame fits the picture
+  // exactly (no empty bands above/below or beside it).
+  const [ratios, setRatios] = useState({});
 
   const handleScroll = (e) => {
     const el = e.currentTarget;
@@ -1724,10 +1727,14 @@ function DrugHeroImage({ drug, onOpen }) {
     if (i !== active) setActive(i);
   };
 
+  const rawRatio = (images[active] && ratios[images[active].url]) || 1;
+  const frameRatio = Math.max(0.6, Math.min(rawRatio, 1.8));
+
   return (
     <div
       aria-label={`Pictures of ${drug.generic_name}`}
-      className="relative w-[44%] max-w-[280px] aspect-square lg:w-[36%] lg:max-w-[360px] lg:aspect-[4/3] flex-shrink-0 rounded-[10px] overflow-hidden border border-primary-100 bg-white"
+      className="relative w-[44%] max-w-[280px] lg:w-[36%] lg:max-w-[360px] flex-shrink-0 self-start rounded-[10px] overflow-hidden border border-primary-100"
+      style={{ aspectRatio: images.length > 0 ? frameRatio : 1, background: '#fff' }}
     >
       {images.length > 0 ? (
         <div
@@ -1745,8 +1752,12 @@ function DrugHeroImage({ drug, onOpen }) {
               <img
                 src={img.url}
                 alt={img.is_real ? drug.generic_name : `AI-generated illustration of ${drug.generic_name}`}
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
                 draggable={false}
+                onLoad={(e) => {
+                  const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+                  if (w && h) setRatios(r => (r[img.url] ? r : { ...r, [img.url]: w / h }));
+                }}
               />
             </div>
           ))}
