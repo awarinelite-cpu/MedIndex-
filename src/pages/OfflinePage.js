@@ -114,7 +114,13 @@ export default function OfflinePage() {
         <div className="mi-off-error"><AlertTriangle size={18} /> <span>{error}</span></div>
       )}
 
-      <button type="button" className="mi-off-btn" onClick={start} disabled={busy || !online}>
+      <button
+        type="button"
+        className="mi-off-btn"
+        onClick={start}
+        disabled={busy || !online}
+        style={{ backgroundColor: '#1769e0', backgroundImage: 'linear-gradient(145deg, #2b86ff, #0a54d6)', color: '#fff', opacity: busy || !online ? 0.75 : 1, border: 0 }}
+      >
         <Download size={20} />
         {busy ? 'Downloading…' : last ? 'Update offline data' : 'Download for offline'}
       </button>
