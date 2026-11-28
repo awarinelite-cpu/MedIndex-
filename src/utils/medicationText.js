@@ -8,7 +8,7 @@
 const GENERIC = new Set(('options option agents agent drugs drug medications medication medicines medicine steroids inhalers inhaler ' +
   'treatments treatment therapies therapy antibiotics others other classes class types type regimens supplements products ' +
   'formulations combinations immunizations vaccines vaccine symptoms infections infection cough coughing wheezing mucus ' +
-  'examples example etc issues issue problems problem forms form relief control management').split(' '));
+  'plasma examples example etc issues issue problems problem forms form relief control management').split(' '));
 const PLACES = new Set(['china', 'india', 'nigeria', 'japan', 'europe', 'africa', 'asia', 'usa', 'uk', 'us', 'canada', 'germany', 'france', 'brazil', 'russia']);
 const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|failure|cancer|fibrosis|asthma|copd|tuberculosis|tb|pneumonia|lupus|gout|arthritis|pleurisy|sepsis|inflammation|pain|fever|infection|infections|injury|trauma|cough|swelling|edema|effusion|embolism|thrombosis|clots?|stroke|attack)$/i;
 const DRUG_WORD_RE = /\b[A-Za-z]{3,}(?:profen|oxicam|olol|pril|sartan|statin|azole|mycin|cillin|floxacin|cycline|prazole|tidine|dipine|thiazide|sone|solone|olone|formin|gliptin|gliflozin|glutide|parin|xaban|afil|triptan|setron|zolam|azepam|barbital|caine|terol|tropium|navir|vudine)\b|\b(?:naproxen|diclofenac|aspirin|paracetamol|acetaminophen|codeine|morphine|tramadol|colchicine|warfarin|heparin|insulin|metformin|ibuprofen|indomethacin|celecoxib|oxycodone|fentanyl|furosemide|spironolactone|amiodarone|digoxin|atenolol)\b/gi;
@@ -126,13 +126,39 @@ const joinQualifiers = s => s.replace(QUALIFIER_RE, (_, q) => ` (${q.toLowerCase
 const QUALIFIED_NAME_RE = /^\p{L}[\p{L}\p{N}'\- ]{1,40} \((?:human|recombinant|plasma-derived|bovine|porcine)\)$/u;
 const termName = t => (QUALIFIED_NAME_RE.test(t.trim()) ? cap(t.trim()) : cleanTerm(t));
 
+// Brand names inside parentheses: "(Brand: Ekterly)", "(Brands: Firazyr, Sajazir, and generics)",
+// "(Cyklokapron, Lysteda)". Abbreviations such as (FFP) / (IV) and filler are not brands.
+const NOT_BRAND_RE = /\b(?:generics?|others?|etc|marketed|regions?|available|countries|in some)\b/i;
+function brandsIn(s) {
+  const out = [];
+  (String(s || '').match(/\([^()]*\)/g) || []).forEach(g => {
+    const inner = g.slice(1, -1).trim();
+    if (/^[^:]*:/.test(inner) && !/^brands?:/i.test(inner)) return; // "(Note: ...)" etc.
+    inner.replace(/^brands?:\s*/i, '').split(/\s*(?:;|,|\band\b)\s*/i).forEach(p => {
+      const t = p.trim();
+      if (!t || NOT_BRAND_RE.test(t) || /^[A-Z0-9]{2,6}$/.test(t)) return;
+      const n = cleanTerm(t);
+      if (n) out.push(n);
+    });
+  });
+  return out;
+}
+const NON_DRUG_RE = /\b(?:plasma|blood products?)\b/i;
+
 // A description that is just a list of names ("Danazol (Danocrine), stanozolol,
 // and oxandrolone") rather than a sentence.
 function namesFromList(desc) {
-  const t = stripParens(desc).replace(/[.:]+$/, '').trim();
-  if (!t || STOP_RE.test(` ${t} `)) return [];
+  const ph = [];
+  const t = String(desc || '').replace(/\([^()]*\)/g, m => { ph.push(m); return `\u0000${ph.length - 1}\u0000`; })
+    .replace(/[.:]+$/, '').trim();
+  const restore = x => x.replace(/\u0000(\d+)\u0000/g, (_, i) => ph[+i]);
+  if (!t || STOP_RE.test(` ${stripParens(restore(t))} `)) return [];
   const out = [];
-  t.split(/\s*(?:,|;|&|\bor\b|\band\b)\s*/i).forEach(p => { const n = cleanTerm(p); if (n) out.push(n); });
+  t.split(/\s*(?:,|;|&|\bor\b|\band\b)\s*/i).forEach(p => {
+    const raw = restore(p);
+    const n = cleanTerm(stripParens(raw));
+    if (n) out.push({ name: n, brands: brandsIn(raw) });
+  });
   return out;
 }
 
@@ -166,7 +192,7 @@ export function parseMedicationEntries(text, fallback) {
   };
   if (!rich) return plain();
 
-  const entries = [], seen = new Set();
+  const entries = [], seen = new Set(), subsEmitted = new Set();
   let sub = null, heading = '', hOrder = -1;
   let sticky = false; // a bare group label ("Anesthetics") keeps the plain bullets after it
   const addDrug = (n, underSub) => {
@@ -188,6 +214,8 @@ export function parseMedicationEntries(text, fallback) {
     const [body] = splitDashDescriptor(body0);
     const [lead, desc] = splitLeadDesc(body);
     const terms = joinQualifiers(stripParens(lead)).split(/\s*(?:&|\band\b|\/|,)\s*/i).filter(Boolean);
+    // Blood products ("Fresh Frozen Plasma") are not drugs: skip the whole line.
+    if (terms.length && terms.every(t => NON_DRUG_RE.test(t))) continue;
     // "Attenuated Androgens: Danazol, stanozolol, and oxandrolone" - a multi-word label followed by a bare list of names is a group.
     const listedAfterLabel = desc && !new RegExp(TRIGGER_RE.source, 'i').test(desc) ? namesFromList(desc) : [];
     const labelByList = listedAfterLabel.length >= 2 && /\s/.test(stripParens(lead));
@@ -202,15 +230,27 @@ export function parseMedicationEntries(text, fallback) {
     } else {
       // Plain drug bullets right after a bare group label stay under that label.
       if (!(sticky && sub && !desc)) { sub = null; sticky = false; }
-      const nest = !!sub;
-      terms.forEach(t => { const n = termName(t); if (n) addDrug(n, nest); });
+      const brands = brandsIn(lead);
+      terms.forEach(t => {
+        const n = termName(t);
+        if (!n) return;
+        if (brands.length && QUALIFIED_NAME_RE.test(n)) {
+          // "C1 esterase inhibitor (human) (Brand: Berinert)": the generic is a group, its brands are the drugs.
+          sub = n; sticky = false;
+          const sk = `${heading}|${n}`;
+          if (!subsEmitted.has(sk)) { subsEmitted.add(sk); entries.push({ type: 'sub', text: n }); }
+        } else addDrug(n, !!sub);
+      });
+      brands.forEach(b => addDrug(b, !!sub));
     }
     const nested = !!sub;
     let inGroup = nested;
     const listed = listedAfterLabel;
-    for (const n of (listed.length ? listed : drugsFromDescription(desc))) {
+    const found = listed.length ? listed : drugsFromDescription(desc).map(n => ({ name: n, brands: [] }));
+    for (const { name: n, brands } of found) {
       if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); continue; }
       addDrug(n, inGroup);
+      brands.forEach(b => addDrug(b, inGroup));
     }
   }
   return entries.some(e => e.type === 'drug') ? entries : plain();
