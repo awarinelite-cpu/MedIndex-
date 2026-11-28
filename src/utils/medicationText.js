@@ -13,7 +13,7 @@ const PLACES = new Set(['china', 'india', 'nigeria', 'japan', 'europe', 'africa'
 const DISEASE_RE = /(osis|pathy|itis|emia|syndrome|disease|diseases|disorder|failure|cancer|fibrosis|asthma|copd|tuberculosis|tb|pneumonia|lupus|gout|arthritis|pleurisy|sepsis|inflammation|pain|fever|infection|infections|injury|trauma|cough|swelling|edema|effusion|embolism|thrombosis|clots?|stroke|attack)$/i;
 const DRUG_WORD_RE = /\b[A-Za-z]{3,}(?:profen|oxicam|olol|pril|sartan|statin|azole|mycin|cillin|floxacin|cycline|prazole|tidine|dipine|thiazide|sone|solone|olone|formin|gliptin|gliflozin|glutide|parin|xaban|afil|triptan|setron|zolam|azepam|barbital|caine|terol|tropium|navir|vudine)\b|\b(?:naproxen|diclofenac|aspirin|paracetamol|acetaminophen|codeine|morphine|tramadol|colchicine|warfarin|heparin|insulin|metformin|ibuprofen|indomethacin|celecoxib|oxycodone|fentanyl|furosemide|spironolactone|amiodarone|digoxin|atenolol)\b/gi;
 const BAD_START_RE = /^(the|a|an|many|some|these|those|various|several|specific|both|certain|most|each|any|all|this|that|such|your|their)\b/i;
-const CLASS_RE = /(agonists?|antagonists?|anticholinergics?|corticosteroids?|steroids?|antibiotics?|antibacterials?|antifungals?|antivirals?|antitubercular|anti-?tb|drugs?|medications?|medicines?|vaccines?|immunizations?|mucolytics?|bronchodilators?|inhibitors?|blockers?|diuretics?|analgesics?|inhalers?|therapies|therapy|agents?|supplements?|antihistamines?|expectorants?|antitussives?|regimens?|sabas?|labas?|samas?|lamas?|anti[a-z-]+)$/i;
+const CLASS_RE = /(agonists?|antagonists?|anticholinergics?|corticosteroids?|steroids?|antibiotics?|antibacterials?|antifungals?|antivirals?|antitubercular|anti-?tb|drugs?|medications?|medicines?|vaccines?|immunizations?|mucolytics?|bronchodilators?|inhibitors?|blockers?|diuretics?|analgesics?|inhalers?|therapies|therapy|agents?|supplements?|antihistamines?|expectorants?|antitussives?|regimens?|sabas?|labas?|samas?|lamas?|\banti[a-z-]+)$/i;
 const CLASS_EXTRA_RE = /(modulators?|relaxants?|spasmodics?|depressants?|sedatives?|anxiolytics?|nitrates?|laxatives?|stimulants?|prokinetics?|antacids?|stabili[sz]ers?|chelators?|binders?|alkaloids?|anesthetics?|anaesthetics?|relievers?|softeners?|emollients?|lubricants?|protectants?|astringents?|decongestants?|antiseptics?|thinners?|vitamins?|electrolytes?|hormones?|[a-z]{3,}ics|[a-z]{4,}ants)$/i;
 const isClassLabel = (t) => {
   const s = String(t || '').trim();
@@ -99,6 +99,43 @@ function drugsFromDescription(desc) {
   return found;
 }
 
+
+// "Sebetralstat (Brand: Ekterly) — Oral tablet; plasma kallikrein inhibitor." ->
+// the part before the dash is the name, the part after is a description (route,
+// mechanism) that must never be read as a drug or class. Kept whole when the
+// description itself lists examples ("— such as ...").
+function splitDashDescriptor(body) {
+  let d = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '(') d++;
+    else if (ch === ')') d = Math.max(0, d - 1);
+    else if (!d && (ch === '\u2014' || ch === '\u2013') && /\s/.test(body[i - 1] || '') && /\s/.test(body[i + 1] || '')) {
+      const head = body.slice(0, i).trim(), tail = body.slice(i + 1).trim();
+      if (!head) return [body, ''];
+      return new RegExp(TRIGGER_RE.source, 'i').test(tail) ? [body, ''] : [head, tail];
+    }
+  }
+  return [body, ''];
+}
+
+// "C1 esterase inhibitor, human" is ONE drug: join the lone qualifier so the
+// comma does not split it, and so "inhibitor" is not read as a class label.
+const QUALIFIER_RE = /,\s*(human|recombinant|plasma-derived|bovine|porcine)\b/ig;
+const joinQualifiers = s => s.replace(QUALIFIER_RE, (_, q) => ` (${q.toLowerCase()})`);
+const QUALIFIED_NAME_RE = /^\p{L}[\p{L}\p{N}'\- ]{1,40} \((?:human|recombinant|plasma-derived|bovine|porcine)\)$/u;
+const termName = t => (QUALIFIED_NAME_RE.test(t.trim()) ? cap(t.trim()) : cleanTerm(t));
+
+// A description that is just a list of names ("Danazol (Danocrine), stanozolol,
+// and oxandrolone") rather than a sentence.
+function namesFromList(desc) {
+  const t = stripParens(desc).replace(/[.:]+$/, '').trim();
+  if (!t || STOP_RE.test(` ${t} `)) return [];
+  const out = [];
+  t.split(/\s*(?:,|;|&|\bor\b|\band\b)\s*/i).forEach(p => { const n = cleanTerm(p); if (n) out.push(n); });
+  return out;
+}
+
 function headingText(line) {
   const num = line.match(/^\s*\d+[.)]\s+(.+)$/);
   const t = (num ? num[1] : line).replace(/:$/, '').trim();
@@ -146,27 +183,32 @@ export function parseMedicationEntries(text, fallback) {
       if (h) { entries.push({ type: 'heading', text: h }); heading = h; hOrder += 1; sub = null; sticky = false; }
       continue; // prose lines hold no drugs
     }
-    const body = line.replace(bulletRe, '').trim();
-    if (!body || /\?$/.test(body)) continue;
+    const body0 = line.replace(bulletRe, '').trim();
+    if (!body0 || /\?$/.test(body0)) continue;
+    const [body] = splitDashDescriptor(body0);
     const [lead, desc] = splitLeadDesc(body);
-    const terms = stripParens(lead).split(/\s*(?:&|\band\b|\/|,)\s*/i).filter(Boolean);
-    const isClass = terms.some(t => isClassLabel(t));
+    const terms = joinQualifiers(stripParens(lead)).split(/\s*(?:&|\band\b|\/|,)\s*/i).filter(Boolean);
+    // "Attenuated Androgens: Danazol, stanozolol, and oxandrolone" - a multi-word label followed by a bare list of names is a group.
+    const listedAfterLabel = desc && !new RegExp(TRIGGER_RE.source, 'i').test(desc) ? namesFromList(desc) : [];
+    const labelByList = listedAfterLabel.length >= 2 && /\s/.test(stripParens(lead));
+    const isClass = terms.some(t => isClassLabel(t)) || labelByList;
     // A label with a description after it and no usable drug name ("Motility issues: ...") is a group, not a drug.
-    const isLabelOnly = !isClass && !!desc && terms.length > 0 && terms.every(t => !cleanTerm(t));
+    const isLabelOnly = !isClass && !!desc && terms.length > 0 && terms.every(t => !termName(t));
     if (isClass || isLabelOnly) {
       sub = lead;
       sticky = !desc;
       entries.push({ type: 'sub', text: lead });
-      terms.filter(t => !isClassLabel(t)).forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, true); });
+      terms.filter(t => !labelByList && !isClassLabel(t)).forEach(t => { const n = termName(t); if (n) addDrug(n, true); });
     } else {
       // Plain drug bullets right after a bare group label stay under that label.
       if (!(sticky && sub && !desc)) { sub = null; sticky = false; }
       const nest = !!sub;
-      terms.forEach(t => { const n = cleanTerm(t); if (n) addDrug(n, nest); });
+      terms.forEach(t => { const n = termName(t); if (n) addDrug(n, nest); });
     }
     const nested = !!sub;
     let inGroup = nested;
-    for (const n of drugsFromDescription(desc)) {
+    const listed = listedAfterLabel;
+    for (const n of (listed.length ? listed : drugsFromDescription(desc))) {
       if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); continue; }
       addDrug(n, inGroup);
     }
