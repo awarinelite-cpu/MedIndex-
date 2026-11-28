@@ -149,9 +149,9 @@ const NON_DRUG_RE = /\b(?:plasma|blood products?)\b/i;
 // and oxandrolone") rather than a sentence.
 function namesFromList(desc) {
   const ph = [];
-  const t = String(desc || '').replace(/\([^()]*\)/g, m => { ph.push(m); return `\u0000${ph.length - 1}\u0000`; })
+  const t = String(desc || '').replace(/\([^()]*\)/g, m => { ph.push(m); return `\uE000${ph.length - 1}\uE001`; })
     .replace(/[.:]+$/, '').trim();
-  const restore = x => x.replace(/\u0000(\d+)\u0000/g, (_, i) => ph[+i]);
+  const restore = x => x.replace(/\uE000(\d+)\uE001/g, (_, i) => ph[+i]);
   if (!t || STOP_RE.test(` ${stripParens(restore(t))} `)) return [];
   const out = [];
   t.split(/\s*(?:,|;|&|\bor\b|\band\b)\s*/i).forEach(p => {
@@ -231,17 +231,17 @@ export function parseMedicationEntries(text, fallback) {
       // Plain drug bullets right after a bare group label stay under that label.
       if (!(sticky && sub && !desc)) { sub = null; sticky = false; }
       const brands = brandsIn(lead);
-      terms.forEach(t => {
+      for (const t of terms) {
         const n = termName(t);
-        if (!n) return;
+        if (!n) continue;
         if (brands.length && QUALIFIED_NAME_RE.test(n)) {
           // "C1 esterase inhibitor (human) (Brand: Berinert)": the generic is a group, its brands are the drugs.
           sub = n; sticky = false;
           const sk = `${heading}|${n}`;
           if (!subsEmitted.has(sk)) { subsEmitted.add(sk); entries.push({ type: 'sub', text: n }); }
         } else addDrug(n, !!sub);
-      });
-      brands.forEach(b => addDrug(b, !!sub));
+      }
+      for (const b of brands) addDrug(b, !!sub);
     }
     const nested = !!sub;
     let inGroup = nested;
@@ -250,7 +250,7 @@ export function parseMedicationEntries(text, fallback) {
     for (const { name: n, brands } of found) {
       if (looksLikeClassInList(n)) { sub = n; inGroup = true; entries.push({ type: 'sub', text: n }); continue; }
       addDrug(n, inGroup);
-      brands.forEach(b => addDrug(b, inGroup));
+      for (const b of brands) addDrug(b, inGroup);
     }
   }
   return entries.some(e => e.type === 'drug') ? entries : plain();
